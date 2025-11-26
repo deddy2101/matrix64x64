@@ -595,45 +595,48 @@ void updateMarioWalk()
   {
     if (millis() - lastWalkUpdate >= 50)
     {
-      // Cancella Mario nella posizione attuale
-      redrawBackground(marioSprite.x - 1, marioSprite.y - 1, 
-                       marioSprite.width + 2, marioSprite.height + 2);
+      int oldX = marioSprite.x;
       
-      // Muovi Mario verso il target
+      // Calcola movimento
       if (abs(marioSprite.x - marioTargetX) <= WALK_SPEED)
       {
-        // Arrivato a destinazione
         marioSprite.x = marioTargetX;
         
-        // CONTROLLA SE DEVE SALTARE O FERMARSI
         if (walkingToJump)
         {
-            // Inizia il salto
             startJump();
-            walkingToJump = false;  // Reset flag
+            walkingToJump = false;
         }
         else
         {
-            // Si ferma semplicemente
             marioState = IDLE;
-            needsRedraw = true;
+            //needsRedraw = true;
         }
       }
       else
       {
-        // Continua a camminare...
         if (marioSprite.x < marioTargetX)
-        {
           marioSprite.x += WALK_SPEED;
+        else
+          marioSprite.x -= WALK_SPEED;
+      }
+      
+      // Cancella SOLO la parte "scoperta" dalla camminata
+      if (oldX != marioSprite.x)
+      {
+        if (oldX < marioSprite.x)
+        {
+          // Mario si muove a destra -> cancella la parte sinistra scoperta
+          redrawBackground(oldX, marioSprite.y, WALK_SPEED + 1, marioSprite.height);
         }
         else
         {
-          marioSprite.x -= WALK_SPEED;
+          // Mario si muove a sinistra -> cancella la parte destra scoperta
+          redrawBackground(marioSprite.x + marioSprite.width - 1, marioSprite.y, 
+                          WALK_SPEED + 1, marioSprite.height);
         }
         
-        drawBlock(hourBlock);
-        drawBlock(minuteBlock);
-        
+        // Disegna Mario nella nuova posizione
         drawSpriteFlipped(marioSprite.sprite, marioSprite.x, marioSprite.y, 
                           marioSprite.width, marioSprite.height, !marioFacingRight);
       }
@@ -642,6 +645,7 @@ void updateMarioWalk()
     }
   }
 }
+
 // Funzione per aggiornare Mario
 void updateMario()
 {
@@ -840,7 +844,7 @@ void drawMarioClock()
   }
 
   // Ridisegna la scena completa quando necessario
-   if (needsRedraw && marioState == IDLE && !waitingForNextJump)
+   if (needsRedraw && marioState == IDLE && !waitingForNextJump && !hourBlock.isHit && !minuteBlock.isHit)
   {
     // Sfondo cielo
     dma_display->fillScreenRGB888(0, 145, 206);
