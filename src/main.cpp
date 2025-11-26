@@ -89,8 +89,21 @@ struct MarioSprite {
 };
 
 MarioSprite marioSprite;
+bool walkingToJump = false;  // true se sta camminando per saltare, false se sta tornando al centro
 
-// AGGIUNGI QUESTE NUOVE VARIABILI:
+
+// Dopo le variabili globali esistenti di Mario
+enum MarioState {
+  IDLE,
+  WALKING,
+  JUMPING
+};
+
+MarioState marioState = IDLE;
+int marioTargetX = 23;  // Posizione X di destinazione
+bool marioFacingRight = true;  // Direzione di Mario
+const int WALK_SPEED = 2;  // Pixel per frame di camminata
+
 enum JumpTarget {
   NONE,
   HOUR_BLOCK,
@@ -104,7 +117,7 @@ unsigned long nextJumpDelay = 0;
 
 // Time tracking
 int fakeHour = 12;
-int fakeMin = 30;
+int fakeMin = 49;
 int fakeSec = 0;
 unsigned long lastSecondUpdate = 0;
 unsigned long lastMarioUpdate = 0;
@@ -240,6 +253,27 @@ void drawSprite(const uint16_t *sprite, int x, int y, int width, int height)
   }
 }
 
+// Funzione per disegnare sprite specchiato orizzontalmente
+void drawSpriteFlipped(const uint16_t *sprite, int x, int y, int width, int height, bool flipH)
+{
+  for (int dy = 0; dy < height; dy++)
+  {
+    for (int dx = 0; dx < width; dx++)
+    {
+      int srcX = flipH ? (width - 1 - dx) : dx;  // Specchia orizzontalmente se flipH è true
+      uint16_t color = pgm_read_word(&sprite[dy * width + srcX]);
+
+      if (color != _MASK)
+      {
+        uint8_t r = (color >> 11) << 3;
+        uint8_t g = ((color >> 5) & 0x3F) << 2;
+        uint8_t b = (color & 0x1F) << 3;
+
+        dma_display->drawPixelRGB888(x + dx, y + dy, r, g, b);
+      }
+    }
+  }
+}
 // Funzione per disegnare il terreno
 void drawGround()
 {
@@ -261,24 +295,27 @@ void drawGround()
 }
 void initMarioClock() {
   // Inizializza Mario
-  marioSprite.x = 23;  // Posizione centrale iniziale
+  marioSprite.x = 23;
   marioSprite.y = 40;
   marioSprite.firstY = 40;
-  marioSprite.isJumping = false;
   marioSprite.width = MARIO_IDLE_SIZE[0];
   marioSprite.height = MARIO_IDLE_SIZE[1];
   marioSprite.sprite = MARIO_IDLE;
   marioSprite.collisionDetected = false;
   marioSprite.direction = 1;
   marioSprite.lastY = 40;
+  
+  marioState = IDLE;
+  marioTargetX = 23;
+  marioFacingRight = true;
 
   // Reset variabili sequenza
   currentJumpTarget = NONE;
   waitingForNextJump = false;
   nextJumpDelay = 0;
 
-  // Inizializza blocco ore
-  hourBlock.x = 13;
+  // Inizializza blocco ore - SPOSTATO PIÙ A SINISTRA
+  hourBlock.x = 8;   // Era 13, ora 8
   hourBlock.y = 8;
   hourBlock.firstY = 8;
   hourBlock.width = 19;
@@ -288,8 +325,8 @@ void initMarioClock() {
   hourBlock.moveAmount = 0;
   hourBlock.text = String(fakeHour);
 
-  // Inizializza blocco minuti
-  minuteBlock.x = 32;
+  // Inizializza blocco minuti - SPOSTATO PIÙ A DESTRA
+  minuteBlock.x = 37;  // Era 32, ora 37
   minuteBlock.y = 8;
   minuteBlock.firstY = 8;
   minuteBlock.width = 19;
@@ -303,7 +340,7 @@ void initMarioClock() {
 
   // Reset time
   fakeHour = 12;
-  fakeMin = 30;
+  fakeMin = 55;
   fakeSec = 0;
   lastSecondUpdate = millis();
   lastMarioUpdate = millis();
@@ -392,75 +429,219 @@ bool checkCollision(MarioSprite &mario, MarioBlock &block)
           mario.y < block.y + block.height &&
           mario.y + mario.height > block.y);
 }
+// Funzione per ridisegnare lo sfondo nella posizione specificata
+void redrawBackground(int x, int y, int width, int height)
+{
+  for (int dy = 0; dy < height; dy++)
+  {
+    for (int dx = 0; dx < width; dx++)
+    {
+      int px = x + dx;
+      int py = y + dy;
+      
+      if (px >= 0 && px < PANE_WIDTH && py >= 0 && py < PANE_HEIGHT)
+      {
+        // Colore di default: cielo o terreno
+        uint8_t r = 0, g = 145, b = 206;
+        
+        // Controlla se siamo nel terreno
+        if (py >= PANE_HEIGHT - 8)
+        {
+          int idx = ((py - (PANE_HEIGHT - 8)) * 8 + (px % 8));
+          if (idx < 64)
+          {
+            uint16_t color = GROUND[idx];
+            r = (color >> 11) << 3;
+            g = ((color >> 5) & 0x3F) << 2;
+            b = (color & 0x1F) << 3;
+          }
+        }
+        // Controlla se siamo nella collina (x: 0-20, y: 34-56)
+        else if (px >= 0 && px < 20 && py >= 34 && py < 56)
+        {
+          int hillX = px;
+          int hillY = py - 34;
+          if (hillY < 22 && hillX < 20)
+          {
+            uint16_t color = pgm_read_word(&HILL[hillY * 20 + hillX]);
+            if (color != _MASK)
+            {
+              r = (color >> 11) << 3;
+              g = ((color >> 5) & 0x3F) << 2;
+              b = (color & 0x1F) << 3;
+            }
+          }
+        }
+        // Controlla se siamo nel cespuglio (x: 43-64, y: 47-56)
+        else if (px >= 43 && px < 64 && py >= 47 && py < 56)
+        {
+          int bushX = px - 43;
+          int bushY = py - 47;
+          if (bushY < 9 && bushX < 21)
+          {
+            uint16_t color = pgm_read_word(&BUSH[bushY * 21 + bushX]);
+            if (color != _MASK)
+            {
+              r = (color >> 11) << 3;
+              g = ((color >> 5) & 0x3F) << 2;
+              b = (color & 0x1F) << 3;
+            }
+          }
+        }
+        // Controlla se siamo nella nuvola 1 (x: 0-13, y: 21-33)
+        else if (px >= 0 && px < 13 && py >= 21 && py < 33)
+        {
+          int cloudX = px;
+          int cloudY = py - 21;
+          if (cloudY < 12 && cloudX < 13)
+          {
+            uint16_t color = pgm_read_word(&CLOUD1[cloudY * 13 + cloudX]);
+            if (color != _MASK)
+            {
+              r = (color >> 11) << 3;
+              g = ((color >> 5) & 0x3F) << 2;
+              b = (color & 0x1F) << 3;
+            }
+          }
+        }
+        // Controlla se siamo nella nuvola 2 (x: 51-64, y: 7-19)
+        else if (px >= 51 && px < 64 && py >= 7 && py < 19)
+        {
+          int cloudX = px - 51;
+          int cloudY = py - 7;
+          if (cloudY < 12 && cloudX < 13)
+          {
+            uint16_t color = pgm_read_word(&CLOUD2[cloudY * 13 + cloudX]);
+            if (color != _MASK)
+            {
+              r = (color >> 11) << 3;
+              g = ((color >> 5) & 0x3F) << 2;
+              b = (color & 0x1F) << 3;
+            }
+          }
+        }
+        
+        dma_display->drawPixelRGB888(px, py, r, g, b);
+      }
+    }
+  }
+}
+// Funzione helper per iniziare il salto
+void startJump() {
+  marioState = JUMPING;
+  marioSprite.direction = 1; // UP
+  marioSprite.lastY = marioSprite.y;
+  marioSprite.width = MARIO_JUMP_SIZE[0];
+  marioSprite.height = MARIO_JUMP_SIZE[1];
+  marioSprite.sprite = MARIO_JUMP;
+  marioSprite.collisionDetected = false;
+}
 
 // Funzione per fare saltare Mario
 void marioJump(JumpTarget target) {
-  if (!marioSprite.isJumping && !waitingForNextJump)
+  if (marioState == IDLE && !waitingForNextJump)
   {
     currentJumpTarget = target;
+    walkingToJump = true;
     
-    // CANCELLA MARIO NELLA POSIZIONE ATTUALE PRIMA DI SPOSTARLO
-    for (int dy = 0; dy < MARIO_IDLE_SIZE[1] + 2; dy++)
-    {
-      for (int dx = 0; dx < MARIO_IDLE_SIZE[0] + 2; dx++)
-      {
-        int px = marioSprite.x + dx - 1;
-        int py = marioSprite.y + dy - 1;
-        if (px >= 0 && px < PANE_WIDTH && py >= 0 && py < PANE_HEIGHT)
-        {
-          if (py >= PANE_HEIGHT - 8)
-          {
-            // Ridisegna il terreno
-            int idx = ((py - (PANE_HEIGHT - 8)) * 8 + (px % 8));
-            if (idx < 64)
-            {
-              uint16_t color = GROUND[idx];
-              uint8_t r = (color >> 11) << 3;
-              uint8_t g = ((color >> 5) & 0x3F) << 2;
-              uint8_t b = (color & 0x1F) << 3;
-              dma_display->drawPixelRGB888(px, py, r, g, b);
-            }
-          }
-          else
-          {
-            dma_display->drawPixelRGB888(px, py, 0, 145, 206);
-          }
-        }
-      }
-    }
-    
-    // Posiziona Mario in base al target
+    // Determina la posizione target in base al blocco da colpire
     switch(target) {
       case HOUR_BLOCK:
-        marioSprite.x = 18;  // Posizione per colpire blocco ore
-        Serial.println("Mario targeting HOUR block");
+        marioTargetX = 8;  // Era 11, ora 7 (4 pixel più a sinistra)
+        Serial.println("Mario walking to HOUR block");
         break;
       case MINUTE_BLOCK:
-        marioSprite.x = 28;  // Posizione per colpire blocco minuti
-        Serial.println("Mario targeting MINUTE block");
+        marioTargetX = 40;
+        Serial.println("Mario walking to MINUTE block");
         break;
       case BOTH_BLOCKS:
-        marioSprite.x = 18;  // Inizia dal blocco ore
-        Serial.println("Mario targeting BOTH blocks - starting with HOUR");
+        marioTargetX = 8;  // Era 11, ora 7
+        Serial.println("Mario walking to HOUR block first");
         break;
       default:
-        marioSprite.x = 23;  // Posizione centrale
+        marioTargetX = 23;
         break;
     }
     
-    marioSprite.isJumping = true;
-    marioSprite.direction = 1; // UP
-    marioSprite.lastY = marioSprite.y;
-    marioSprite.width = MARIO_JUMP_SIZE[0];
-    marioSprite.height = MARIO_JUMP_SIZE[1];
-    marioSprite.sprite = MARIO_JUMP;
-    marioSprite.collisionDetected = false;
+    // Determina la direzione
+    marioFacingRight = (marioTargetX > marioSprite.x);
     
-    // Ridisegna Mario nella nuova posizione prima di saltare
-    drawSprite(marioSprite.sprite, marioSprite.x, marioSprite.y, marioSprite.width, marioSprite.height);
+    // Se Mario è già nella posizione giusta, salta direttamente
+    if (abs(marioSprite.x - marioTargetX) <= WALK_SPEED)
+    {
+      marioSprite.x = marioTargetX;
+      startJump();
+      walkingToJump = false;
+    }
+    else
+    {
+      // Inizia a camminare
+      marioState = WALKING;
+      marioSprite.width = MARIO_IDLE_SIZE[0];
+      marioSprite.height = MARIO_IDLE_SIZE[1];
+      marioSprite.sprite = MARIO_IDLE;
+    }
   }
 }
 
+
+
+// Modifica updateMarioWalk():
+void updateMarioWalk()
+{
+  static unsigned long lastWalkUpdate = 0;
+  
+  if (marioState == WALKING)
+  {
+    if (millis() - lastWalkUpdate >= 50)
+    {
+      // Cancella Mario nella posizione attuale
+      redrawBackground(marioSprite.x - 1, marioSprite.y - 1, 
+                       marioSprite.width + 2, marioSprite.height + 2);
+      
+      // Muovi Mario verso il target
+      if (abs(marioSprite.x - marioTargetX) <= WALK_SPEED)
+      {
+        // Arrivato a destinazione
+        marioSprite.x = marioTargetX;
+        
+        // CONTROLLA SE DEVE SALTARE O FERMARSI
+        if (walkingToJump)
+        {
+            // Inizia il salto
+            startJump();
+            walkingToJump = false;  // Reset flag
+        }
+        else
+        {
+            // Si ferma semplicemente
+            marioState = IDLE;
+            needsRedraw = true;
+        }
+      }
+      else
+      {
+        // Continua a camminare...
+        if (marioSprite.x < marioTargetX)
+        {
+          marioSprite.x += WALK_SPEED;
+        }
+        else
+        {
+          marioSprite.x -= WALK_SPEED;
+        }
+        
+        drawBlock(hourBlock);
+        drawBlock(minuteBlock);
+        
+        drawSpriteFlipped(marioSprite.sprite, marioSprite.x, marioSprite.y, 
+                          marioSprite.width, marioSprite.height, !marioFacingRight);
+      }
+      
+      lastWalkUpdate = millis();
+    }
+  }
+}
 // Funzione per aggiornare Mario
 void updateMario()
 {
@@ -469,87 +650,47 @@ void updateMario()
   {
     waitingForNextJump = false;
     
-    // CANCELLA MARIO PRIMA DI SPOSTARLO per il secondo salto
-    for (int dy = 0; dy < MARIO_IDLE_SIZE[1] + 2; dy++)
-    {
-      for (int dx = 0; dx < MARIO_IDLE_SIZE[0] + 2; dx++)
-      {
-        int px = marioSprite.x + dx - 1;
-        int py = marioSprite.y + dy - 1;
-        if (px >= 0 && px < PANE_WIDTH && py >= 0 && py < PANE_HEIGHT)
-        {
-          if (py >= PANE_HEIGHT - 8)
-          {
-            int idx = ((py - (PANE_HEIGHT - 8)) * 8 + (px % 8));
-            if (idx < 64)
-            {
-              uint16_t color = GROUND[idx];
-              uint8_t r = (color >> 11) << 3;
-              uint8_t g = ((color >> 5) & 0x3F) << 2;
-              uint8_t b = (color & 0x1F) << 3;
-              dma_display->drawPixelRGB888(px, py, r, g, b);
-            }
-          }
-          else
-          {
-            dma_display->drawPixelRGB888(px, py, 0, 145, 206);
-          }
-        }
-      }
-    }
+    // AGGIORNA LA CIFRA DEL BLOCCO MINUTI QUI (prima di saltare)
+    char minStr[3];
+    sprintf(minStr, "%02d", fakeMin);
+    minuteBlock.text = String(minStr);
     
     // Secondo salto per colpire il blocco minuti
-    marioSprite.x = 28;  // Sposta verso blocco minuti
-    Serial.println("Mario jumping to MINUTE block");
+    currentJumpTarget = MINUTE_BLOCK;
+    marioTargetX = 40;
+    marioFacingRight = (marioTargetX > marioSprite.x);
+    walkingToJump = true;
     
-    marioSprite.isJumping = true;
-    marioSprite.direction = 1;
-    marioSprite.lastY = marioSprite.y;
-    marioSprite.width = MARIO_JUMP_SIZE[0];
-    marioSprite.height = MARIO_JUMP_SIZE[1];
-    marioSprite.sprite = MARIO_JUMP;
-    marioSprite.collisionDetected = false;
-    currentJumpTarget = MINUTE_BLOCK;  // Ora è solo il blocco minuti
+    Serial.println("Mario walking to MINUTE block");
     
-    // Ridisegna Mario nella nuova posizione
-    drawSprite(marioSprite.sprite, marioSprite.x, marioSprite.y, marioSprite.width, marioSprite.height);
+    if (abs(marioSprite.x - marioTargetX) <= WALK_SPEED)
+    {
+      marioSprite.x = marioTargetX;
+      startJump();
+      walkingToJump = false;
+    }
+    else
+    {
+      marioState = WALKING;
+      marioSprite.width = MARIO_IDLE_SIZE[0];
+      marioSprite.height = MARIO_IDLE_SIZE[1];
+      marioSprite.sprite = MARIO_IDLE;
+    }
   }
   
-  if (marioSprite.isJumping)
+  if (marioState == WALKING)
+  {
+    updateMarioWalk();
+    return;
+  }
+  
+  if (marioState == JUMPING)
   {
     if (millis() - lastMarioUpdate >= 50)
     {
-      // CANCELLA SOLO MARIO nella posizione precedente
-      for (int dy = 0; dy < marioSprite.height + 2; dy++)
-      {
-        for (int dx = 0; dx < marioSprite.width + 2; dx++)
-        {
-          int px = marioSprite.x + dx - 1;
-          int py = marioSprite.y + dy - 1;
-          if (px >= 0 && px < PANE_WIDTH && py >= 0 && py < PANE_HEIGHT)
-          {
-            // Colore cielo o terreno
-            if (py >= PANE_HEIGHT - 8)
-            {
-              // Ridisegna il terreno
-              int idx = ((py - (PANE_HEIGHT - 8)) * 8 + (px % 8));
-              if (idx < 64)
-              {
-                uint16_t color = GROUND[idx];
-                uint8_t r = (color >> 11) << 3;
-                uint8_t g = ((color >> 5) & 0x3F) << 2;
-                uint8_t b = (color & 0x1F) << 3;
-                dma_display->drawPixelRGB888(px, py, r, g, b);
-              }
-            }
-            else
-            {
-              // Colore cielo
-              dma_display->drawPixelRGB888(px, py, 0, 145, 206);
-            }
-          }
-        }
-      }
+      // CANCELLA MARIO usando la funzione che ridisegna lo sfondo
+      redrawBackground(marioSprite.x - 1, marioSprite.y - 1, 
+                       marioSprite.width + 2, marioSprite.height + 2);
 
       // Muovi Mario
       marioSprite.y += marioSprite.MARIO_PACE * (marioSprite.direction == 1 ? -1 : 1);
@@ -563,6 +704,10 @@ void updateMario()
           hourBlock.isHit = true;
           marioSprite.direction = -1;
           marioSprite.collisionDetected = true;
+          
+          // ← AGGIORNA LA CIFRA DELLE ORE SUBITO DOPO LA COLLISIONE
+          hourBlock.text = String(fakeHour);
+          needsRedraw = true;
         }
         else if (checkCollision(marioSprite, minuteBlock) && !marioSprite.collisionDetected)
         {
@@ -570,9 +715,16 @@ void updateMario()
           minuteBlock.isHit = true;
           marioSprite.direction = -1;
           marioSprite.collisionDetected = true;
+          
+          // ← AGGIORNA LA CIFRA DEI MINUTI SUBITO DOPO LA COLLISIONE
+          char minStr[3];
+          sprintf(minStr, "%02d", fakeMin);
+          minuteBlock.text = String(minStr);
+          needsRedraw = true;
         }
       }
 
+      // ← QUESTA PARTE ERA STATA CANCELLATA! ←
       // Controlla se ha raggiunto l'altezza massima del salto
       if ((marioSprite.lastY - marioSprite.y) >= marioSprite.JUMP_HEIGHT && marioSprite.direction == 1)
       {
@@ -582,37 +734,12 @@ void updateMario()
       // Controlla se è tornato a terra
       if (marioSprite.y + marioSprite.height >= 56 && marioSprite.direction == -1)
       {
-        // Cancella Mario nella posizione corrente prima di cambiare sprite
-        for (int dy = 0; dy < marioSprite.height + 2; dy++)
-        {
-          for (int dx = 0; dx < marioSprite.width + 2; dx++)
-          {
-            int px = marioSprite.x + dx - 1;
-            int py = marioSprite.y + dy - 1;
-            if (px >= 0 && px < PANE_WIDTH && py >= 0 && py < PANE_HEIGHT)
-            {
-              if (py >= PANE_HEIGHT - 8)
-              {
-                int idx = ((py - (PANE_HEIGHT - 8)) * 8 + (px % 8));
-                if (idx < 64)
-                {
-                  uint16_t color = GROUND[idx];
-                  uint8_t r = (color >> 11) << 3;
-                  uint8_t g = ((color >> 5) & 0x3F) << 2;
-                  uint8_t b = (color & 0x1F) << 3;
-                  dma_display->drawPixelRGB888(px, py, r, g, b);
-                }
-              }
-              else
-              {
-                dma_display->drawPixelRGB888(px, py, 0, 145, 206);
-              }
-            }
-          }
-        }
+        // Cancella Mario usando la funzione che ridisegna lo sfondo
+        redrawBackground(marioSprite.x - 1, marioSprite.y - 1, 
+                         marioSprite.width + 2, marioSprite.height + 2);
         
         marioSprite.y = marioSprite.firstY;
-        marioSprite.isJumping = false;
+        marioState = IDLE;
         marioSprite.width = MARIO_IDLE_SIZE[0];
         marioSprite.height = MARIO_IDLE_SIZE[1];
         marioSprite.sprite = MARIO_IDLE;
@@ -620,24 +747,41 @@ void updateMario()
         // Controlla se deve fare un secondo salto
         if (currentJumpTarget == BOTH_BLOCKS)
         {
-          Serial.println("Preparing second jump...");
+          Serial.println("Preparing for second jump...");
           waitingForNextJump = true;
-          nextJumpDelay = millis() + 300;  // Attendi 300ms prima del secondo salto
+          nextJumpDelay = millis() + 300;
         }
         else
         {
           currentJumpTarget = NONE;
-          needsRedraw = true;
+          walkingToJump = false;  // NON deve saltare quando torna al centro
+          
+          // Torna alla posizione centrale dopo aver finito
+          marioTargetX = 23;
+          marioFacingRight = (marioTargetX > marioSprite.x);
+          
+          if (abs(marioSprite.x - marioTargetX) > WALK_SPEED)
+          {
+            marioState = WALKING;
+          }
+          else
+          {
+            marioSprite.x = 23;  // Posizionalo direttamente al centro
+            needsRedraw = true;
+          }
         }
       }
+      // ← FINE DELLA PARTE CHE ERA STATA CANCELLATA ←
 
-      // Ridisegna Mario nella nuova posizione
-      drawSprite(marioSprite.sprite, marioSprite.x, marioSprite.y, marioSprite.width, marioSprite.height);
+      // Ridisegna Mario nella nuova posizione (con orientamento corretto)
+      drawSpriteFlipped(marioSprite.sprite, marioSprite.x, marioSprite.y, 
+                        marioSprite.width, marioSprite.height, !marioFacingRight);
 
       lastMarioUpdate = millis();
     }
   }
 }
+
 void drawMarioClock()
 {
   // Aggiorna l'orario ogni secondo
@@ -668,10 +812,10 @@ void drawMarioClock()
       }
 
       // IMPORTANTE: Aggiorna il testo sui blocchi PRIMA di decidere quale colpire
-      hourBlock.text = String(fakeHour);
-      char minStr[3];
-      sprintf(minStr, "%02d", fakeMin);
-      minuteBlock.text = String(minStr);
+      //hourBlock.text = String(fakeHour);
+      //char minStr[3];
+      //sprintf(minStr, "%02d", fakeMin);
+      //minuteBlock.text = String(minStr);
 
       // Decidi quale blocco colpire in base a cosa è cambiato
       if (oldHour != fakeHour && oldMin != fakeMin)
@@ -696,7 +840,7 @@ void drawMarioClock()
   }
 
   // Ridisegna la scena completa quando necessario
-  if (needsRedraw && !marioSprite.isJumping && !waitingForNextJump)
+   if (needsRedraw && marioState == IDLE && !waitingForNextJump)
   {
     // Sfondo cielo
     dma_display->fillScreenRGB888(0, 145, 206);
@@ -714,8 +858,9 @@ void drawMarioClock()
     drawBlock(hourBlock);
     drawBlock(minuteBlock);
 
-    // Disegna Mario
-    drawSprite(MARIO_IDLE, marioSprite.x, marioSprite.y, MARIO_IDLE_SIZE[0], MARIO_IDLE_SIZE[1]);
+    // Disegna Mario con orientamento corretto
+    drawSpriteFlipped(MARIO_IDLE, marioSprite.x, marioSprite.y, 
+                      MARIO_IDLE_SIZE[0], MARIO_IDLE_SIZE[1], !marioFacingRight);
 
     needsRedraw = false;
   }
