@@ -6,19 +6,20 @@
 #include <Arduino.h>
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 #include <FastLED.h>
-#include "bosco.h"  // Include your generated image file
-#include "casa.h" 
-#include "mario.h" 
-#include "paese.h" 
-#include "pokemon.h" 
+#include "bosco.h" // Include your generated image file
+#include "casa.h"
+#include "mario.h"
+#include "paese.h"
+#include "pokemon.h"
 #include "andre.h"
+#include <Fonts/FreeSansBold12pt7b.h> // o altri font disponibili
 // Configure for your panel(s) as appropriate!
 #define PANEL_WIDTH 64
 #define PANEL_HEIGHT 64
 #define PANELS_NUMBER 1
 #define PIN_E 32
 
-#define PANE_WIDTH PANEL_WIDTH * PANELS_NUMBER
+#define PANE_WIDTH PANEL_WIDTH *PANELS_NUMBER
 #define PANE_HEIGHT PANEL_HEIGHT
 
 // placeholder for the matrix object
@@ -43,10 +44,15 @@ int paddleHeight = 12;
 int paddleWidth = 2;
 int score1 = 0;
 int score2 = 0;
+bool scrollCompleted = false;
+String scrollText = "PROSSIMA FERMATA FIRENZE 6 GIARDINI ROSSI";
+int scrollX = PANE_WIDTH; // Parte da destra
+int scrollSpeed = 1;      // Pixel per frame
 
 // Matrix Rain variables
 #define MAX_DROPS 20
-struct Drop {
+struct Drop
+{
   int x;
   int y;
   int speed;
@@ -59,22 +65,41 @@ Drop drops[MAX_DROPS];
 byte heat[PANE_WIDTH][PANE_HEIGHT];
 
 // Starfield variables
-struct Star {
+struct Star
+{
   float x, y, z;
 };
 #define MAX_STARS 50
 Star stars[MAX_STARS];
 
 // Effect selector - IMAGE added
-enum Effect { PLASMA, PONG, MATRIX_RAIN, FIRE, STARFIELD, IMAGE1, IMAGE2, IMAGE3, IMAGE4, IMAGE5,IMAGE6, NUM_EFFECTS };
-Effect currentEffect = PLASMA;
+enum Effect
+{
+  SCROLL_TEXT,
+  PLASMA,
+  PONG,
+  MATRIX_RAIN,
+  FIRE,
+  STARFIELD,
+  IMAGE1,
+  IMAGE2,
+  IMAGE3,
+  IMAGE4,
+  IMAGE5,
+  IMAGE6,
+  NUM_EFFECTS
+};
+Effect currentEffect = SCROLL_TEXT;
 
-CRGB ColorFromCurrentPalette(uint8_t index = 0, uint8_t brightness = 255, TBlendType blendType = LINEARBLEND) {
+CRGB ColorFromCurrentPalette(uint8_t index = 0, uint8_t brightness = 255, TBlendType blendType = LINEARBLEND)
+{
   return ColorFromPalette(currentPalette, index, brightness, blendType);
 }
 
-void initMatrixRain() {
-  for (int i = 0; i < MAX_DROPS; i++) {
+void initMatrixRain()
+{
+  for (int i = 0; i < MAX_DROPS; i++)
+  {
     drops[i].x = random(PANE_WIDTH);
     drops[i].y = random(-50, 0);
     drops[i].speed = random(1, 4);
@@ -83,15 +108,18 @@ void initMatrixRain() {
   }
 }
 
-void initStarfield() {
-  for (int i = 0; i < MAX_STARS; i++) {
+void initStarfield()
+{
+  for (int i = 0; i < MAX_STARS; i++)
+  {
     stars[i].x = random(-PANE_WIDTH, PANE_WIDTH);
     stars[i].y = random(-PANE_HEIGHT, PANE_HEIGHT);
     stars[i].z = random(1, PANE_WIDTH);
   }
 }
 
-void initPong() {
+void initPong()
+{
   ballX = PANE_WIDTH / 2;
   ballY = PANE_HEIGHT / 2;
   ballSpeedX = 0.8;
@@ -101,81 +129,134 @@ void initPong() {
   score1 = 0;
   score2 = 0;
 }
+int textWidth = 0;
 
-void switchEffect() {
+void drawScrollText()
+{
+  if (!scrollCompleted)
+  {
+    dma_display->fillScreenRGB888(0, 0, 0);
+
+    dma_display->setTextColor(dma_display->color565(255, 255, 0));
+    dma_display->setTextSize(3);
+    dma_display->setTextWrap(false);
+
+    dma_display->setCursor(scrollX, PANE_HEIGHT / 2 - 12);
+    dma_display->print(scrollText);
+
+    scrollX -= scrollSpeed;
+
+    // 16px per carattere + 3px di spazio = 19px per carattere
+    int totalWidth = scrollText.length() * 19;
+    
+    // Controlla se il testo è completamente uscito
+    if (scrollX <= -totalWidth)
+    {
+      scrollCompleted = true;
+      Serial.println("=== SCROLL COMPLETATO! ===");
+    }
+  }
+}
+
+void switchEffect()
+{
   // Passa all'effetto successivo
   currentEffect = (Effect)((currentEffect + 1) % NUM_EFFECTS);
-  
+
   // Reset variabili e inizializzazione
   time_counter = 0;
   cycles = 0;
+  scrollCompleted = false; // Reset flag
+
+  switch (currentEffect)
+  {
+case SCROLL_TEXT:
+  Serial.println("Switching to SCROLL TEXT...");
   
-  switch(currentEffect) {
-    case PLASMA:
-      Serial.println("Switching to PLASMA effect...");
-      currentPalette = palettes[random(0, sizeof(palettes)/sizeof(palettes[0]))];
-      dma_display->fillScreenRGB888(0, 0, 0);
-      break;
-    case PONG:
-      Serial.println("Switching to PONG game...");
-      initPong();
-      dma_display->fillScreenRGB888(0, 0, 0);
-      break;
-    case MATRIX_RAIN:
-      Serial.println("Switching to MATRIX RAIN effect...");
-      initMatrixRain();
-      dma_display->fillScreenRGB888(0, 0, 0);
-      break;
-    case FIRE:
-      Serial.println("Switching to FIRE effect...");
-      memset(heat, 0, sizeof(heat));
-      dma_display->fillScreenRGB888(0, 0, 0);
-      break;
-    case STARFIELD:
-      Serial.println("Switching to STARFIELD effect...");
-      initStarfield();
-      dma_display->fillScreenRGB888(0, 0, 0);
-      break;
-    case IMAGE1:
-      Serial.println("Switching to IMAGE display...");
-      dma_display->fillScreenRGB888(0, 0, 0);
-      draw_bosco(dma_display, 0, 0);  // Draw the image
-      break;
-    case IMAGE2:
-      Serial.println("Switching to IMAGE display...");
-      dma_display->fillScreenRGB888(0, 0, 0);
-      draw_casa(dma_display, 0, 0);  // Draw the image
-      break;
-    case IMAGE3:
-      Serial.println("Switching to IMAGE display...");
-      dma_display->fillScreenRGB888(0, 0, 0);
-      draw_mario(dma_display, 0, 0);  // Draw the image
-      break;
-    case IMAGE4:
-      Serial.println("Switching to IMAGE display...");
-      dma_display->fillScreenRGB888(0, 0, 0);
-      draw_paese(dma_display, 0, 0);  // Draw the image
-      break;
-    case IMAGE5:
-      Serial.println("Switching to IMAGE display...");
-      dma_display->fillScreenRGB888(0, 0, 0);
-      draw_pokemon(dma_display, 0, 0);  // Draw the image
-      break;
-    case IMAGE6:
-      Serial.println("Switching to IMAGE display...");
-      dma_display->fillScreenRGB888(0, 0, 0);
-      draw_andre(dma_display, 0, 0);  // Draw the image
-      break;
-    default:
-      break;
+  // Font di default con textSize 3: 16px per carattere + 3px spazio = 19px totali
+  textWidth = scrollText.length() * 19;
+  
+  scrollX = PANE_WIDTH;  // Parte dal bordo destro
+  scrollCompleted = false;
+  
+  Serial.print("Lunghezza testo: ");
+  Serial.print(scrollText.length());
+  Serial.print(" caratteri, width totale: ");
+  Serial.print(textWidth);
+  Serial.println(" px");
+  Serial.print("scrollX iniziale: ");
+  Serial.println(scrollX);
+  Serial.print("scrollX finale: ");
+  Serial.println(-textWidth);
+  
+  dma_display->fillScreenRGB888(0, 0, 0);
+  break;
+  case PLASMA:
+    Serial.println("Switching to PLASMA effect...");
+    currentPalette = palettes[random(0, sizeof(palettes) / sizeof(palettes[0]))];
+    dma_display->fillScreenRGB888(0, 0, 0);
+    break;
+  case PONG:
+    Serial.println("Switching to PONG game...");
+    initPong();
+    dma_display->fillScreenRGB888(0, 0, 0);
+    break;
+  case MATRIX_RAIN:
+    Serial.println("Switching to MATRIX RAIN effect...");
+    initMatrixRain();
+    dma_display->fillScreenRGB888(0, 0, 0);
+    break;
+  case FIRE:
+    Serial.println("Switching to FIRE effect...");
+    memset(heat, 0, sizeof(heat));
+    dma_display->fillScreenRGB888(0, 0, 0);
+    break;
+  case STARFIELD:
+    Serial.println("Switching to STARFIELD effect...");
+    initStarfield();
+    dma_display->fillScreenRGB888(0, 0, 0);
+    break;
+  case IMAGE1:
+    Serial.println("Switching to IMAGE display...");
+    dma_display->fillScreenRGB888(0, 0, 0);
+    draw_bosco(dma_display, 0, 0); // Draw the image
+    break;
+  case IMAGE2:
+    Serial.println("Switching to IMAGE display...");
+    dma_display->fillScreenRGB888(0, 0, 0);
+    draw_casa(dma_display, 0, 0); // Draw the image
+    break;
+  case IMAGE3:
+    Serial.println("Switching to IMAGE display...");
+    dma_display->fillScreenRGB888(0, 0, 0);
+    draw_mario(dma_display, 0, 0); // Draw the image
+    break;
+  case IMAGE4:
+    Serial.println("Switching to IMAGE display...");
+    dma_display->fillScreenRGB888(0, 0, 0);
+    draw_paese(dma_display, 0, 0); // Draw the image
+    break;
+  case IMAGE5:
+    Serial.println("Switching to IMAGE display...");
+    dma_display->fillScreenRGB888(0, 0, 0);
+    draw_pokemon(dma_display, 0, 0); // Draw the image
+    break;
+  case IMAGE6:
+    Serial.println("Switching to IMAGE display...");
+    dma_display->fillScreenRGB888(0, 0, 0);
+    draw_andre(dma_display, 0, 0); // Draw the image
+    break;
+  default:
+    break;
   }
-  
+
   effect_timer = millis(); // Reset timer
 }
 
-void setup() {
+void setup()
+{
   Serial.begin(115200);
-  
+
   Serial.println(F("*****************************************************"));
   Serial.println(F("*        ESP32 LED Matrix - Multiple Effects        *"));
   Serial.println(F("*****************************************************"));
@@ -185,26 +266,34 @@ void setup() {
   mxconfig.chain_length = PANELS_NUMBER;
   mxconfig.gpio.e = PIN_E;
 
+  // Aggiungi queste righe per invertire/correggere l'orientamento
+  mxconfig.clkphase = false; // Prova sia false che true
+  // oppure
+  mxconfig.latch_blanking = 4; // Prova valori diversi (1-4)
+
   dma_display = new MatrixPanel_I2S_DMA(mxconfig);
   dma_display->setBrightness8(200);
 
-  if(!dma_display->begin())
-      Serial.println("****** !KABOOM! I2S memory allocation failed ***********");
- 
+  if (!dma_display->begin())
+    Serial.println("****** !KABOOM! I2S memory allocation failed ***********");
+
   dma_display->fillScreenRGB888(0, 0, 0);
-  
+
   // Inizia con PLASMA
-  currentEffect = PLASMA;
+  currentEffect = SCROLL_TEXT;
   Serial.println("Starting with PLASMA effect...");
   currentPalette = RainbowColors_p;
-  
+
   fps_timer = millis();
   effect_timer = millis(); // Inizializza timer effetto
 }
 
-void drawPlasma() {
-  for (int x = 0; x < PANE_WIDTH; x++) {
-    for (int y = 0; y < PANE_HEIGHT; y++) {
+void drawPlasma()
+{
+  for (int x = 0; x < PANE_WIDTH; x++)
+  {
+    for (int y = 0; y < PANE_HEIGHT; y++)
+    {
       int16_t v = 128;
       uint8_t wibble = sin8(time_counter);
       v += sin16(x * wibble * 3 + time_counter);
@@ -215,97 +304,120 @@ void drawPlasma() {
       dma_display->drawPixelRGB888(x, y, currentColor.r, currentColor.g, currentColor.b);
     }
   }
-  
+
   // Cambia palette ogni 1024 cicli all'interno del plasma
-  if (cycles >= 1024) {
-    currentPalette = palettes[random(0, sizeof(palettes)/sizeof(palettes[0]))];
+  if (cycles >= 1024)
+  {
+    currentPalette = palettes[random(0, sizeof(palettes) / sizeof(palettes[0]))];
   }
 }
 
-void drawPong() {
+void drawPong()
+{
   dma_display->fillScreenRGB888(0, 0, 0);
-  
+
   // Update ball position
   ballX += ballSpeedX;
   ballY += ballSpeedY;
-  
+
   // Ball collision with top/bottom
-  if (ballY <= 0 || ballY >= PANE_HEIGHT - 1) {
+  if (ballY <= 0 || ballY >= PANE_HEIGHT - 1)
+  {
     ballSpeedY = -ballSpeedY;
   }
-  
+
   // Ball collision with paddles
-  if (ballX <= paddleWidth && ballY >= paddle1Y && ballY <= paddle1Y + paddleHeight) {
+  if (ballX <= paddleWidth && ballY >= paddle1Y && ballY <= paddle1Y + paddleHeight)
+  {
     ballSpeedX = abs(ballSpeedX);
   }
-  if (ballX >= PANE_WIDTH - paddleWidth - 1 && ballY >= paddle2Y && ballY <= paddle2Y + paddleHeight) {
+  if (ballX >= PANE_WIDTH - paddleWidth - 1 && ballY >= paddle2Y && ballY <= paddle2Y + paddleHeight)
+  {
     ballSpeedX = -abs(ballSpeedX);
   }
-  
+
   // Score
-  if (ballX < 0) {
+  if (ballX < 0)
+  {
     score2++;
     ballX = PANE_WIDTH / 2;
     ballY = PANE_HEIGHT / 2;
   }
-  if (ballX >= PANE_WIDTH) {
+  if (ballX >= PANE_WIDTH)
+  {
     score1++;
     ballX = PANE_WIDTH / 2;
     ballY = PANE_HEIGHT / 2;
   }
-  
+
   // AI for paddles
-  if (ballY > paddle1Y + paddleHeight/2) paddle1Y++;
-  if (ballY < paddle1Y + paddleHeight/2) paddle1Y--;
-  if (ballY > paddle2Y + paddleHeight/2) paddle2Y++;
-  if (ballY < paddle2Y + paddleHeight/2) paddle2Y--;
-  
+  if (ballY > paddle1Y + paddleHeight / 2)
+    paddle1Y++;
+  if (ballY < paddle1Y + paddleHeight / 2)
+    paddle1Y--;
+  if (ballY > paddle2Y + paddleHeight / 2)
+    paddle2Y++;
+  if (ballY < paddle2Y + paddleHeight / 2)
+    paddle2Y--;
+
   paddle1Y = constrain(paddle1Y, 0, PANE_HEIGHT - paddleHeight);
   paddle2Y = constrain(paddle2Y, 0, PANE_HEIGHT - paddleHeight);
-  
+
   // Draw paddles
-  for (int i = 0; i < paddleHeight; i++) {
-    for (int w = 0; w < paddleWidth; w++) {
+  for (int i = 0; i < paddleHeight; i++)
+  {
+    for (int w = 0; w < paddleWidth; w++)
+    {
       dma_display->drawPixelRGB888(w, paddle1Y + i, 0, 255, 0);
       dma_display->drawPixelRGB888(PANE_WIDTH - paddleWidth + w, paddle2Y + i, 255, 0, 0);
     }
   }
-  
+
   // Draw ball
   dma_display->drawPixelRGB888((int)ballX, (int)ballY, 255, 255, 255);
   dma_display->drawPixelRGB888((int)ballX + 1, (int)ballY, 255, 255, 255);
   dma_display->drawPixelRGB888((int)ballX, (int)ballY + 1, 255, 255, 255);
   dma_display->drawPixelRGB888((int)ballX + 1, (int)ballY + 1, 255, 255, 255);
-  
+
   // Draw center line
-  for (int y = 0; y < PANE_HEIGHT; y += 4) {
-    dma_display->drawPixelRGB888(PANE_WIDTH/2, y, 50, 50, 50);
+  for (int y = 0; y < PANE_HEIGHT; y += 4)
+  {
+    dma_display->drawPixelRGB888(PANE_WIDTH / 2, y, 50, 50, 50);
   }
 }
 
-void drawMatrixRain() {
+void drawMatrixRain()
+{
   // Clear screen with slight fade effect
-  for (int x = 0; x < PANE_WIDTH; x++) {
-    for (int y = 0; y < PANE_HEIGHT; y++) {
+  for (int x = 0; x < PANE_WIDTH; x++)
+  {
+    for (int y = 0; y < PANE_HEIGHT; y++)
+    {
       dma_display->drawPixelRGB888(x, y, 0, 2, 0); // Very dark green background
     }
   }
-  
-  for (int i = 0; i < MAX_DROPS; i++) {
-    if (drops[i].active) {
+
+  for (int i = 0; i < MAX_DROPS; i++)
+  {
+    if (drops[i].active)
+    {
       // Draw drop trail
-      for (int j = 0; j < drops[i].length; j++) {
+      for (int j = 0; j < drops[i].length; j++)
+      {
         int y = drops[i].y - j;
-        if (y >= 0 && y < PANE_HEIGHT) {
+        if (y >= 0 && y < PANE_HEIGHT)
+        {
           int brightness = 255 - (j * 20);
-          if (brightness < 0) brightness = 0;
+          if (brightness < 0)
+            brightness = 0;
           dma_display->drawPixelRGB888(drops[i].x, y, 0, brightness, 0);
         }
       }
-      
+
       drops[i].y += drops[i].speed;
-      
-      if (drops[i].y > PANE_HEIGHT + drops[i].length) {
+
+      if (drops[i].y > PANE_HEIGHT + drops[i].length)
+      {
         drops[i].y = random(-20, 0);
         drops[i].x = random(PANE_WIDTH);
         drops[i].speed = random(1, 4);
@@ -315,103 +427,135 @@ void drawMatrixRain() {
   }
 }
 
-void drawFire() {
+void drawFire()
+{
   // Cool down every cell
-  for (int x = 0; x < PANE_WIDTH; x++) {
-    for (int y = 0; y < PANE_HEIGHT; y++) {
+  for (int x = 0; x < PANE_WIDTH; x++)
+  {
+    for (int y = 0; y < PANE_HEIGHT; y++)
+    {
       heat[x][y] = qsub8(heat[x][y], random8(0, ((55 * 10) / PANE_HEIGHT) + 2));
     }
   }
 
   // Heat from each cell drifts up
-  for (int x = 0; x < PANE_WIDTH; x++) {
-    for (int y = 0; y < PANE_HEIGHT - 1; y++) {
+  for (int x = 0; x < PANE_WIDTH; x++)
+  {
+    for (int y = 0; y < PANE_HEIGHT - 1; y++)
+    {
       heat[x][y] = (heat[x][y + 1] + heat[x][y + 1] + heat[x][y + 1]) / 3;
     }
   }
-  
+
   // Randomly ignite new sparks near bottom
-  if (random8() < 120) {
+  if (random8() < 120)
+  {
     int x = random(PANE_WIDTH);
     heat[x][PANE_HEIGHT - 1] = qadd8(heat[x][PANE_HEIGHT - 1], random8(160, 255));
   }
 
   // Convert heat to colors
-  for (int x = 0; x < PANE_WIDTH; x++) {
-    for (int y = 0; y < PANE_HEIGHT; y++) {
+  for (int x = 0; x < PANE_WIDTH; x++)
+  {
+    for (int y = 0; y < PANE_HEIGHT; y++)
+    {
       CRGB color = HeatColor(heat[x][y]);
       dma_display->drawPixelRGB888(x, y, color.r, color.g, color.b);
     }
   }
 }
 
-void drawStarfield() {
+void drawStarfield()
+{
   dma_display->fillScreenRGB888(0, 0, 5);
-  
-  for (int i = 0; i < MAX_STARS; i++) {
+
+  for (int i = 0; i < MAX_STARS; i++)
+  {
     stars[i].z -= 0.5;
-    if (stars[i].z <= 0) {
+    if (stars[i].z <= 0)
+    {
       stars[i].x = random(-PANE_WIDTH, PANE_WIDTH);
       stars[i].y = random(-PANE_HEIGHT, PANE_HEIGHT);
       stars[i].z = PANE_WIDTH;
     }
-    
+
     int sx = (stars[i].x / stars[i].z) * PANE_WIDTH + PANE_WIDTH / 2;
     int sy = (stars[i].y / stars[i].z) * PANE_HEIGHT + PANE_HEIGHT / 2;
-    
-    if (sx >= 0 && sx < PANE_WIDTH && sy >= 0 && sy < PANE_HEIGHT) {
+
+    if (sx >= 0 && sx < PANE_WIDTH && sy >= 0 && sy < PANE_HEIGHT)
+    {
       int brightness = map(stars[i].z, 0, PANE_WIDTH, 255, 50);
       dma_display->drawPixelRGB888(sx, sy, brightness, brightness, brightness);
     }
   }
 }
 
-void loop() {
+void loop()
+{
   // Controlla se sono passati 10 secondi
-  if (millis() - effect_timer >= 10000) {
+  // Per SCROLL_TEXT aspetta che completi, per gli altri usa il timer
+  bool shouldSwitch = false;
+
+  if (currentEffect == SCROLL_TEXT)
+  {
+    shouldSwitch = scrollCompleted; // Aspetta che il testo esca completamente
+  }
+  else
+  {
+    shouldSwitch = (millis() - effect_timer >= 10000); // Timer normale per altri effetti
+  }
+
+  if (shouldSwitch )
+  {
     switchEffect();
   }
-  
-  switch(currentEffect) {
-    case PLASMA:
-      drawPlasma();
-      break;
-    case PONG:
-      drawPong();
-      break;
-    case MATRIX_RAIN:
-      drawMatrixRain();
-      break;
-    case FIRE:
-      drawFire();
-      break;
-    case STARFIELD:
-      drawStarfield();
-      break;
-    case IMAGE1:
-    case IMAGE2:
-    case IMAGE3:
-    case IMAGE4:
-    case IMAGE5:
-    case IMAGE6:
-      // Image is already drawn in switchEffect, no need to redraw
-      break;
+
+  switch (currentEffect)
+  {
+  case SCROLL_TEXT:
+    drawScrollText();
+    break;
+  case PLASMA:
+    drawPlasma();
+    break;
+  case PONG:
+    drawPong();
+    break;
+  case MATRIX_RAIN:
+    drawMatrixRain();
+    break;
+  case FIRE:
+    drawFire();
+    break;
+  case STARFIELD:
+    drawStarfield();
+    break;
+  case IMAGE1:
+  case IMAGE2:
+  case IMAGE3:
+  case IMAGE4:
+  case IMAGE5:
+  case IMAGE6:
+    // Image is already drawn in switchEffect, no need to redraw
+    break;
   }
-  
+
   ++time_counter;
   ++cycles;
   ++fps;
 
-  if (cycles >= 1024) {
+  if (cycles >= 1024)
+  {
     time_counter = 0;
     cycles = 0;
   }
 
-  if (fps_timer + 5000 < millis()) {
-    Serial.printf_P(PSTR("Effect fps: %d\n"), fps/5);
+  if (fps_timer + 5000 < millis())
+  {
+    Serial.printf_P(PSTR("Effect fps: %d\n"), fps / 5);
     fps_timer = millis();
     fps = 0;
   }
-  
+
   delay(20); // Small delay for smoother animation
 }
