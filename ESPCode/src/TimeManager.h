@@ -3,20 +3,33 @@
 
 #include <Arduino.h>
 #include <functional>
+#include <time.h>
+#include <sys/time.h>
 
 // Callback per notificare cambiamenti di tempo
 typedef std::function<void(int hour, int minute, int second)> TimeCallback;
 
+// Modalità di funzionamento
+enum class TimeMode {
+    FAKE,       // Tempo accelerato per test
+    RTC         // RTC interno ESP32 (tempo reale)
+};
+
 class TimeManager {
 private:
-    // Tempo corrente
+    // Tempo corrente (cache)
     int currentHour;
     int currentMinute;
     int currentSecond;
     
+    // Tempo precedente (per rilevare cambiamenti)
+    int lastHour;
+    int lastMinute;
+    int lastSecond;
+    
     // Timer per aggiornamento
     unsigned long lastUpdate;
-    unsigned long updateInterval;  // ms tra un minuto e l'altro (in fake mode)
+    unsigned long updateInterval;      // ms tra un minuto e l'altro (in fake mode)
     
     // Callbacks per notifiche
     TimeCallback onSecondChange;
@@ -24,26 +37,44 @@ private:
     TimeCallback onHourChange;
     
     // Modalità
-    bool useFakeTime;  // true = mock time, false = RTC reale
+    TimeMode mode;
+    
+    // Metodi privati
+    void readRtcTime();
+    void updateFakeTime();
+    void processSerialCommand(const String& cmd);
     
 public:
     TimeManager(bool fakeTime = true, unsigned long fakeSpeedMs = 5000);
     
     // Setup
     void begin(int hour = 12, int minute = 0, int second = 0);
-    void setFakeSpeed(unsigned long ms);  // Velocità tempo fake (ms per minuto)
+    
+    // Configurazione fake mode
+    void setFakeSpeed(unsigned long ms);
     
     // Update (chiamare nel loop)
     void update();
+    
+    // Parsa comando stringa, ritorna true se era un comando TimeManager
+    bool parseCommand(const String& cmd);
+    
+    // Stampa help comandi
+    void printHelp();
     
     // Getters
     int getHour() const { return currentHour; }
     int getMinute() const { return currentMinute; }
     int getSecond() const { return currentSecond; }
     String getTimeString() const;
+    String getFullStatus() const;
     
-    // Setters (per debugging o set manuale)
+    // Setters
     void setTime(int hour, int minute, int second = 0);
+    void setDateTime(int year, int month, int day, int hour, int minute, int second = 0);
+    
+    // Sync da epoch (secondi dal 1970)
+    void syncFromEpoch(unsigned long epoch);
     
     // Callbacks (pattern Observer)
     void setOnSecondChange(TimeCallback callback) { onSecondChange = callback; }
@@ -51,8 +82,11 @@ public:
     void setOnHourChange(TimeCallback callback) { onHourChange = callback; }
     
     // Modalità
-    void setFakeTimeMode(bool fake) { useFakeTime = fake; }
-    bool isFakeTime() const { return useFakeTime; }
+    void setMode(TimeMode newMode);
+    void setFakeTimeMode(bool fake) { setMode(fake ? TimeMode::FAKE : TimeMode::RTC); }
+    TimeMode getMode() const { return mode; }
+    String getModeString() const;
+    bool isFakeTime() const { return mode == TimeMode::FAKE; }
 };
 
 #endif

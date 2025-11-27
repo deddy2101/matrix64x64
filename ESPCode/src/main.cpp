@@ -45,7 +45,7 @@ void setup()
     Serial.println(F("*    ESP32 LED Matrix - OOP Refactored Version      *"));
     Serial.println(F("*****************************************************"));
 
-    timeManager = new TimeManager(true, 3000); // Tempo finto, 3 secondi per minuto
+    timeManager = new TimeManager(false); // Tempo finto, 3 secondi per minuto
     timeManager->begin(12, 55, 0);             // Inizia a mezzogiorno
     // Inizializza Display Manager
     displayManager = new DisplayManager(PANEL_WIDTH, PANEL_HEIGHT,
@@ -104,39 +104,42 @@ void setup()
     statsTimer = millis();
 }
 
-void loop()
-{
-    // Aggiorna l'effect manager (gestisce automaticamente il cambio effetti)
+String serialBuffer = "";
+
+void loop() {
     timeManager->update();
     effectManager->update();
 
     // Stampa statistiche periodicamente
-    if (millis() - statsTimer >= STATS_INTERVAL)
-    {
+    if (millis() - statsTimer >= STATS_INTERVAL) {
         effectManager->printStats();
         statsTimer = millis();
     }
-    if (Serial.available())
-    {
-        char cmd = Serial.read();
 
-        switch (cmd)
-        {
-        case 'p':
-            effectManager->pause();
-            break;
-        case 'r':
-            effectManager->resume();
-            break;
-        case 'n':
-            effectManager->nextEffect();
-            break;
-        case '0' ... '9':
-            effectManager->switchToEffect(cmd - '0');
-            break;
+    // Gestione seriale centralizzata
+    while (Serial.available()) {
+        char c = Serial.read();
+        
+        if (c == '\n' || c == '\r') {
+            if (serialBuffer.length() > 0) {
+                // Prima prova TimeManager (T, E, M, S, ?)
+                if (!timeManager->parseCommand(serialBuffer)) {
+                    // Se non era un comando time, gestisci effetti
+                    char cmd = serialBuffer.charAt(0);
+                    switch (cmd) {
+                        case 'p': effectManager->pause(); break;
+                        case 'r': effectManager->resume(); break;
+                        case 'n': effectManager->nextEffect(); break;
+                        case '0'...'9': effectManager->switchToEffect(cmd - '0'); break;
+                    }
+                }
+                serialBuffer = "";
+            }
+        } else {
+            serialBuffer += c;
         }
     }
-    // Delay per controllo frame rate (circa 50 FPS)
+
     delay(20);
 }
 
