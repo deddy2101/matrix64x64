@@ -182,7 +182,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               color: _isConnected ? Colors.green[400] : Colors.grey,
               boxShadow: _isConnected ? [
                 BoxShadow(
-                  color: Colors.green.withOpacity(0.5),
+                  color: Colors.green.withValues(alpha: 100),
                   blurRadius: 8,
                   spreadRadius: 2,
                 ),

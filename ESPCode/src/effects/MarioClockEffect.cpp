@@ -1,5 +1,9 @@
 #include "MarioClockEffect.h"
 
+#if ENABLE_PIPE_ANIMATION
+#include "pipeSprite.h"
+#endif
+
 MarioClockEffect::MarioClockEffect(DisplayManager* dm, TimeManager* tm) 
     : Effect(dm), 
       spriteRenderer(new SpriteRenderer(dm)),
@@ -17,11 +21,16 @@ MarioClockEffect::MarioClockEffect(DisplayManager* dm, TimeManager* tm)
       needsRedraw(true),
       lastHour(-1),
       lastMinute(-1),
-      lastMarioUpdate(0) {
+      lastMarioUpdate(0)
+#if ENABLE_PIPE_ANIMATION
+      ,pipe(new MarioPipe()),
+      lastPipeUpdate(0),
+      pipeVisibleUntil(0)
+#endif
+{
 }
 
 MarioClockEffect::~MarioClockEffect() {
-    // Rimuovi callback prima di distruggere
     if (timeManager) {
         timeManager->setOnMinuteChange(nullptr);
     }
@@ -29,6 +38,9 @@ MarioClockEffect::~MarioClockEffect() {
     delete hourBlock;
     delete minuteBlock;
     delete marioSprite;
+#if ENABLE_PIPE_ANIMATION
+    delete pipe;
+#endif
 }
 
 void MarioClockEffect::init() {
@@ -36,36 +48,35 @@ void MarioClockEffect::init() {
     
     initMario();
     initBlocks();
+#if ENABLE_PIPE_ANIMATION
+    initPipe();
+#endif
     
-    // IMPORTANTE: Reset textSize e imposta il font corretto
-    displayManager->setTextSize(1);  // Reset a 1 (altri effetti potrebbero averlo cambiato)
+    displayManager->setTextSize(1);
     displayManager->setFont(&Super_Mario_Bros__24pt7b);
     
-    // Sincronizza con TimeManager
     lastHour = timeManager->getHour();
     lastMinute = timeManager->getMinute();
     
-    // Aggiorna testo blocchi con ora corrente
     hourBlock->text = String(lastHour);
     char minStr[3];
     sprintf(minStr, "%02d", lastMinute);
     minuteBlock->text = String(minStr);
     
-    // ========== REGISTRA CALLBACK PER CAMBIO MINUTO ==========
     timeManager->setOnMinuteChange([this](int h, int m, int s) {
         Serial.printf("[MarioClockEffect] Minute changed callback: %02d:%02d\n", h, m);
         
-        // Controlla cosa è cambiato
         bool hourChanged = (h != lastHour);
         bool minuteChanged = (m != lastMinute);
         
-        // Aggiorna cache
-        int oldHour = lastHour;
-        int oldMinute = lastMinute;
         lastHour = h;
         lastMinute = m;
         
-        // Decide quale blocco colpire
+#if ENABLE_PIPE_ANIMATION
+        // Triggera il tubo ad ogni cambio minuto!
+        //triggerPipe();
+#endif
+        
         if (hourChanged && minuteChanged) {
             Serial.println("[MarioClockEffect] Hour AND minute changed - jump to BOTH");
             marioJump(BOTH_BLOCKS);
@@ -87,8 +98,6 @@ void MarioClockEffect::init() {
 void MarioClockEffect::cleanup() {
     Serial.println("[MarioClockEffect] Cleanup - removing TimeManager callback");
     
-    // IMPORTANTE: Rimuovi callback quando l'effetto viene disattivato
-    // Altrimenti il callback potrebbe essere chiamato quando l'effetto non è attivo
     if (timeManager) {
         timeManager->setOnMinuteChange(nullptr);
     }
@@ -111,7 +120,6 @@ void MarioClockEffect::initMario() {
 }
 
 void MarioClockEffect::initBlocks() {
-    // Blocco ore
     hourBlock->x = 8;
     hourBlock->y = 8;
     hourBlock->firstY = 8;
@@ -122,7 +130,6 @@ void MarioClockEffect::initBlocks() {
     hourBlock->moveAmount = 0;
     hourBlock->text = String(timeManager->getHour());
     
-    // Blocco minuti
     minuteBlock->x = 37;
     minuteBlock->y = 8;
     minuteBlock->firstY = 8;
@@ -135,23 +142,184 @@ void MarioClockEffect::initBlocks() {
     sprintf(minStr, "%02d", timeManager->getMinute());
     minuteBlock->text = String(minStr);
     
-    // Reset jump state
     currentJumpTarget = NONE;
     waitingForNextJump = false;
     nextJumpDelay = 0;
 }
 
+// ========== PIPE ANIMATION FUNCTIONS ==========
+#if ENABLE_PIPE_ANIMATION
+
+void MarioClockEffect::initPipe() {
+    // Posiziona il tubo a destra dello schermo
+    pipe->x = 40;  // Posizione X (a destra)
+    pipe->width = PIPE_SPRITE_SIZE[0];   // 12
+    pipe->height = PIPE_SPRITE_SIZE[1];  // 16
+    
+    // Il tubo parte nascosto sotto il pavimento
+    int groundY = displayManager->getHeight() - 8;  // 56 per display 64px
+    pipe->hiddenY = groundY + 2;  // Completamente sotto terra
+    pipe->targetY = groundY - pipe->height + 4;  // Emerge di 12px sopra il terreno
+    pipe->y = pipe->hiddenY;
+    pipe->state = PIPE_HIDDEN;
+    
+    lastPipeUpdate = 0;
+    pipeVisibleUntil = 0;
+    
+    Serial.printf("[MarioClockEffect] Pipe initialized at x=%d, hiddenY=%d, targetY=%d\n", 
+                  pipe->x, pipe->hiddenY, pipe->targetY);
+}
+
+void MarioClockEffect::triggerPipe() {
+    if (pipe->state == PIPE_HIDDEN) {
+        pipe->state = PIPE_RISING;
+        Serial.println("[MarioClockEffect] Pipe triggered - starting to rise");
+    }
+}
+
+void MarioClockEffect::updatePipe() {
+    if (pipe->state == PIPE_HIDDEN) {
+        return;  // Niente da fare
+    }
+    
+    unsigned long now = millis();
+    
+    if (now - lastPipeUpdate >= 40) {  // ~25 FPS per animazione fluida
+        
+        switch (pipe->state) {
+            case PIPE_RISING:
+                // Cancella area precedente (solo la parte che verrà scoperta)
+                redrawBackground(pipe->x, pipe->y, pipe->width, PIPE_RISE_SPEED + 1);
+                
+                pipe->y -= PIPE_RISE_SPEED;
+                
+                if (pipe->y <= pipe->targetY) {
+                    pipe->y = pipe->targetY;
+                    pipe->state = PIPE_VISIBLE;
+                    pipeVisibleUntil = now + PIPE_VISIBLE_TIME;
+                    Serial.println("[MarioClockEffect] Pipe fully visible");
+                }
+                
+                drawPipe();
+                break;
+                
+            case PIPE_VISIBLE:
+                // Aspetta che scada il timer
+                if (now >= pipeVisibleUntil) {
+                    pipe->state = PIPE_LOWERING;
+                    Serial.println("[MarioClockEffect] Pipe starting to lower");
+                }
+                break;
+                
+            case PIPE_LOWERING:
+                // Cancella area precedente
+                redrawBackground(pipe->x, pipe->y, pipe->width, pipe->height + PIPE_RISE_SPEED);
+                
+                pipe->y += PIPE_RISE_SPEED;
+                
+                if (pipe->y >= pipe->hiddenY) {
+                    pipe->y = pipe->hiddenY;
+                    pipe->state = PIPE_HIDDEN;
+                    // Ridisegna il terreno dove era il tubo
+                    redrawBackground(pipe->x, displayManager->getHeight() - 8, pipe->width, 8);
+                    Serial.println("[MarioClockEffect] Pipe hidden");
+                } else {
+                    drawPipe();
+                }
+                break;
+                
+            default:
+                break;
+        }
+        
+        lastPipeUpdate = now;
+    }
+}
+
+void MarioClockEffect::drawPipe() {
+    if (pipe->state == PIPE_HIDDEN) return;
+    
+    int screenHeight = displayManager->getHeight();
+    int screenWidth = displayManager->getWidth();
+    int groundY = screenHeight - 8;
+    
+    // Disegna solo la parte visibile del tubo (sopra il terreno)
+    for (int dy = 0; dy < pipe->height; dy++) {
+        int screenY = pipe->y + dy;
+        
+        // Salta se sotto il terreno
+        if (screenY >= groundY) continue;
+        // Salta se sopra lo schermo
+        if (screenY < 0) continue;
+        
+        for (int dx = 0; dx < pipe->width; dx++) {
+            int screenX = pipe->x + dx;
+            
+            if (screenX < 0 || screenX >= screenWidth) continue;
+            
+            int idx = dy * pipe->width + dx;
+            uint16_t color = pgm_read_word(&PIPE_SPRITE[idx]);
+            
+            uint8_t r, g, b;
+            
+            // Se pixel trasparente, ridisegna lo sfondo
+            if (color == _MASK) {
+                // Default: colore cielo
+                r = 0; g = 145; b = 206;
+                
+                // Controlla se è nella collina
+                if (screenX < 20 && screenY >= 34 && screenY < 56) {
+                    int hillX = screenX;
+                    int hillY = screenY - 34;
+                    if (hillY < 22 && hillX < 20) {
+                        uint16_t hillColor = pgm_read_word(&HILL[hillY * 20 + hillX]);
+                        if (hillColor != _MASK) {
+                            r = (hillColor >> 11) << 3;
+                            g = ((hillColor >> 5) & 0x3F) << 2;
+                            b = (hillColor & 0x1F) << 3;
+                        }
+                    }
+                }
+                // Controlla cespuglio
+                else if (screenX >= 43 && screenX < 64 && screenY >= 47 && screenY < 56) {
+                    int bushX = screenX - 43;
+                    int bushY = screenY - 47;
+                    if (bushY < 9 && bushX < 21) {
+                        uint16_t bushColor = pgm_read_word(&BUSH[bushY * 21 + bushX]);
+                        if (bushColor != _MASK) {
+                            r = (bushColor >> 11) << 3;
+                            g = ((bushColor >> 5) & 0x3F) << 2;
+                            b = (bushColor & 0x1F) << 3;
+                        }
+                    }
+                }
+            } else {
+                // Pixel del tubo
+                r = (color >> 11) << 3;
+                g = ((color >> 5) & 0x3F) << 2;
+                b = (color & 0x1F) << 3;
+            }
+            
+            displayManager->drawPixel(screenX, screenY, r, g, b);
+        }
+    }
+}
+
+#endif  // ENABLE_PIPE_ANIMATION
+// ============================================
+
 void MarioClockEffect::reset() {
-    Effect::reset();  // Chiama deactivate() -> cleanup()
-    // Resettiamo solo la cache locale per forzare aggiornamento
+    Effect::reset();
     lastHour = -1;
     lastMinute = -1;
 }
 
 void MarioClockEffect::update() {
-    // TimeManager chiama direttamente la callback quando cambia il minuto
-    
     updateMario();
+    
+#if ENABLE_PIPE_ANIMATION
+    updatePipe();
+#endif
     
     static unsigned long lastHourUpdate = 0;
     static unsigned long lastMinuteUpdate = 0;
@@ -161,7 +329,6 @@ void MarioClockEffect::update() {
 }
 
 void MarioClockEffect::draw() {
-    // Ridisegna scena completa quando necessario
     if (needsRedraw && marioState == IDLE && !waitingForNextJump && 
         !hourBlock->isHit && !minuteBlock->isHit) {
         drawScene();
@@ -170,27 +337,28 @@ void MarioClockEffect::draw() {
 }
 
 void MarioClockEffect::drawScene() {
-    // Sfondo cielo
     displayManager->fillScreen(0, 145, 206);
     
-    // IMPORTANTE: Reset textSize e font per blocchi
     displayManager->setTextSize(1);
     displayManager->setFont(&Super_Mario_Bros__24pt7b);
     
-    // Elementi decorativi
     spriteRenderer->drawSprite(HILL, 0, 34, 20, 22);
     spriteRenderer->drawSprite(BUSH, 43, 47, 21, 9);
     spriteRenderer->drawSprite(CLOUD1, 0, 21, 13, 12);
     spriteRenderer->drawSprite(CLOUD2, 51, 7, 13, 12);
     
-    // Terreno
     drawGround();
     
-    // Blocchi
     drawBlock(*hourBlock);
     drawBlock(*minuteBlock);
     
-    // Mario
+#if ENABLE_PIPE_ANIMATION
+    // Disegna tubo se visibile
+    if (pipe->state != PIPE_HIDDEN) {
+        drawPipe();
+    }
+#endif
+    
     spriteRenderer->drawSpriteFlipped(MARIO_IDLE, marioSprite->x, marioSprite->y,
                                      MARIO_IDLE_SIZE[0], MARIO_IDLE_SIZE[1], 
                                      !marioFacingRight);
@@ -217,7 +385,7 @@ void MarioClockEffect::drawGround() {
 void MarioClockEffect::drawBlock(MarioBlock& block) {
     spriteRenderer->drawSprite(BLOCK, block.x, block.y, BLOCK_SIZE[0], BLOCK_SIZE[1]);
     
-    displayManager->setTextSize(1);  // Reset textSize
+    displayManager->setTextSize(1);
     displayManager->setFont(&Super_Mario_Bros__24pt7b);
     displayManager->setTextColor(0x0000);
     
@@ -240,7 +408,6 @@ bool MarioClockEffect::checkCollision(MarioSprite& mario, MarioBlock& block) {
 void MarioClockEffect::updateBlock(MarioBlock& block, unsigned long& lastUpdate) {
     if (block.isHit) {
         if (millis() - lastUpdate >= 50) {
-            // Cancella posizione precedente con margine
             for (int dy = 0; dy < block.height + 6; dy++) {
                 for (int dx = 0; dx < block.width + 2; dx++) {
                     int px = block.x + dx - 1;
@@ -252,16 +419,13 @@ void MarioClockEffect::updateBlock(MarioBlock& block, unsigned long& lastUpdate)
                 }
             }
             
-            // Muovi il blocco
             block.y += BLOCK_MOVE_PACE * (block.direction == 1 ? -1 : 1);
             block.moveAmount += BLOCK_MOVE_PACE;
             
-            // Controlla se ha raggiunto il massimo movimento
             if (block.moveAmount >= BLOCK_MAX_MOVE && block.direction == 1) {
                 block.direction = -1;
             }
             
-            // Controlla se è tornato alla posizione iniziale
             if (block.y >= block.firstY && block.direction == -1) {
                 block.y = block.firstY;
                 block.isHit = false;
@@ -269,7 +433,6 @@ void MarioClockEffect::updateBlock(MarioBlock& block, unsigned long& lastUpdate)
                 block.moveAmount = 0;
             }
             
-            // Ridisegna il blocco
             drawBlock(block);
             lastUpdate = millis();
         }
@@ -280,7 +443,6 @@ void MarioClockEffect::redrawBackground(int x, int y, int width, int height) {
     int screenWidth = displayManager->getWidth();
     int screenHeight = displayManager->getHeight();
     
-    // Ridisegna sfondo
     for (int dy = 0; dy < height; dy++) {
         for (int dx = 0; dx < width; dx++) {
             int px = x + dx;
@@ -288,9 +450,8 @@ void MarioClockEffect::redrawBackground(int x, int y, int width, int height) {
             
             if (px < 0 || px >= screenWidth || py < 0 || py >= screenHeight) continue;
             
-            uint8_t r = 0, g = 145, b = 206;  // Colore cielo
+            uint8_t r = 0, g = 145, b = 206;
             
-            // Controlla se è nel terreno
             if (py >= screenHeight - 8) {
                 int groundY = py - (screenHeight - 8);
                 int idx = (groundY * 8 + (px % 8));
@@ -301,7 +462,6 @@ void MarioClockEffect::redrawBackground(int x, int y, int width, int height) {
                     b = (color & 0x1F) << 3;
                 }
             }
-            // Controlla collina
             else if (px < 20 && py >= 34 && py < 56) {
                 int hillX = px;
                 int hillY = py - 34;
@@ -314,7 +474,6 @@ void MarioClockEffect::redrawBackground(int x, int y, int width, int height) {
                     }
                 }
             }
-            // Controlla cespuglio
             else if (px >= 43 && px < 64 && py >= 47 && py < 56) {
                 int bushX = px - 43;
                 int bushY = py - 47;
@@ -327,7 +486,6 @@ void MarioClockEffect::redrawBackground(int x, int y, int width, int height) {
                     }
                 }
             }
-            // Controlla nuvola 1
             else if (px < 13 && py >= 21 && py < 33) {
                 int cloudX = px;
                 int cloudY = py - 21;
@@ -340,7 +498,6 @@ void MarioClockEffect::redrawBackground(int x, int y, int width, int height) {
                     }
                 }
             }
-            // Controlla nuvola 2
             else if (px >= 51 && px < 64 && py >= 7 && py < 19) {
                 int cloudX = px - 51;
                 int cloudY = py - 7;
@@ -361,7 +518,7 @@ void MarioClockEffect::redrawBackground(int x, int y, int width, int height) {
 
 void MarioClockEffect::startJump() {
     marioState = JUMPING;
-    marioSprite->direction = 1; // UP
+    marioSprite->direction = 1;
     marioSprite->lastY = marioSprite->y;
     marioSprite->width = MARIO_JUMP_SIZE[0];
     marioSprite->height = MARIO_JUMP_SIZE[1];
@@ -374,7 +531,6 @@ void MarioClockEffect::marioJump(JumpTarget target) {
         currentJumpTarget = target;
         walkingToJump = true;
         
-        // Determina posizione target
         switch(target) {
             case HOUR_BLOCK:
                 marioTargetX = 8;
@@ -393,16 +549,13 @@ void MarioClockEffect::marioJump(JumpTarget target) {
                 break;
         }
         
-        // Determina direzione
         marioFacingRight = (marioTargetX > marioSprite->x);
         
-        // Se è già nella posizione giusta, salta direttamente
         if (abs(marioSprite->x - marioTargetX) <= WALK_SPEED) {
             marioSprite->x = marioTargetX;
             startJump();
             walkingToJump = false;
         } else {
-            // Inizia a camminare
             marioState = WALKING;
             marioSprite->width = MARIO_IDLE_SIZE[0];
             marioSprite->height = MARIO_IDLE_SIZE[1];
@@ -418,7 +571,6 @@ void MarioClockEffect::updateMarioWalk() {
         if (millis() - lastWalkUpdate >= 50) {
             int oldX = marioSprite->x;
             
-            // Calcola movimento
             if (abs(marioSprite->x - marioTargetX) <= WALK_SPEED) {
                 marioSprite->x = marioTargetX;
                 
@@ -435,18 +587,14 @@ void MarioClockEffect::updateMarioWalk() {
                     marioSprite->x -= WALK_SPEED;
             }
             
-            // Cancella solo la parte scoperta
             if (oldX != marioSprite->x) {
                 if (oldX < marioSprite->x) {
-                    // Mario si muove a destra -> cancella sinistra
                     redrawBackground(oldX, marioSprite->y, WALK_SPEED + 1, marioSprite->height);
                 } else {
-                    // Mario si muove a sinistra -> cancella destra
                     redrawBackground(marioSprite->x + marioSprite->width - 1, marioSprite->y, 
                                    WALK_SPEED + 1, marioSprite->height);
                 }
                 
-                // Disegna Mario nella nuova posizione
                 spriteRenderer->drawSpriteFlipped(marioSprite->sprite, marioSprite->x, marioSprite->y,
                                                  marioSprite->width, marioSprite->height, !marioFacingRight);
             }
@@ -457,16 +605,13 @@ void MarioClockEffect::updateMarioWalk() {
 }
 
 void MarioClockEffect::updateMario() {
-    // Gestisci delay tra salti
     if (waitingForNextJump && millis() >= nextJumpDelay) {
         waitingForNextJump = false;
         
-        // Aggiorna cifra minuti prima del secondo salto
         char minStr[3];
         sprintf(minStr, "%02d", timeManager->getMinute());
         minuteBlock->text = String(minStr);
         
-        // Secondo salto per blocco minuti
         currentJumpTarget = MINUTE_BLOCK;
         marioTargetX = 40;
         marioFacingRight = (marioTargetX > marioSprite->x);
@@ -493,14 +638,11 @@ void MarioClockEffect::updateMario() {
     
     if (marioState == JUMPING) {
         if (millis() - lastMarioUpdate >= 50) {
-            // Cancella Mario
             redrawBackground(marioSprite->x - 1, marioSprite->y - 1,
                            marioSprite->width + 2, marioSprite->height + 2);
             
-            // Muovi Mario
             marioSprite->y += MARIO_PACE * (marioSprite->direction == 1 ? -1 : 1);
             
-            // Controlla collisione durante salto verso l'alto
             if (marioSprite->direction == 1) {
                 if (checkCollision(*marioSprite, *hourBlock) && !marioSprite->collisionDetected) {
                     Serial.println("[MarioClockEffect] Collision with hour block!");
@@ -508,7 +650,6 @@ void MarioClockEffect::updateMario() {
                     marioSprite->direction = -1;
                     marioSprite->collisionDetected = true;
                     
-                    // Aggiorna cifra ore
                     hourBlock->text = String(timeManager->getHour());
                     needsRedraw = true;
                 } else if (checkCollision(*marioSprite, *minuteBlock) && !marioSprite->collisionDetected) {
@@ -517,7 +658,6 @@ void MarioClockEffect::updateMario() {
                     marioSprite->direction = -1;
                     marioSprite->collisionDetected = true;
                     
-                    // Aggiorna cifra minuti
                     char minStr[3];
                     sprintf(minStr, "%02d", timeManager->getMinute());
                     minuteBlock->text = String(minStr);
@@ -525,14 +665,11 @@ void MarioClockEffect::updateMario() {
                 }
             }
             
-            // Controlla altezza massima salto
             if ((marioSprite->lastY - marioSprite->y) >= JUMP_HEIGHT && marioSprite->direction == 1) {
                 marioSprite->direction = -1;
             }
             
-            // Controlla se è tornato a terra
             if (marioSprite->y + marioSprite->height >= 56 && marioSprite->direction == -1) {
-                // Cancella Mario
                 redrawBackground(marioSprite->x - 1, marioSprite->y - 1,
                                marioSprite->width + 2, marioSprite->height + 2);
                 
@@ -542,7 +679,6 @@ void MarioClockEffect::updateMario() {
                 marioSprite->height = MARIO_IDLE_SIZE[1];
                 marioSprite->sprite = MARIO_IDLE;
                 
-                // Controlla se deve fare secondo salto
                 if (currentJumpTarget == BOTH_BLOCKS) {
                     Serial.println("[MarioClockEffect] Preparing for second jump...");
                     waitingForNextJump = true;
@@ -551,7 +687,6 @@ void MarioClockEffect::updateMario() {
                     currentJumpTarget = NONE;
                     walkingToJump = false;
                     
-                    // Torna al centro
                     marioTargetX = 23;
                     marioFacingRight = (marioTargetX > marioSprite->x);
                     
@@ -564,7 +699,6 @@ void MarioClockEffect::updateMario() {
                 }
             }
             
-            // Ridisegna Mario
             spriteRenderer->drawSpriteFlipped(marioSprite->sprite, marioSprite->x, marioSprite->y,
                                              marioSprite->width, marioSprite->height, !marioFacingRight);
             
