@@ -14,12 +14,18 @@ ScrollTextEffect::ScrollTextEffect(DisplayManager* dm, const String& scrollText,
 }
 
 void ScrollTextEffect::init() {
-    Serial.printf("Initializing Scroll Text Effect: \"%s\"\n", text.c_str());
+    Serial.printf("[ScrollTextEffect] Initializing: \"%s\"\n", text.c_str());
     
     scrollX = displayManager->getWidth();
     completed = false;
     
     calculateTextWidth();
+    
+    // IMPORTANTE: Reset al font di default
+    displayManager->setFont(nullptr);  // nullptr = font default di Adafruit GFX
+    displayManager->setTextSize(textSize);
+    displayManager->setTextWrap(false);
+    displayManager->setTextColor(textColor);
     
     displayManager->fillScreen(0, 0, 0);
 }
@@ -30,7 +36,7 @@ void ScrollTextEffect::update() {
     // Controlla se il testo è completamente uscito dallo schermo
     if (scrollX <= -textWidth) {
         completed = true;
-        Serial.println("Scroll Text completed!");
+        Serial.println("[ScrollTextEffect] Completed!");
     }
 }
 
@@ -39,7 +45,8 @@ void ScrollTextEffect::draw() {
         // Cancella schermo
         displayManager->fillScreen(0, 0, 0);
         
-        // Configura testo
+        // IMPORTANTE: Reset al font default + configura testo
+        displayManager->setFont(nullptr);  // Font default
         displayManager->setTextSize(textSize);
         displayManager->setTextWrap(false);
         displayManager->setTextColor(textColor);

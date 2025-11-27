@@ -3,6 +3,7 @@
 
 #include "../Effect.h"
 #include "../SpriteRenderer.h"
+#include "../TimeManager.h"
 #include "assets.h"  // Contiene GROUND, HILL, BUSH, CLOUD1, CLOUD2, BLOCK, _MASK, ecc.
 #include "Super_Mario_Bros__24pt7b.h"
 
@@ -26,6 +27,7 @@ enum JumpTarget {
 class MarioClockEffect : public Effect {
 private:
     SpriteRenderer* spriteRenderer;
+    TimeManager* timeManager;
     
     // Strutture
     MarioBlock* hourBlock;
@@ -42,11 +44,11 @@ private:
     unsigned long nextJumpDelay;
     bool needsRedraw;
     
-    // Time tracking
-    int fakeHour;
-    int fakeMin;
-    int fakeSec;
-    unsigned long lastSecondUpdate;
+    // Ora corrente (cache locale)
+    int lastHour;
+    int lastMinute;
+    
+    // Timer
     unsigned long lastMarioUpdate;
     
     // Constants
@@ -59,7 +61,6 @@ private:
     // Metodi privati helper
     void initBlocks();
     void initMario();
-    void updateTime();
     void updateMario();
     void updateMarioWalk();
     void updateBlock(MarioBlock& block, unsigned long& lastUpdate);
@@ -75,12 +76,13 @@ private:
     void marioJump(JumpTarget target);
     
 public:
-    MarioClockEffect(DisplayManager* dm);
+    MarioClockEffect(DisplayManager* dm, TimeManager* tm);
     ~MarioClockEffect();
     
     void init() override;
     void update() override;
     void draw() override;
+    void cleanup() override;  // ← Rimuove callback da TimeManager
     const char* getName() override { return "Mario Clock"; }
     void reset() override;
 };

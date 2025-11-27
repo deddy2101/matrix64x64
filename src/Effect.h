@@ -19,36 +19,108 @@ public:
     
     virtual ~Effect() {}
     
-    // Metodi da implementare nelle classi derivate
+    // ========== METODI VIRTUALI PURI ==========
+    // Ogni effetto DEVE implementare questi metodi
+    
+    /**
+     * Inizializza l'effetto. Chiamato automaticamente quando l'effetto viene attivato.
+     * Usare per:
+     * - Reset delle variabili di stato
+     * - Allocazione risorse
+     * - Pulizia dello schermo
+     */
     virtual void init() = 0;
+    
+    /**
+     * Aggiorna la logica dell'effetto (chiamato ogni frame)
+     */
     virtual void update() = 0;
+    
+    /**
+     * Disegna l'effetto sullo schermo (chiamato ogni frame dopo update)
+     */
     virtual void draw() = 0;
-    virtual bool isComplete() { return false; }
+    
+    /**
+     * Ritorna il nome dell'effetto
+     */
     virtual const char* getName() = 0;
     
-    // Metodo template per eseguire un ciclo completo
+    // ========== METODI VIRTUALI OPZIONALI ==========
+    
+    /**
+     * Ritorna true se l'effetto ha completato il suo ciclo
+     * (es: ScrollText che è uscito dallo schermo)
+     */
+    virtual bool isComplete() { return false; }
+    
+    /**
+     * Cleanup opzionale chiamato quando l'effetto viene disattivato.
+     * Usare per liberare risorse, fermare animazioni, etc.
+     * Default: non fa nulla
+     */
+    virtual void cleanup() {}
+    
+    // ========== GESTIONE CICLO DI VITA ==========
+    
+    /**
+     * Attiva l'effetto: chiama init() e resetta i contatori
+     */
+    void activate() {
+        if (initialized) {
+            cleanup();  // Pulisci stato precedente se era già attivo
+        }
+        
+        frameCount = 0;
+        startTime = millis();
+        lastUpdate = startTime;
+        
+        init();  // Chiama l'init dell'effetto concreto
+        initialized = true;
+        
+        Serial.printf("[Effect] Activated: %s\n", getName());
+    }
+    
+    /**
+     * Disattiva l'effetto: chiama cleanup()
+     */
+    void deactivate() {
+        if (initialized) {
+            cleanup();
+            initialized = false;
+            Serial.printf("[Effect] Deactivated: %s\n", getName());
+        }
+    }
+    
+    /**
+     * Esegue un frame dell'effetto (update + draw)
+     * Chiama activate() automaticamente se non inizializzato
+     */
     void execute() {
         if (!initialized) {
-            init();
-            initialized = true;
-            startTime = millis();
+            activate();
         }
         update();
         draw();
         frameCount++;
+        lastUpdate = millis();
     }
     
-    // Reset effect
+    /**
+     * Reset completo dell'effetto (per riavviarlo da zero)
+     */
     virtual void reset() {
-        initialized = false;
-        frameCount = 0;
-        startTime = 0;
-        lastUpdate = 0;
+        deactivate();
+        // Al prossimo execute() verrà chiamato activate() -> init()
     }
     
-    // Getters
-    unsigned long getRuntime() const { return millis() - startTime; }
+    // ========== GETTERS ==========
+    
+    bool isInitialized() const { return initialized; }
+    unsigned long getRuntime() const { return initialized ? (millis() - startTime) : 0; }
+    unsigned long getLastUpdateTime() const { return lastUpdate; }
     uint16_t getFrameCount() const { return frameCount; }
+    
     float getFPS() const {
         unsigned long runtime = getRuntime();
         return runtime > 0 ? (frameCount * 1000.0f / runtime) : 0;

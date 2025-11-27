@@ -1,8 +1,9 @@
 #include "MarioClockEffect.h"
 
-MarioClockEffect::MarioClockEffect(DisplayManager* dm) 
+MarioClockEffect::MarioClockEffect(DisplayManager* dm, TimeManager* tm) 
     : Effect(dm), 
       spriteRenderer(new SpriteRenderer(dm)),
+      timeManager(tm),
       hourBlock(new MarioBlock()),
       minuteBlock(new MarioBlock()),
       marioSprite(new MarioSprite()),
@@ -14,14 +15,16 @@ MarioClockEffect::MarioClockEffect(DisplayManager* dm)
       waitingForNextJump(false),
       nextJumpDelay(0),
       needsRedraw(true),
-      fakeHour(12),
-      fakeMin(55),
-      fakeSec(0),
-      lastSecondUpdate(0),
+      lastHour(-1),
+      lastMinute(-1),
       lastMarioUpdate(0) {
 }
 
 MarioClockEffect::~MarioClockEffect() {
+    // Rimuovi callback prima di distruggere
+    if (timeManager) {
+        timeManager->setOnMinuteChange(nullptr);
+    }
     delete spriteRenderer;
     delete hourBlock;
     delete minuteBlock;
@@ -29,14 +32,66 @@ MarioClockEffect::~MarioClockEffect() {
 }
 
 void MarioClockEffect::init() {
-    Serial.println("Initializing Mario Clock Effect");
+    Serial.println("[MarioClockEffect] Initializing");
     
     initMario();
     initBlocks();
     
-    lastSecondUpdate = millis();
+    // IMPORTANTE: Reset textSize e imposta il font corretto
+    displayManager->setTextSize(1);  // Reset a 1 (altri effetti potrebbero averlo cambiato)
+    displayManager->setFont(&Super_Mario_Bros__24pt7b);
+    
+    // Sincronizza con TimeManager
+    lastHour = timeManager->getHour();
+    lastMinute = timeManager->getMinute();
+    
+    // Aggiorna testo blocchi con ora corrente
+    hourBlock->text = String(lastHour);
+    char minStr[3];
+    sprintf(minStr, "%02d", lastMinute);
+    minuteBlock->text = String(minStr);
+    
+    // ========== REGISTRA CALLBACK PER CAMBIO MINUTO ==========
+    timeManager->setOnMinuteChange([this](int h, int m, int s) {
+        Serial.printf("[MarioClockEffect] Minute changed callback: %02d:%02d\n", h, m);
+        
+        // Controlla cosa è cambiato
+        bool hourChanged = (h != lastHour);
+        bool minuteChanged = (m != lastMinute);
+        
+        // Aggiorna cache
+        int oldHour = lastHour;
+        int oldMinute = lastMinute;
+        lastHour = h;
+        lastMinute = m;
+        
+        // Decide quale blocco colpire
+        if (hourChanged && minuteChanged) {
+            Serial.println("[MarioClockEffect] Hour AND minute changed - jump to BOTH");
+            marioJump(BOTH_BLOCKS);
+        } else if (hourChanged) {
+            Serial.println("[MarioClockEffect] Hour changed - jump to HOUR block");
+            marioJump(HOUR_BLOCK);
+        } else if (minuteChanged) {
+            Serial.println("[MarioClockEffect] Minute changed - jump to MINUTE block");
+            marioJump(MINUTE_BLOCK);
+        }
+    });
+    
+    Serial.printf("[MarioClockEffect] Synced with time: %02d:%02d\n", lastHour, lastMinute);
+    
     lastMarioUpdate = millis();
     needsRedraw = true;
+}
+
+void MarioClockEffect::cleanup() {
+    Serial.println("[MarioClockEffect] Cleanup - removing TimeManager callback");
+    
+    // IMPORTANTE: Rimuovi callback quando l'effetto viene disattivato
+    // Altrimenti il callback potrebbe essere chiamato quando l'effetto non è attivo
+    if (timeManager) {
+        timeManager->setOnMinuteChange(nullptr);
+    }
 }
 
 void MarioClockEffect::initMario() {
@@ -65,7 +120,7 @@ void MarioClockEffect::initBlocks() {
     hourBlock->isHit = false;
     hourBlock->direction = 1;
     hourBlock->moveAmount = 0;
-    hourBlock->text = String(fakeHour);
+    hourBlock->text = String(timeManager->getHour());
     
     // Blocco minuti
     minuteBlock->x = 37;
@@ -77,24 +132,25 @@ void MarioClockEffect::initBlocks() {
     minuteBlock->direction = 1;
     minuteBlock->moveAmount = 0;
     char minStr[3];
-    sprintf(minStr, "%02d", fakeMin);
+    sprintf(minStr, "%02d", timeManager->getMinute());
     minuteBlock->text = String(minStr);
     
-    // Reset time
+    // Reset jump state
     currentJumpTarget = NONE;
     waitingForNextJump = false;
     nextJumpDelay = 0;
 }
 
 void MarioClockEffect::reset() {
-    Effect::reset();
-    fakeHour = 12;
-    fakeMin = 55;
-    fakeSec = 0;
+    Effect::reset();  // Chiama deactivate() -> cleanup()
+    // Resettiamo solo la cache locale per forzare aggiornamento
+    lastHour = -1;
+    lastMinute = -1;
 }
 
 void MarioClockEffect::update() {
-    updateTime();
+    // TimeManager chiama direttamente la callback quando cambia il minuto
+    
     updateMario();
     
     static unsigned long lastHourUpdate = 0;
@@ -102,44 +158,6 @@ void MarioClockEffect::update() {
     
     updateBlock(*hourBlock, lastHourUpdate);
     updateBlock(*minuteBlock, lastMinuteUpdate);
-}
-
-void MarioClockEffect::updateTime() {
-    if (millis() - lastSecondUpdate >= 1000) {
-        lastSecondUpdate = millis();
-        fakeSec++;
-        
-        // Cambia minuti ogni 5 secondi per vedere l'animazione
-        if (fakeSec >= 5) {
-            fakeSec = 0;
-            
-            int oldHour = fakeHour;
-            int oldMin = fakeMin;
-            
-            fakeMin++;
-            
-            if (fakeMin >= 60) {
-                fakeMin = 0;
-                fakeHour++;
-                
-                if (fakeHour >= 24) {
-                    fakeHour = 0;
-                }
-            }
-            
-            // Decidi quale blocco colpire
-            if (oldHour != fakeHour && oldMin != fakeMin) {
-                Serial.println("Hour AND minute changed - jump to BOTH");
-                marioJump(BOTH_BLOCKS);
-            } else if (oldHour != fakeHour) {
-                Serial.println("Hour changed - jump to HOUR block");
-                marioJump(HOUR_BLOCK);
-            } else {
-                Serial.println("Minute changed - jump to MINUTE block");
-                marioJump(MINUTE_BLOCK);
-            }
-        }
-    }
 }
 
 void MarioClockEffect::draw() {
@@ -154,6 +172,10 @@ void MarioClockEffect::draw() {
 void MarioClockEffect::drawScene() {
     // Sfondo cielo
     displayManager->fillScreen(0, 145, 206);
+    
+    // IMPORTANTE: Reset textSize e font per blocchi
+    displayManager->setTextSize(1);
+    displayManager->setFont(&Super_Mario_Bros__24pt7b);
     
     // Elementi decorativi
     spriteRenderer->drawSprite(HILL, 0, 34, 20, 22);
@@ -195,6 +217,7 @@ void MarioClockEffect::drawGround() {
 void MarioClockEffect::drawBlock(MarioBlock& block) {
     spriteRenderer->drawSprite(BLOCK, block.x, block.y, BLOCK_SIZE[0], BLOCK_SIZE[1]);
     
+    displayManager->setTextSize(1);  // Reset textSize
     displayManager->setFont(&Super_Mario_Bros__24pt7b);
     displayManager->setTextColor(0x0000);
     
@@ -254,82 +277,84 @@ void MarioClockEffect::updateBlock(MarioBlock& block, unsigned long& lastUpdate)
 }
 
 void MarioClockEffect::redrawBackground(int x, int y, int width, int height) {
+    int screenWidth = displayManager->getWidth();
+    int screenHeight = displayManager->getHeight();
+    
+    // Ridisegna sfondo
     for (int dy = 0; dy < height; dy++) {
         for (int dx = 0; dx < width; dx++) {
             int px = x + dx;
             int py = y + dy;
             
-            if (px >= 0 && px < displayManager->getWidth() && 
-                py >= 0 && py < displayManager->getHeight()) {
-                
-                // Colore di default: cielo
-                uint8_t r = 0, g = 145, b = 206;
-                
-                // Controlla se siamo nel terreno
-                if (py >= displayManager->getHeight() - 8) {
-                    int idx = ((py - (displayManager->getHeight() - 8)) * 8 + (px % 8));
-                    if (idx < 64) {
-                        uint16_t color = GROUND[idx];
+            if (px < 0 || px >= screenWidth || py < 0 || py >= screenHeight) continue;
+            
+            uint8_t r = 0, g = 145, b = 206;  // Colore cielo
+            
+            // Controlla se è nel terreno
+            if (py >= screenHeight - 8) {
+                int groundY = py - (screenHeight - 8);
+                int idx = (groundY * 8 + (px % 8));
+                if (idx < 64) {
+                    uint16_t color = GROUND[idx];
+                    r = (color >> 11) << 3;
+                    g = ((color >> 5) & 0x3F) << 2;
+                    b = (color & 0x1F) << 3;
+                }
+            }
+            // Controlla collina
+            else if (px < 20 && py >= 34 && py < 56) {
+                int hillX = px;
+                int hillY = py - 34;
+                if (hillY < 22 && hillX < 20) {
+                    uint16_t color = pgm_read_word(&HILL[hillY * 20 + hillX]);
+                    if (color != _MASK) {
                         r = (color >> 11) << 3;
                         g = ((color >> 5) & 0x3F) << 2;
                         b = (color & 0x1F) << 3;
                     }
                 }
-                // Collina (x: 0-20, y: 34-56)
-                else if (px >= 0 && px < 20 && py >= 34 && py < 56) {
-                    int hillX = px;
-                    int hillY = py - 34;
-                    if (hillY < 22 && hillX < 20) {
-                        uint16_t color = pgm_read_word(&HILL[hillY * 20 + hillX]);
-                        if (color != _MASK) {
-                            r = (color >> 11) << 3;
-                            g = ((color >> 5) & 0x3F) << 2;
-                            b = (color & 0x1F) << 3;
-                        }
-                    }
-                }
-                // Cespuglio (x: 43-64, y: 47-56)
-                else if (px >= 43 && px < 64 && py >= 47 && py < 56) {
-                    int bushX = px - 43;
-                    int bushY = py - 47;
-                    if (bushY < 9 && bushX < 21) {
-                        uint16_t color = pgm_read_word(&BUSH[bushY * 21 + bushX]);
-                        if (color != _MASK) {
-                            r = (color >> 11) << 3;
-                            g = ((color >> 5) & 0x3F) << 2;
-                            b = (color & 0x1F) << 3;
-                        }
-                    }
-                }
-                // Nuvola 1 (x: 0-13, y: 21-33)
-                else if (px >= 0 && px < 13 && py >= 21 && py < 33) {
-                    int cloudX = px;
-                    int cloudY = py - 21;
-                    if (cloudY < 12 && cloudX < 13) {
-                        uint16_t color = pgm_read_word(&CLOUD1[cloudY * 13 + cloudX]);
-                        if (color != _MASK) {
-                            r = (color >> 11) << 3;
-                            g = ((color >> 5) & 0x3F) << 2;
-                            b = (color & 0x1F) << 3;
-                        }
-                    }
-                }
-                // Nuvola 2 (x: 51-64, y: 7-19)
-                else if (px >= 51 && px < 64 && py >= 7 && py < 19) {
-                    int cloudX = px - 51;
-                    int cloudY = py - 7;
-                    if (cloudY < 12 && cloudX < 13) {
-                        uint16_t color = pgm_read_word(&CLOUD2[cloudY * 13 + cloudX]);
-                        if (color != _MASK) {
-                            r = (color >> 11) << 3;
-                            g = ((color >> 5) & 0x3F) << 2;
-                            b = (color & 0x1F) << 3;
-                        }
-                    }
-                }
-                
-                displayManager->drawPixel(px, py, r, g, b);
             }
+            // Controlla cespuglio
+            else if (px >= 43 && px < 64 && py >= 47 && py < 56) {
+                int bushX = px - 43;
+                int bushY = py - 47;
+                if (bushY < 9 && bushX < 21) {
+                    uint16_t color = pgm_read_word(&BUSH[bushY * 21 + bushX]);
+                    if (color != _MASK) {
+                        r = (color >> 11) << 3;
+                        g = ((color >> 5) & 0x3F) << 2;
+                        b = (color & 0x1F) << 3;
+                    }
+                }
+            }
+            // Controlla nuvola 1
+            else if (px < 13 && py >= 21 && py < 33) {
+                int cloudX = px;
+                int cloudY = py - 21;
+                if (cloudY < 12 && cloudX < 13) {
+                    uint16_t color = pgm_read_word(&CLOUD1[cloudY * 13 + cloudX]);
+                    if (color != _MASK) {
+                        r = (color >> 11) << 3;
+                        g = ((color >> 5) & 0x3F) << 2;
+                        b = (color & 0x1F) << 3;
+                    }
+                }
+            }
+            // Controlla nuvola 2
+            else if (px >= 51 && px < 64 && py >= 7 && py < 19) {
+                int cloudX = px - 51;
+                int cloudY = py - 7;
+                if (cloudY < 12 && cloudX < 13) {
+                    uint16_t color = pgm_read_word(&CLOUD2[cloudY * 13 + cloudX]);
+                    if (color != _MASK) {
+                        r = (color >> 11) << 3;
+                        g = ((color >> 5) & 0x3F) << 2;
+                        b = (color & 0x1F) << 3;
+                    }
+                }
+            }
+            
+            displayManager->drawPixel(px, py, r, g, b);
         }
     }
 }
@@ -353,15 +378,15 @@ void MarioClockEffect::marioJump(JumpTarget target) {
         switch(target) {
             case HOUR_BLOCK:
                 marioTargetX = 8;
-                Serial.println("Mario walking to HOUR block");
+                Serial.println("[MarioClockEffect] Walking to HOUR block");
                 break;
             case MINUTE_BLOCK:
                 marioTargetX = 40;
-                Serial.println("Mario walking to MINUTE block");
+                Serial.println("[MarioClockEffect] Walking to MINUTE block");
                 break;
             case BOTH_BLOCKS:
                 marioTargetX = 8;
-                Serial.println("Mario walking to HOUR block first");
+                Serial.println("[MarioClockEffect] Walking to HOUR block first");
                 break;
             default:
                 marioTargetX = 23;
@@ -438,7 +463,7 @@ void MarioClockEffect::updateMario() {
         
         // Aggiorna cifra minuti prima del secondo salto
         char minStr[3];
-        sprintf(minStr, "%02d", fakeMin);
+        sprintf(minStr, "%02d", timeManager->getMinute());
         minuteBlock->text = String(minStr);
         
         // Secondo salto per blocco minuti
@@ -447,7 +472,7 @@ void MarioClockEffect::updateMario() {
         marioFacingRight = (marioTargetX > marioSprite->x);
         walkingToJump = true;
         
-        Serial.println("Mario walking to MINUTE block");
+        Serial.println("[MarioClockEffect] Walking to MINUTE block");
         
         if (abs(marioSprite->x - marioTargetX) <= WALK_SPEED) {
             marioSprite->x = marioTargetX;
@@ -478,23 +503,23 @@ void MarioClockEffect::updateMario() {
             // Controlla collisione durante salto verso l'alto
             if (marioSprite->direction == 1) {
                 if (checkCollision(*marioSprite, *hourBlock) && !marioSprite->collisionDetected) {
-                    Serial.println("Collision with hour block!");
+                    Serial.println("[MarioClockEffect] Collision with hour block!");
                     hourBlock->isHit = true;
                     marioSprite->direction = -1;
                     marioSprite->collisionDetected = true;
                     
                     // Aggiorna cifra ore
-                    hourBlock->text = String(fakeHour);
+                    hourBlock->text = String(timeManager->getHour());
                     needsRedraw = true;
                 } else if (checkCollision(*marioSprite, *minuteBlock) && !marioSprite->collisionDetected) {
-                    Serial.println("Collision with minute block!");
+                    Serial.println("[MarioClockEffect] Collision with minute block!");
                     minuteBlock->isHit = true;
                     marioSprite->direction = -1;
                     marioSprite->collisionDetected = true;
                     
                     // Aggiorna cifra minuti
                     char minStr[3];
-                    sprintf(minStr, "%02d", fakeMin);
+                    sprintf(minStr, "%02d", timeManager->getMinute());
                     minuteBlock->text = String(minStr);
                     needsRedraw = true;
                 }
@@ -519,7 +544,7 @@ void MarioClockEffect::updateMario() {
                 
                 // Controlla se deve fare secondo salto
                 if (currentJumpTarget == BOTH_BLOCKS) {
-                    Serial.println("Preparing for second jump...");
+                    Serial.println("[MarioClockEffect] Preparing for second jump...");
                     waitingForNextJump = true;
                     nextJumpDelay = millis() + 300;
                 } else {
