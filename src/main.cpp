@@ -19,6 +19,9 @@
 #include "mario.h"
 #include "paese.h"
 #include "pokemon.h"
+#include "luigi.h"
+#include "cave.h"
+#include "fox.h"
 
 // Configurazione hardware
 #define PANEL_WIDTH 64
@@ -88,6 +91,12 @@ void setup()
                                              (DrawImageFunction)draw_andre, "Andre"));
     effectManager->addEffect(new ImageEffect(displayManager,
                                              (DrawImageFunction)draw_mario, "Mario"));
+    effectManager->addEffect(new ImageEffect(displayManager,
+                                             (DrawImageFunction)draw_luigi, "Luigi"));
+    effectManager->addEffect(new ImageEffect(displayManager,
+                                             (DrawImageFunction)draw_cave, "Cave"));
+    effectManager->addEffect(new ImageEffect(displayManager,
+                                             (DrawImageFunction)draw_fox, "Fox"));
 
     Serial.printf("Loaded %d effects\n", effectManager->getEffectCount());
     effectManager->switchToEffect("Mario Clock");
