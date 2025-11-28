@@ -125,9 +125,24 @@ class SerialService {
     send('T$h:$m:$s');
   }
 
+  void setDateTime(int year, int month, int day, int hour, int minute, int second) {
+    final y = year.toString();
+    final mo = month.toString().padLeft(2, '0');
+    final d = day.toString().padLeft(2, '0');
+    final h = hour.toString().padLeft(2, '0');
+    final m = minute.toString().padLeft(2, '0');
+    final s = second.toString().padLeft(2, '0');
+    send('D$y/$mo/$d $h:$m:$s');
+  }
+
   void syncNow() {
     final now = DateTime.now();
-    setTime(now.hour, now.minute, now.second);
+    setDateTime(now.year, now.month, now.day, now.hour, now.minute, now.second);
+  }
+
+  void syncFromEpoch() {
+    final epoch = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    send('E$epoch');
   }
 
   void setModeRtc() => send('Mrtc');

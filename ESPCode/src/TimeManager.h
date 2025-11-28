@@ -5,6 +5,8 @@
 #include <functional>
 #include <time.h>
 #include <sys/time.h>
+#include <Wire.h>
+#include <RTClib.h>
 
 // Callback per notificare cambiamenti di tempo
 typedef std::function<void(int hour, int minute, int second)> TimeCallback;
@@ -17,10 +19,23 @@ enum class TimeMode {
 
 class TimeManager {
 private:
+    // DS3231 RTC esterno
+    RTC_DS3231 ds3231;
+    bool ds3231Available;
+    
+    // Pin I2C (default ESP32)
+    static constexpr int SDA_PIN = 21;
+    static constexpr int SCL_PIN = 22;
+    
     // Tempo corrente (cache)
     int currentHour;
     int currentMinute;
     int currentSecond;
+    
+    // Data corrente
+    int currentYear;
+    int currentMonth;
+    int currentDay;
     
     // Tempo precedente (per rilevare cambiamenti)
     int lastHour;
@@ -44,6 +59,15 @@ private:
     void updateFakeTime();
     void processSerialCommand(const String& cmd);
     
+    // DS3231
+    bool initDS3231();
+    void syncFromDS3231();
+    void syncToDS3231();
+    
+    // Timezone - converte UTC a ora locale (Italia)
+    void applyTimezone(struct tm* timeinfo);
+    time_t getLocalEpoch(time_t utcEpoch);
+    
 public:
     TimeManager(bool fakeTime = true, unsigned long fakeSpeedMs = 5000);
     
@@ -66,15 +90,23 @@ public:
     int getHour() const { return currentHour; }
     int getMinute() const { return currentMinute; }
     int getSecond() const { return currentSecond; }
+    int getYear() const { return currentYear; }
+    int getMonth() const { return currentMonth; }
+    int getDay() const { return currentDay; }
     String getTimeString() const;
-    String getFullStatus() const;
+    String getDateString() const;
+    String getFullStatus();
     
     // Setters
     void setTime(int hour, int minute, int second = 0);
     void setDateTime(int year, int month, int day, int hour, int minute, int second = 0);
     
-    // Sync da epoch (secondi dal 1970)
+    // Sync da epoch (secondi dal 1970) - si aspetta epoch UTC
     void syncFromEpoch(unsigned long epoch);
+    
+    // DS3231 status
+    bool isDS3231Available() const { return ds3231Available; }
+    float getDS3231Temperature();
     
     // Callbacks (pattern Observer)
     void setOnSecondChange(TimeCallback callback) { onSecondChange = callback; }
