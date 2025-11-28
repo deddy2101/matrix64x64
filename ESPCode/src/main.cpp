@@ -14,6 +14,7 @@
 #include "WebServerManager.h"
 #include "WebSocketManager.h"
 #include "CommandHandler.h"
+#include "Discovery.h"
 
 // Effects
 #include "effects/PongEffect.h"
@@ -51,6 +52,7 @@ WiFiManager* wifiManager = nullptr;
 WebServerManager* webServer = nullptr;
 WebSocketManager* wsManager = nullptr;
 CommandHandler commandHandler;
+DiscoveryService* discoveryService = nullptr;
 
 // ═══════════════════════════════════════════
 // Timers
@@ -189,6 +191,16 @@ void setup() {
         commandHandler.updateBrightness();
     });
     
+    // -─────────────────────────────────────────
+    // 10. Discovery Service
+    // ─────────────────────────────────────────
+
+    DEBUG_PRINTLN(F("[Setup] Initializing Discovery Service..."));
+    discoveryService = new DiscoveryService(&settings, 80);
+    discoveryService->begin();
+    DEBUG_PRINTLN(F("[Setup] ✓ Discovery Service OK"));
+
+
     // ─────────────────────────────────────────
     // Setup complete
     // ─────────────────────────────────────────
@@ -239,6 +251,11 @@ void loop() {
     // WiFi check
     // ─────────────────────────────────────────
     wifiManager->update();
+
+    // ─────────────────────────────────────────
+    // Discovery Service update
+    // ─────────────────────────────────────────
+    discoveryService->update();
     
     // ─────────────────────────────────────────
     // WebSocket cleanup

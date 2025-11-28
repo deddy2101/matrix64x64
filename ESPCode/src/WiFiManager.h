@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
-#include <ESPmDNS.h>
+//#include <ESPmDNS.h>
 #include "Settings.h"
 #include "Debug.h"
 

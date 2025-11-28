@@ -87,11 +87,12 @@ bool WiFiManager::startAP() {
 }
 
 bool WiFiManager::startMDNS() {
-    if (MDNS.begin(settings->getDeviceName())) {
+    //MDNS.begin(settings->getDeviceName())
+    if (false) {
         // Registra i servizi
-        MDNS.addService("http", "tcp", 80);
-        MDNS.addService("ws", "tcp", 80);
-        MDNS.addService("ledmatrix", "tcp", 80);
+        //MDNS.addService("http", "tcp", 80);
+       // MDNS.addService("ws", "tcp", 80);
+       // MDNS.addService("ledmatrix", "tcp", 80);
         
         DEBUG_PRINTF("[mDNS] ✓ Started: %s.local\n", settings->getDeviceName());
         return true;

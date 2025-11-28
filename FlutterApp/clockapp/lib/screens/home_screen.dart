@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'dart:async';
 import 'dart:io';
 import '../services/device_service.dart';
+import '../services/discovery_service.dart';
+import 'device_discovery_screen.dart';
 
 /// Informazioni su una rete WiFi
 class WiFiNetwork {
@@ -203,12 +205,29 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     _subscriptions = [
       _device.connectionState.listen((state) {
+        final wasConnected = _isConnected;
         setState(() => _isConnected = state == DeviceConnectionState.connected);
+
         _addLog(
           state == DeviceConnectionState.connected
               ? '✓ Connesso a ${_device.connectedName} (${_device.connectionType.name})'
               : '✗ Disconnesso',
         );
+
+        // Se era connesso e ora non lo è più, torna alla discovery
+        if (wasConnected && state == DeviceConnectionState.disconnected) {
+          _addLog('Ritorno alla schermata di ricerca...');
+          // Piccolo delay per far vedere il messaggio
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (mounted) {
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(
+                  builder: (_) => const DeviceDiscoveryScreen(),
+                ),
+              );
+            }
+          });
+        }
       }),
 
       _device.statusStream.listen((status) {
@@ -229,6 +248,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         }
       }),
     ];
+
+    // FIX: Controlla stato iniziale dopo le sottoscrizioni
+    // Se l'utente arriva dalla discovery già connesso, aggiorna lo stato
+    _isConnected = _device.isConnected;
+    if (_isConnected) {
+      _addLog(
+        '✓ Già connesso a ${_device.connectedName} (${_device.connectionType.name})',
+      );
+      // Richiedi dati iniziali
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _isConnected) {
+          _device.getStatus();
+          _device.getEffects();
+          _device.getSettings();
+        }
+      });
+    }
   }
 
   @override
@@ -1839,9 +1875,16 @@ class _ConnectionDialogState extends State<_ConnectionDialog>
   SerialDevice? _selectedDevice;
   bool _scanningSerial = false;
 
-  // WebSocket
-  final _hostController = TextEditingController(text: 'ledmatrix.local');
+  // Network Discovery
+  final DiscoveryService _discovery = DiscoveryService();
+  List<DiscoveredDevice> _discoveredDevices = [];
+  DiscoveredDevice? _selectedNetworkDevice;
+  bool _scanningNetwork = false;
+
+  // Manual input
+  final _hostController = TextEditingController();
   final _portController = TextEditingController(text: '80');
+  bool _manualMode = false;
 
   bool _connecting = false;
   String? _error;
@@ -1855,6 +1898,8 @@ class _ConnectionDialogState extends State<_ConnectionDialog>
     if (_showSerialTab) {
       _scanSerialDevices();
     }
+    // Auto-scan network all'avvio
+    _scanNetwork();
   }
 
   @override
@@ -1862,6 +1907,7 @@ class _ConnectionDialogState extends State<_ConnectionDialog>
     _tabController.dispose();
     _hostController.dispose();
     _portController.dispose();
+    _discovery.dispose();
     super.dispose();
   }
 
@@ -1878,6 +1924,26 @@ class _ConnectionDialogState extends State<_ConnectionDialog>
     }
 
     setState(() => _scanningSerial = false);
+  }
+
+  Future<void> _scanNetwork() async {
+    setState(() {
+      _scanningNetwork = true;
+      _error = null;
+    });
+
+    try {
+      _discoveredDevices = await _discovery.scan();
+      if (_discoveredDevices.isNotEmpty && _selectedNetworkDevice == null) {
+        _selectedNetworkDevice = _discoveredDevices.first;
+      }
+    } catch (e) {
+      print('Error scanning network: $e');
+    }
+
+    if (mounted) {
+      setState(() => _scanningNetwork = false);
+    }
   }
 
   Future<void> _connectSerial() async {
@@ -1897,34 +1963,6 @@ class _ConnectionDialogState extends State<_ConnectionDialog>
         setState(() {
           _connecting = false;
           _error = 'Impossibile connettersi alla porta seriale';
-        });
-      }
-    }
-  }
-
-  Future<void> _connectWebSocket() async {
-    final host = _hostController.text.trim();
-    final port = int.tryParse(_portController.text) ?? 80;
-
-    if (host.isEmpty) {
-      setState(() => _error = 'Inserisci un indirizzo host');
-      return;
-    }
-
-    setState(() {
-      _connecting = true;
-      _error = null;
-    });
-
-    final success = await widget.device.connectWebSocket(host, port: port);
-
-    if (mounted) {
-      if (success) {
-        Navigator.of(context).pop(true);
-      } else {
-        setState(() {
-          _connecting = false;
-          _error = 'Impossibile connettersi a $host:$port';
         });
       }
     }
@@ -2029,7 +2067,7 @@ class _ConnectionDialogState extends State<_ConnectionDialog>
                         if (_showSerialTab && _tabController.index == 0) {
                           _connectSerial();
                         } else {
-                          _connectWebSocket();
+                          _connectNetwork();
                         }
                       },
                 style: ElevatedButton.styleFrom(
@@ -2148,49 +2186,248 @@ class _ConnectionDialogState extends State<_ConnectionDialog>
   }
 
   Widget _buildWebSocketTab() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Host:', style: TextStyle(fontWeight: FontWeight.w500)),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _hostController,
-          decoration: InputDecoration(
-            hintText: 'es. ledmatrix.local o 192.168.1.100',
-            filled: true,
-            fillColor: Colors.grey.withOpacity(0.1),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide.none,
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header con toggle
+          Row(
+            children: [
+              Icon(
+                _manualMode ? Icons.edit : Icons.search,
+                size: 18,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                _manualMode ? 'Inserimento manuale' : 'Dispositivi trovati',
+                style: const TextStyle(fontWeight: FontWeight.w500),
+              ),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: () => setState(() => _manualMode = !_manualMode),
+                icon: Icon(_manualMode ? Icons.search : Icons.edit, size: 16),
+                label: Text(_manualMode ? 'Auto' : 'Manuale'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          if (_manualMode) ...[
+            // Input manuale
+            TextField(
+              controller: _hostController,
+              decoration: InputDecoration(
+                hintText: 'es. 192.168.1.100',
+                filled: true,
+                fillColor: Colors.grey.withOpacity(0.1),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
+                ),
+                prefixIcon: const Icon(Icons.dns),
+                labelText: 'Host / IP',
+              ),
             ),
-            prefixIcon: const Icon(Icons.dns),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _portController,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                hintText: '80',
+                filled: true,
+                fillColor: Colors.grey.withOpacity(0.1),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
+                ),
+                prefixIcon: const Icon(Icons.numbers),
+                labelText: 'Porta',
+              ),
+            ),
+          ] else ...[
+            // Auto-discovery
+            if (_scanningNetwork)
+              Container(
+                padding: const EdgeInsets.all(20),
+                child: const Center(
+                  child: Column(
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 12),
+                      Text('Ricerca dispositivi...'),
+                    ],
+                  ),
+                ),
+              )
+            else if (_discoveredDevices.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.grey.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  children: [
+                    Icon(Icons.wifi_find, size: 32, color: Colors.grey[500]),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Nessun dispositivo trovato',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: _scanNetwork,
+                      icon: const Icon(Icons.refresh, size: 18),
+                      label: const Text('Riprova'),
+                    ),
+                  ],
+                ),
+              )
+            else
+              Column(
+                children: [
+                  // Lista dispositivi
+                  ...(_discoveredDevices.map(
+                    (device) => _DeviceListTile(
+                      device: device,
+                      isSelected: _selectedNetworkDevice == device,
+                      onTap: () =>
+                          setState(() => _selectedNetworkDevice = device),
+                    ),
+                  )),
+                  const SizedBox(height: 8),
+                  // Pulsante refresh
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: _scanNetwork,
+                      icon: const Icon(Icons.refresh, size: 16),
+                      label: const Text('Aggiorna'),
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _connectNetwork() async {
+    String host;
+    int port;
+
+    if (_manualMode) {
+      host = _hostController.text.trim();
+      port = int.tryParse(_portController.text) ?? 80;
+      if (host.isEmpty) {
+        setState(() => _error = 'Inserisci un indirizzo host');
+        return;
+      }
+    } else {
+      if (_selectedNetworkDevice == null) {
+        setState(() => _error = 'Seleziona un dispositivo');
+        return;
+      }
+      host = _selectedNetworkDevice!.ip;
+      port = _selectedNetworkDevice!.port;
+    }
+
+    setState(() {
+      _connecting = true;
+      _error = null;
+    });
+
+    final success = await widget.device.connectWebSocket(host, port: port);
+
+    if (mounted) {
+      if (success) {
+        Navigator.of(context).pop(true);
+      } else {
+        setState(() {
+          _connecting = false;
+          _error = 'Impossibile connettersi a $host:$port';
+        });
+      }
+    }
+  }
+}
+
+/// Tile per dispositivo scoperto
+class _DeviceListTile extends StatelessWidget {
+  final DiscoveredDevice device;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _DeviceListTile({
+    required this.device,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? Theme.of(context).colorScheme.primary.withOpacity(0.15)
+                  : Colors.grey.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: isSelected
+                    ? Theme.of(context).colorScheme.primary
+                    : Colors.transparent,
+                width: 2,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.developer_board,
+                  color: isSelected
+                      ? Theme.of(context).colorScheme.primary
+                      : Colors.grey[400],
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        device.name,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: isSelected
+                              ? Theme.of(context).colorScheme.primary
+                              : null,
+                        ),
+                      ),
+                      Text(
+                        '${device.ip}:${device.port}',
+                        style: TextStyle(fontSize: 12, color: Colors.grey[400]),
+                      ),
+                    ],
+                  ),
+                ),
+                if (isSelected)
+                  Icon(
+                    Icons.check_circle,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+              ],
+            ),
           ),
         ),
-        const SizedBox(height: 16),
-
-        const Text('Porta:', style: TextStyle(fontWeight: FontWeight.w500)),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _portController,
-          keyboardType: TextInputType.number,
-          decoration: InputDecoration(
-            hintText: '80',
-            filled: true,
-            fillColor: Colors.grey.withOpacity(0.1),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide.none,
-            ),
-            prefixIcon: const Icon(Icons.numbers),
-          ),
-        ),
-
-        const SizedBox(height: 16),
-        Text(
-          'Connettiti via WiFi usando mDNS o indirizzo IP.',
-          style: TextStyle(fontSize: 12, color: Colors.grey[400]),
-        ),
-      ],
+      ),
     );
   }
 }
