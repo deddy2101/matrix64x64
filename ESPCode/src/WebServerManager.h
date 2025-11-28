@@ -3,27 +3,20 @@
 
 #include <Arduino.h>
 #include <ESPAsyncWebServer.h>
-#include "Settings.h"
 #include "CommandHandler.h"
 
 class WebServerManager {
-private:
-    AsyncWebServer server;
-    Settings* settings;
-    CommandHandler* commandHandler;
-    
-    // Setup routes
-    void setupRoutes();
-    void setupCORS();
-    
 public:
     WebServerManager(uint16_t port = 80);
     
-    // Inizializzazione
-    bool begin(Settings* settings, CommandHandler* cmdHandler);
+    void init(CommandHandler* cmdHandler);
+    AsyncWebServer* getServer() { return &_server; }
+
+private:
+    AsyncWebServer _server;
+    CommandHandler* _cmdHandler;
     
-    // Accesso al server (per WebSocket)
-    AsyncWebServer* getServer() { return &server; }
+    void setupRoutes();
 };
 
-#endif
+#endif // WEBSERVER_MANAGER_H

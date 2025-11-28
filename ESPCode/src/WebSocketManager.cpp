@@ -1,178 +1,114 @@
 #include "WebSocketManager.h"
 
-// Istanza statica
-WebSocketManager* WebSocketManager::instance = nullptr;
+WebSocketManager::WebSocketManager()
+    : _ws("/ws")
+    , _cmdHandler(nullptr)
+    , _messagesReceived(0)
+    , _messagesSent(0)
+    , _lastCleanup(0)
+{}
 
-WebSocketManager::WebSocketManager() 
-    : ws("/ws"),
-      commandHandler(nullptr),
-      messagesReceived(0),
-      messagesSent(0),
-      clientsConnected(0) {
-    instance = this;
-}
-
-void WebSocketManager::begin(AsyncWebServer* server, CommandHandler* cmdHandler) {
-    commandHandler = cmdHandler;
+void WebSocketManager::init(AsyncWebServer* server, CommandHandler* cmdHandler) {
+    _cmdHandler = cmdHandler;
     
-    // Registra callback
-    ws.onEvent(onWebSocketEvent);
-    
-    // Aggiungi handler al server
-    server->addHandler(&ws);
-    
-    // Imposta callback per risposte nel CommandHandler
-    commandHandler->setResponseCallback([this](const String& response) {
-        broadcast(response);
+    _ws.onEvent([this](AsyncWebSocket* server, AsyncWebSocketClient* client,
+                       AwsEventType type, void* arg, uint8_t* data, size_t len) {
+        this->onEvent(server, client, type, arg, data, len);
     });
     
-    Serial.println(F("[WebSocket] Server initialized on /ws"));
+    server->addHandler(&_ws);
+    
+    Serial.println("[WS] WebSocket initialized on /ws");
 }
 
-void WebSocketManager::onWebSocketEvent(AsyncWebSocket* server,
-                                         AsyncWebSocketClient* client,
-                                         AwsEventType type,
-                                         void* arg,
-                                         uint8_t* data,
-                                         size_t len) {
-    if (!instance) return;
-    
-    switch (type) {
-        case WS_EVT_CONNECT:
-            instance->handleConnect(client);
-            break;
-            
-        case WS_EVT_DISCONNECT:
-            instance->handleDisconnect(client);
-            break;
-            
-        case WS_EVT_DATA:
-            instance->handleMessage(client, data, len);
-            break;
-            
-        case WS_EVT_PONG:
-            // Client ha risposto al ping
-            break;
-            
-        case WS_EVT_ERROR:
-            Serial.printf("[WebSocket] Error from client #%u\n", client->id());
-            break;
+void WebSocketManager::update() {
+    // Cleanup ogni secondo
+    uint32_t now = millis();
+    if (now - _lastCleanup >= 1000) {
+        _ws.cleanupClients();
+        _lastCleanup = now;
     }
-}
-
-void WebSocketManager::handleConnect(AsyncWebSocketClient* client) {
-    clientsConnected++;
-    Serial.printf("[WebSocket] Client #%u connected from %s\n", 
-                 client->id(), 
-                 client->remoteIP().toString().c_str());
-    
-    // Invia messaggio di benvenuto con stato attuale
-    JsonDocument welcome;
-    welcome["type"] = "welcome";
-    welcome["message"] = "Connected to LED Matrix Controller";
-    welcome["clientId"] = client->id();
-    
-    String output;
-    serializeJson(welcome, output);
-    client->text(output);
-    
-    // Invia stato corrente
-    if (commandHandler) {
-        String status = commandHandler->processJson("{\"cmd\":\"getStatus\"}");
-        client->text(status);
-    }
-}
-
-void WebSocketManager::handleDisconnect(AsyncWebSocketClient* client) {
-    if (clientsConnected > 0) clientsConnected--;
-    Serial.printf("[WebSocket] Client #%u disconnected\n", client->id());
-}
-
-void WebSocketManager::handleMessage(AsyncWebSocketClient* client, uint8_t* data, size_t len) {
-    messagesReceived++;
-    
-    // Null-terminate
-    data[len] = 0;
-    String message = String((char*)data);
-    message.trim();
-    
-    Serial.printf("[WebSocket] Received from #%u: %s\n", client->id(), message.c_str());
-    
-    if (message.length() == 0) return;
-    
-    // Controlla se è JSON
-    if (message.startsWith("{")) {
-        // Processa come JSON
-        if (commandHandler) {
-            String response = commandHandler->processJson(message);
-            client->text(response);
-            messagesSent++;
-        }
-    } else {
-        // Fallback: processa come comando seriale legacy
-        if (commandHandler) {
-            bool handled = commandHandler->processSerial(message);
-            
-            JsonDocument response;
-            if (handled) {
-                response["type"] = "ack";
-                response["cmd"] = message;
-                response["success"] = true;
-            } else {
-                response["type"] = "error";
-                response["message"] = "Unknown command";
-            }
-            
-            String output;
-            serializeJson(response, output);
-            client->text(output);
-            messagesSent++;
-        }
-    }
-}
-
-void WebSocketManager::broadcast(const String& message) {
-    ws.textAll(message);
-    messagesSent++;
-}
-
-void WebSocketManager::send(uint32_t clientId, const String& message) {
-    ws.text(clientId, message);
-    messagesSent++;
-}
-
-void WebSocketManager::notifyStatusChange() {
-    if (commandHandler && clientsConnected > 0) {
-        String status = commandHandler->processJson("{\"cmd\":\"getStatus\"}");
-        broadcast(status);
-    }
-}
-
-void WebSocketManager::notifyEffectChange(const char* effectName, int index) {
-    if (clientsConnected == 0) return;
-    
-    JsonDocument doc;
-    doc["type"] = "effectChange";
-    doc["name"] = effectName;
-    doc["index"] = index;
-    
-    String output;
-    serializeJson(doc, output);
-    broadcast(output);
-}
-
-void WebSocketManager::notifyTimeChange(const String& time) {
-    if (clientsConnected == 0) return;
-    
-    JsonDocument doc;
-    doc["type"] = "timeUpdate";
-    doc["time"] = time;
-    
-    String output;
-    serializeJson(doc, output);
-    broadcast(output);
 }
 
 void WebSocketManager::cleanupClients() {
-    ws.cleanupClients();
+    _ws.cleanupClients();
+}
+
+void WebSocketManager::broadcast(const String& message) {
+    if (_ws.count() > 0) {
+        _ws.textAll(message);
+        _messagesSent++;
+    }
+}
+
+void WebSocketManager::notifyStatusChange() {
+    if (_cmdHandler) {
+        broadcast(_cmdHandler->getStatusResponse());
+    }
+}
+
+void WebSocketManager::notifyEffectChange() {
+    if (_cmdHandler) {
+        broadcast(_cmdHandler->getEffectChangeNotification());
+    }
+}
+
+void WebSocketManager::notifyTimeChange() {
+    if (_cmdHandler) {
+        broadcast(_cmdHandler->getTimeChangeNotification());
+    }
+}
+
+void WebSocketManager::onEvent(AsyncWebSocket* server, AsyncWebSocketClient* client,
+                                AwsEventType type, void* arg, uint8_t* data, size_t len) {
+    switch (type) {
+        case WS_EVT_CONNECT:
+            Serial.printf("[WS] Client #%u connected from %s\n", 
+                         client->id(), client->remoteIP().toString().c_str());
+            // Invia messaggio di benvenuto con stato
+            client->text("WELCOME,LED Matrix Controller");
+            if (_cmdHandler) {
+                client->text(_cmdHandler->getStatusResponse());
+            }
+            break;
+            
+        case WS_EVT_DISCONNECT:
+            Serial.printf("[WS] Client #%u disconnected\n", client->id());
+            break;
+            
+        case WS_EVT_DATA:
+            handleMessage(client, data, len);
+            break;
+            
+        case WS_EVT_PONG:
+            // Pong ricevuto
+            break;
+            
+        case WS_EVT_ERROR:
+            Serial.printf("[WS] Client #%u error\n", client->id());
+            break;
+    }
+}
+
+void WebSocketManager::handleMessage(AsyncWebSocketClient* client, uint8_t* data, size_t len) {
+    _messagesReceived++;
+    
+    // Converti in stringa
+    String message;
+    message.reserve(len + 1);
+    for (size_t i = 0; i < len; i++) {
+        message += (char)data[i];
+    }
+    message.trim();
+    
+    Serial.printf("[WS] Received from #%u: %s\n", client->id(), message.c_str());
+    
+    if (_cmdHandler && !message.isEmpty()) {
+        String response = _cmdHandler->processCommand(message);
+        if (!response.isEmpty()) {
+            client->text(response);
+            _messagesSent++;
+            Serial.printf("[WS] Response: %s\n", response.c_str());
+        }
+    }
 }

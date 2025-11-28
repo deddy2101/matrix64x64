@@ -1,446 +1,652 @@
 #include "CommandHandler.h"
+#include "WebSocketManager.h"
 
-CommandHandler::CommandHandler() 
-    : timeManager(nullptr),
-      effectManager(nullptr),
-      displayManager(nullptr),
-      settings(nullptr),
-      wifiManager(nullptr),
-      responseCallback(nullptr) {
+CommandHandler::CommandHandler()
+    : _timeManager(nullptr)
+    , _effectManager(nullptr)
+    , _displayManager(nullptr)
+    , _settings(nullptr)
+    , _wifiManager(nullptr)
+    , _wsManager(nullptr)
+{}
+
+void CommandHandler::init(TimeManager* time, EffectManager* effects, DisplayManager* display, Settings* settings, WiFiManager* wifi) {
+    _timeManager = time;
+    _effectManager = effects;
+    _displayManager = display;
+    _settings = settings;
+    _wifiManager = wifi;
 }
 
-void CommandHandler::begin(TimeManager* tm, EffectManager* em, DisplayManager* dm,
-                           Settings* s, WiFiManager* wm) {
-    timeManager = tm;
-    effectManager = em;
-    displayManager = dm;
-    settings = s;
-    wifiManager = wm;
-    
-    Serial.println(F("[CommandHandler] Initialized"));
+void CommandHandler::setWebSocketManager(WebSocketManager* ws) {
+    _wsManager = ws;
 }
 
-// ═══════════════════════════════════════════════════════════════
-// JSON Processing
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════
+// Parser Helper
+// ═══════════════════════════════════════════
 
-String CommandHandler::processJson(const String& json) {
-    JsonDocument doc;
-    DeserializationError error = deserializeJson(doc, json);
+std::vector<String> CommandHandler::splitCommand(const String& cmd, char delimiter) {
+    std::vector<String> parts;
+    int start = 0;
+    int end = cmd.indexOf(delimiter);
     
-    JsonDocument response;
+    while (end != -1) {
+        parts.push_back(cmd.substring(start, end));
+        start = end + 1;
+        end = cmd.indexOf(delimiter, start);
+    }
+    parts.push_back(cmd.substring(start));
     
-    if (error) {
-        errorResponse(response, "Invalid JSON");
-        String output;
-        serializeJson(response, output);
-        return output;
-    }
-    
-    if (!doc.containsKey("cmd")) {
-        errorResponse(response, "Missing 'cmd' field");
-        String output;
-        serializeJson(response, output);
-        return output;
-    }
-    
-    String cmd = doc["cmd"].as<String>();
-    JsonObject params = doc.as<JsonObject>();
-    
-    // Route del comando
-    if (cmd == "setDateTime") {
-        cmdSetDateTime(params, response);
-    }
-    else if (cmd == "setTime") {
-        cmdSetTime(params, response);
-    }
-    else if (cmd == "setMode") {
-        cmdSetMode(params, response);
-    }
-    else if (cmd == "effect") {
-        cmdEffect(params, response);
-    }
-    else if (cmd == "setBrightness") {
-        cmdSetBrightness(params, response);
-    }
-    else if (cmd == "setNightTime") {
-        cmdSetNightTime(params, response);
-    }
-    else if (cmd == "setEffectDuration") {
-        cmdSetEffectDuration(params, response);
-    }
-    else if (cmd == "setAutoSwitch") {
-        cmdSetAutoSwitch(params, response);
-    }
-    else if (cmd == "setWiFi") {
-        cmdSetWiFi(params, response);
-    }
-    else if (cmd == "getStatus") {
-        cmdGetStatus(response);
-    }
-    else if (cmd == "getSettings") {
-        cmdGetSettings(response);
-    }
-    else if (cmd == "getEffects") {
-        cmdGetEffects(response);
-    }
-    else if (cmd == "saveSettings") {
-        cmdSaveSettings(response);
-    }
-    else if (cmd == "restart") {
-        cmdRestart(response);
-    }
-    else {
-        errorResponse(response, "Unknown command");
-    }
-    
-    String output;
-    serializeJson(response, output);
-    return output;
+    return parts;
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Command Implementations
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════
+// Process Commands
+// ═══════════════════════════════════════════
 
-void CommandHandler::cmdSetDateTime(const JsonObject& params, JsonDocument& response) {
-    if (!params.containsKey("year") || !params.containsKey("month") || 
-        !params.containsKey("day") || !params.containsKey("hour") || 
-        !params.containsKey("minute")) {
-        errorResponse(response, "Missing date/time parameters");
-        return;
+String CommandHandler::processCommand(const String& command) {
+    String cmd = command;
+    cmd.trim();
+    
+    if (cmd.isEmpty()) {
+        return "ERR,empty command";
     }
     
-    int year = params["year"];
-    int month = params["month"];
-    int day = params["day"];
-    int hour = params["hour"];
-    int minute = params["minute"];
-    int second = params["second"] | 0;
+    Serial.printf("[CMD] Processing: %s\n", cmd.c_str());
     
-    timeManager->setDateTime(year, month, day, hour, minute, second);
-    ackResponse(response, "setDateTime");
+    std::vector<String> parts = splitCommand(cmd, ',');
+    String mainCmd = parts[0];
+    mainCmd.toLowerCase();
+    
+    // ─────────────────────────────────────────
+    // Query Commands (no parameters)
+    // ─────────────────────────────────────────
+    if (mainCmd == "getstatus") {
+        return getStatusResponse();
+    }
+    if (mainCmd == "geteffects") {
+        return getEffectsResponse();
+    }
+    if (mainCmd == "getsettings") {
+        return getSettingsResponse();
+    }
+    
+    // ─────────────────────────────────────────
+    // Action Commands
+    // ─────────────────────────────────────────
+    if (mainCmd == "settime") {
+        return handleSetTime(parts);
+    }
+    if (mainCmd == "setdatetime") {
+        return handleSetDateTime(parts);
+    }
+    if (mainCmd == "setmode") {
+        return handleSetMode(parts);
+    }
+    if (mainCmd == "effect") {
+        return handleEffect(parts);
+    }
+    if (mainCmd == "brightness") {
+        return handleBrightness(parts);
+    }
+    if (mainCmd == "nighttime") {
+        return handleNightTime(parts);
+    }
+    if (mainCmd == "duration") {
+        return handleDuration(parts);
+    }
+    if (mainCmd == "autoswitch") {
+        return handleAutoSwitch(parts);
+    }
+    if (mainCmd == "wifi") {
+        return handleWiFi(parts);
+    }
+    if (mainCmd == "devicename") {
+        return handleDeviceName(parts);
+    }
+    if (mainCmd == "save") {
+        return handleSave();
+    }
+    if (mainCmd == "restart") {
+        return handleRestart();
+    }
+    
+    return "ERR,unknown command: " + mainCmd;
 }
 
-void CommandHandler::cmdSetTime(const JsonObject& params, JsonDocument& response) {
-    if (!params.containsKey("hour") || !params.containsKey("minute")) {
-        errorResponse(response, "Missing hour/minute");
-        return;
+// ═══════════════════════════════════════════
+// Legacy Serial Commands (single char)
+// ═══════════════════════════════════════════
+
+String CommandHandler::processLegacyCommand(const String& command) {
+    if (command.length() == 0) return "";
+    
+    char cmd = command.charAt(0);
+    
+    switch (cmd) {
+        case 'T':
+        case 't':
+            return getStatusResponse();
+            
+        case 'D':
+        case 'd':
+            if (_timeManager) {
+                _timeManager->printHelp();
+            }
+            return "OK";
+            
+        case 'E':
+        case 'e':
+            if (_effectManager) {
+                _effectManager->nextEffect();
+            }
+            return "OK,next effect";
+            
+        case 'M':
+        case 'm':
+            if (_timeManager) {
+                _timeManager->setMode(_timeManager->getMode() == TimeMode::FAKE ? TimeMode::RTC : TimeMode::FAKE);
+            }
+            return "OK,mode toggled";
+            
+        case 'S':
+        case 's':
+            if (_settings) {
+                _settings->save();
+            }
+            return "OK,settings saved";
+            
+        case '?':
+            Serial.println(F("\n=== LED Matrix Commands ==="));
+            Serial.println(F("T - Time status"));
+            Serial.println(F("D - Time debug"));
+            Serial.println(F("E - Next effect"));
+            Serial.println(F("M - Toggle time mode"));
+            Serial.println(F("S - Save settings"));
+            Serial.println(F("P - Pause auto-switch"));
+            Serial.println(F("R - Resume auto-switch"));
+            Serial.println(F("N - Next effect"));
+            Serial.println(F("0-9 - Select effect"));
+            Serial.println(F("\nCSV Commands: getStatus, effect,next, brightness,200, etc."));
+            return "OK";
+            
+        case 'P':
+        case 'p':
+            if (_effectManager) {
+                _effectManager->pause();
+            }
+            return "OK,paused";
+            
+        case 'R':
+        case 'r':
+            if (_effectManager) {
+                _effectManager->resume();
+            }
+            return "OK,resumed";
+            
+        case 'N':
+        case 'n':
+            if (_effectManager) {
+                _effectManager->nextEffect();
+            }
+            return "OK,next effect";
+            
+        default:
+            // Check if digit (0-9) for effect selection
+            if (cmd >= '0' && cmd <= '9') {
+                int index = cmd - '0';
+                if (_effectManager && index < _effectManager->getEffectCount()) {
+                    _effectManager->switchToEffect(index);
+                    return "OK,effect " + String(index);
+                }
+            }
+            break;
     }
     
-    int hour = params["hour"];
-    int minute = params["minute"];
-    int second = params["second"] | 0;
-    
-    timeManager->setTime(hour, minute, second);
-    ackResponse(response, "setTime");
+    return "";
 }
 
-void CommandHandler::cmdSetMode(const JsonObject& params, JsonDocument& response) {
-    if (!params.containsKey("mode")) {
-        errorResponse(response, "Missing mode parameter");
-        return;
-    }
-    
-    String mode = params["mode"].as<String>();
-    
-    if (mode == "rtc" || mode == "RTC") {
-        timeManager->setMode(TimeMode::RTC);
-    } else if (mode == "fake" || mode == "FAKE") {
-        timeManager->setMode(TimeMode::FAKE);
-    } else {
-        errorResponse(response, "Invalid mode (use 'rtc' or 'fake')");
-        return;
-    }
-    
-    ackResponse(response, "setMode");
-}
+// ═══════════════════════════════════════════
+// Response Generators
+// ═══════════════════════════════════════════
 
-void CommandHandler::cmdEffect(const JsonObject& params, JsonDocument& response) {
-    if (!params.containsKey("action")) {
-        errorResponse(response, "Missing action parameter");
-        return;
-    }
-    
-    String action = params["action"].as<String>();
-    
-    if (action == "next") {
-        effectManager->nextEffect();
-    }
-    else if (action == "pause") {
-        effectManager->pause();
-    }
-    else if (action == "resume") {
-        effectManager->resume();
-    }
-    else if (action == "select") {
-        if (params.containsKey("index")) {
-            int index = params["index"];
-            effectManager->switchToEffect(index);
-            settings->setCurrentEffect(index);
-        } else if (params.containsKey("name")) {
-            String name = params["name"].as<String>();
-            effectManager->switchToEffect(name.c_str());
-        } else {
-            errorResponse(response, "Missing index or name for select");
-            return;
-        }
-    }
-    else {
-        errorResponse(response, "Invalid action");
-        return;
-    }
-    
-    ackResponse(response, "effect");
-}
-
-void CommandHandler::cmdSetBrightness(const JsonObject& params, JsonDocument& response) {
-    bool updated = false;
-    
-    if (params.containsKey("day")) {
-        settings->setBrightnessDay(params["day"]);
-        updated = true;
-    }
-    if (params.containsKey("night")) {
-        settings->setBrightnessNight(params["night"]);
-        updated = true;
-    }
-    if (params.containsKey("value")) {
-        // Imposta direttamente
-        displayManager->setBrightness(params["value"]);
-    }
-    
-    if (updated) {
-        updateBrightness();
-    }
-    
-    ackResponse(response, "setBrightness");
-}
-
-void CommandHandler::cmdSetNightTime(const JsonObject& params, JsonDocument& response) {
-    if (!params.containsKey("start") || !params.containsKey("end")) {
-        errorResponse(response, "Missing start/end hours");
-        return;
-    }
-    
-    settings->setNightHours(params["start"], params["end"]);
-    updateBrightness();
-    
-    ackResponse(response, "setNightTime");
-}
-
-void CommandHandler::cmdSetEffectDuration(const JsonObject& params, JsonDocument& response) {
-    if (!params.containsKey("ms")) {
-        errorResponse(response, "Missing ms parameter");
-        return;
-    }
-    
-    unsigned long duration = params["ms"];
-    settings->setEffectDuration(duration);
-    effectManager->setDuration(duration);
-    
-    ackResponse(response, "setEffectDuration");
-}
-
-void CommandHandler::cmdSetAutoSwitch(const JsonObject& params, JsonDocument& response) {
-    if (!params.containsKey("enabled")) {
-        errorResponse(response, "Missing enabled parameter");
-        return;
-    }
-    
-    bool enabled = params["enabled"];
-    settings->setAutoSwitch(enabled);
-    
-    if (enabled) {
-        effectManager->resume();
-    } else {
-        effectManager->pause();
-    }
-    
-    ackResponse(response, "setAutoSwitch");
-}
-
-void CommandHandler::cmdSetWiFi(const JsonObject& params, JsonDocument& response) {
-    if (params.containsKey("ssid") && params.containsKey("password")) {
-        String ssid = params["ssid"].as<String>();
-        String password = params["password"].as<String>();
-        bool apMode = params["apMode"] | false;
-        
-        settings->setSSID(ssid.c_str());
-        settings->setPassword(password.c_str());
-        settings->setAPMode(apMode);
-        settings->save();
-        
-        ackResponse(response, "setWiFi");
-        response["message"] = "WiFi settings saved. Restart to apply.";
-    }
-    else if (params.containsKey("apMode")) {
-        settings->setAPMode(params["apMode"]);
-        ackResponse(response, "setWiFi");
-    }
-    else {
-        errorResponse(response, "Missing ssid/password");
-    }
-}
-
-void CommandHandler::cmdGetStatus(JsonDocument& response) {
-    response["type"] = "status";
+String CommandHandler::getStatusResponse() {
+    String response = "STATUS";
     
     // Time
-    response["time"] = timeManager->getTimeString();
-    response["date"] = timeManager->getDateString();
-    response["timeMode"] = timeManager->getModeString();
-    response["ds3231"] = timeManager->isDS3231Available();
-    
-    if (timeManager->isDS3231Available()) {
-        response["temperature"] = timeManager->getDS3231Temperature();
+    if (_timeManager) {
+        response += "," + _timeManager->getTimeString();
+        response += "," + _timeManager->getDateString();
+        response += "," + _timeManager->getModeString();
+        response += "," + String(_timeManager->isDS3231Available() ? "1" : "0");
+        if (_timeManager->isDS3231Available()) {
+            response += "," + String(_timeManager->getDS3231Temperature(), 1);
+        } else {
+            response += ",0";
+        }
+    } else {
+        response += ",--:--:--,--/--/----,---,0,0";
     }
     
     // Effect
-    Effect* current = effectManager->getCurrentEffect();
-    if (current) {
-        response["effect"] = current->getName();
-        response["effectIndex"] = effectManager->getCurrentEffectIndex();
-        response["fps"] = current->getFPS();
+    if (_effectManager) {
+        Effect* current = _effectManager->getCurrentEffect();
+        if (current) {
+            response += "," + String(current->getName());
+            response += "," + String(_effectManager->getCurrentEffectIndex());
+            response += "," + String(current->getFPS(), 1);
+        } else {
+            response += ",none,-1,0";
+        }
+        response += "," + String(_effectManager->isAutoSwitch() ? "1" : "0");
+        response += "," + String(_effectManager->getEffectCount());
+    } else {
+        response += ",none,-1,0,0,0";
     }
-    response["autoSwitch"] = effectManager->isAutoSwitch();
-    response["effectCount"] = effectManager->getEffectCount();
     
-    // Display
-    response["brightness"] = settings->getCurrentBrightness(timeManager->getHour());
-    response["isNight"] = settings->isNightTime(timeManager->getHour());
+    // Brightness
+    if (_settings && _timeManager) {
+        int currentBright = _settings->getCurrentBrightness(_timeManager->getHour());
+        response += "," + String(currentBright);
+        response += "," + String(_settings->isNightTime(_timeManager->getHour()) ? "1" : "0");
+    } else {
+        response += ",0,0";
+    }
     
     // WiFi
-    response["wifiStatus"] = wifiManager->getStatusString();
-    response["ip"] = wifiManager->getIP();
-    response["ssid"] = wifiManager->getSSID();
-    if (!wifiManager->isAPMode()) {
-        response["rssi"] = wifiManager->getRSSI();
+    if (_wifiManager) {
+        response += "," + _wifiManager->getStatusString();
+        response += "," + _wifiManager->getIP();
+        response += "," + _wifiManager->getSSID();
+        response += "," + String(_wifiManager->getRSSI());
+    } else {
+        response += ",disconnected,0.0.0.0,none,0";
     }
     
     // System
-    response["uptime"] = millis() / 1000;
-    response["freeHeap"] = ESP.getFreeHeap();
+    response += "," + String(millis() / 1000);
+    response += "," + String(ESP.getFreeHeap());
+    
+    return response;
 }
 
-void CommandHandler::cmdGetSettings(JsonDocument& response) {
-    response["type"] = "settings";
+String CommandHandler::getEffectsResponse() {
+    String response = "EFFECTS";
     
-    // Parse settings JSON into response
-    String settingsJson = settings->toJson();
-    JsonDocument settingsDoc;
-    deserializeJson(settingsDoc, settingsJson);
-    
-    response["data"] = settingsDoc;
-}
-
-void CommandHandler::cmdGetEffects(JsonDocument& response) {
-    response["type"] = "effects";
-    
-    JsonArray effects = response["list"].to<JsonArray>();
-    for (int i = 0; i < effectManager->getEffectCount(); i++) {
-        JsonObject effect = effects.add<JsonObject>();
-        effect["index"] = i;
-        effect["name"] = effectManager->getEffectName(i);
-        effect["current"] = (i == effectManager->getCurrentEffectIndex());
-    }
-}
-
-void CommandHandler::cmdSaveSettings(JsonDocument& response) {
-    settings->save();
-    ackResponse(response, "saveSettings");
-}
-
-void CommandHandler::cmdRestart(JsonDocument& response) {
-    ackResponse(response, "restart");
-    response["message"] = "Restarting in 1 second...";
-    
-    // Invia risposta prima di riavviare
-    String output;
-    serializeJson(response, output);
-    if (responseCallback) {
-        responseCallback(output);
+    if (_effectManager) {
+        for (int i = 0; i < _effectManager->getEffectCount(); i++) {
+            response += ",";
+            response += _effectManager->getEffectName(i);
+        }
     }
     
-    delay(1000);
+    return response;
+}
+
+String CommandHandler::getSettingsResponse() {
+    String response = "SETTINGS";
+    
+    if (_settings) {
+        response += "," + String(_settings->getSSID());
+        response += "," + String(_settings->isAPMode() ? "1" : "0");
+        response += "," + String(_settings->getBrightnessDay());
+        response += "," + String(_settings->getBrightnessNight());
+        response += "," + String(_settings->getNightStartHour());
+        response += "," + String(_settings->getNightEndHour());
+        response += "," + String(_settings->getEffectDuration());
+        response += "," + String(_settings->isAutoSwitch() ? "1" : "0");
+        response += "," + String(_settings->getCurrentEffect());
+        response += "," + String(_settings->getDeviceName());
+    }
+    
+    return response;
+}
+
+String CommandHandler::getEffectChangeNotification() {
+    if (_effectManager) {
+        Effect* current = _effectManager->getCurrentEffect();
+        if (current) {
+            return "EFFECT," + String(_effectManager->getCurrentEffectIndex()) + "," + String(current->getName());
+        }
+    }
+    return "EFFECT,-1,none";
+}
+
+String CommandHandler::getTimeChangeNotification() {
+    if (_timeManager) {
+        return "TIME," + _timeManager->getTimeString();
+    }
+    return "TIME,--:--:--";
+}
+
+// ═══════════════════════════════════════════
+// Command Handlers
+// ═══════════════════════════════════════════
+
+String CommandHandler::handleSetTime(const std::vector<String>& parts) {
+    if (parts.size() < 4) {
+        return "ERR,settime needs HH,MM,SS";
+    }
+    
+    int h = parts[1].toInt();
+    int m = parts[2].toInt();
+    int s = parts[3].toInt();
+    
+    if (h < 0 || h > 23 || m < 0 || m > 59 || s < 0 || s > 59) {
+        return "ERR,invalid time values";
+    }
+    
+    if (_timeManager) {
+        _timeManager->setTime(h, m, s);
+        if (_wsManager) {
+            _wsManager->notifyTimeChange();
+        }
+        return "OK,time set";
+    }
+    
+    return "ERR,time manager not available";
+}
+
+String CommandHandler::handleSetDateTime(const std::vector<String>& parts) {
+    if (parts.size() < 7) {
+        return "ERR,setdatetime needs YYYY,MM,DD,HH,MM,SS";
+    }
+    
+    int year = parts[1].toInt();
+    int month = parts[2].toInt();
+    int day = parts[3].toInt();
+    int h = parts[4].toInt();
+    int m = parts[5].toInt();
+    int s = parts[6].toInt();
+    
+    if (_timeManager) {
+        _timeManager->setDateTime(year, month, day, h, m, s);
+        if (_wsManager) {
+            _wsManager->notifyTimeChange();
+        }
+        return "OK,datetime set";
+    }
+    
+    return "ERR,time manager not available";
+}
+
+String CommandHandler::handleSetMode(const std::vector<String>& parts) {
+    if (parts.size() < 2) {
+        return "ERR,setmode needs rtc|fake";
+    }
+    
+    String mode = parts[1];
+    mode.toLowerCase();
+    
+    if (_timeManager) {
+        if (mode == "rtc") {
+            _timeManager->setMode(TimeMode::RTC);
+            return "OK,mode rtc";
+        } else if (mode == "fake") {
+            _timeManager->setMode(TimeMode::FAKE);
+            return "OK,mode fake";
+        }
+    }
+    
+    return "ERR,invalid mode (use rtc or fake)";
+}
+
+String CommandHandler::handleEffect(const std::vector<String>& parts) {
+    if (parts.size() < 2) {
+        return "ERR,effect needs parameter";
+    }
+    
+    String action = parts[1];
+    action.toLowerCase();
+    
+    if (!_effectManager) {
+        return "ERR,effect manager not available";
+    }
+    
+    if (action == "next") {
+        _effectManager->nextEffect();
+        if (_wsManager) {
+            _wsManager->notifyEffectChange();
+        }
+        return "OK,next effect";
+    }
+    
+    if (action == "pause") {
+        _effectManager->pause();
+        if (_settings) {
+            _settings->setAutoSwitch(false);
+        }
+        return "OK,paused";
+    }
+    
+    if (action == "resume") {
+        _effectManager->resume();
+        if (_settings) {
+            _settings->setAutoSwitch(true);
+        }
+        return "OK,resumed";
+    }
+    
+    if (action == "select" && parts.size() >= 3) {
+        int index = parts[2].toInt();
+        if (index >= 0 && index < _effectManager->getEffectCount()) {
+            _effectManager->switchToEffect(index);
+            if (_settings) {
+                _settings->setCurrentEffect(index);
+            }
+            if (_wsManager) {
+                _wsManager->notifyEffectChange();
+            }
+            return "OK,effect " + String(index);
+        }
+        return "ERR,invalid effect index";
+    }
+    
+    if (action == "name" && parts.size() >= 3) {
+        String name = parts[2];
+        for (int i = 3; i < parts.size(); i++) {
+            name += "," + parts[i];
+        }
+        _effectManager->switchToEffect(name.c_str());
+        if (_wsManager) {
+            _wsManager->notifyEffectChange();
+        }
+        return "OK,effect " + name;
+    }
+    
+    return "ERR,invalid effect action";
+}
+
+String CommandHandler::handleBrightness(const std::vector<String>& parts) {
+    if (parts.size() < 2) {
+        return "ERR,brightness needs value";
+    }
+    
+    String type = parts[1];
+    type.toLowerCase();
+    
+    if (type == "day" && parts.size() >= 3) {
+        int value = parts[2].toInt();
+        if (value >= 0 && value <= 255) {
+            if (_settings) {
+                _settings->setBrightnessDay(value);
+                updateBrightness();
+            }
+            return "OK,brightness day " + String(value);
+        }
+        return "ERR,value must be 0-255";
+    }
+    
+    if (type == "night" && parts.size() >= 3) {
+        int value = parts[2].toInt();
+        if (value >= 0 && value <= 255) {
+            if (_settings) {
+                _settings->setBrightnessNight(value);
+                updateBrightness();
+            }
+            return "OK,brightness night " + String(value);
+        }
+        return "ERR,value must be 0-255";
+    }
+    
+    // Immediate brightness change
+    int value = parts[1].toInt();
+    if (value >= 0 && value <= 255) {
+        if (_displayManager) {
+            _displayManager->setBrightness(value);
+        }
+        return "OK,brightness " + String(value);
+    }
+    
+    return "ERR,invalid brightness command";
+}
+
+String CommandHandler::handleNightTime(const std::vector<String>& parts) {
+    if (parts.size() < 3) {
+        return "ERR,nighttime needs START,END";
+    }
+    
+    int start = parts[1].toInt();
+    int end = parts[2].toInt();
+    
+    if (start < 0 || start > 23 || end < 0 || end > 23) {
+        return "ERR,hours must be 0-23";
+    }
+    
+    if (_settings) {
+        _settings->setNightHours(start, end);
+        updateBrightness();
+        return "OK,nighttime " + String(start) + "-" + String(end);
+    }
+    
+    return "ERR,settings not available";
+}
+
+String CommandHandler::handleDuration(const std::vector<String>& parts) {
+    if (parts.size() < 2) {
+        return "ERR,duration needs MS";
+    }
+    
+    unsigned long ms = parts[1].toInt();
+    
+    if (ms < 1000 || ms > 300000) {
+        return "ERR,duration must be 1000-300000 ms";
+    }
+    
+    if (_effectManager) {
+        _effectManager->setDuration(ms);
+    }
+    if (_settings) {
+        _settings->setEffectDuration(ms);
+    }
+    
+    return "OK,duration " + String(ms);
+}
+
+String CommandHandler::handleAutoSwitch(const std::vector<String>& parts) {
+    if (parts.size() < 2) {
+        return "ERR,autoswitch needs 0|1";
+    }
+    
+    bool enabled = parts[1].toInt() != 0;
+    
+    if (_effectManager) {
+        _effectManager->setAutoSwitch(enabled);
+    }
+    if (_settings) {
+        _settings->setAutoSwitch(enabled);
+    }
+    
+    return enabled ? "OK,autoswitch on" : "OK,autoswitch off";
+}
+
+String CommandHandler::handleWiFi(const std::vector<String>& parts) {
+    if (parts.size() < 4) {
+        return "ERR,wifi needs SSID,PASSWORD,AP_MODE";
+    }
+    
+    String ssid = parts[1];
+    String password = parts[2];
+    bool apMode = parts[3].toInt() != 0;
+    
+    if (_settings) {
+        _settings->setSSID(ssid.c_str());
+        _settings->setPassword(password.c_str());
+        _settings->setAPMode(apMode);
+    }
+    
+    if (_wifiManager) {
+        if (apMode) {
+            _wifiManager->switchToAP();
+        } else {
+            _wifiManager->switchToSTA(ssid.c_str(), password.c_str());
+        }
+    }
+    
+    return "OK,wifi configured (restart to apply)";
+}
+
+String CommandHandler::handleDeviceName(const std::vector<String>& parts) {
+    if (parts.size() < 2) {
+        return "ERR,devicename needs NAME";
+    }
+    
+    String name = parts[1];
+    
+    if (_settings) {
+        _settings->setDeviceName(name.c_str());
+        return "OK,devicename " + name + " (restart to apply)";
+    }
+    
+    return "ERR,settings not available";
+}
+
+String CommandHandler::handleSave() {
+    if (_settings) {
+        _settings->save();
+        return "OK,settings saved";
+    }
+    return "ERR,settings not available";
+}
+
+String CommandHandler::handleRestart() {
+    if (_settings) {
+        _settings->save();
+    }
+    Serial.println(F("[CMD] Restarting in 2 seconds..."));
+    delay(2000);
     ESP.restart();
+    return "OK,restarting";
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Helper Methods
-// ═══════════════════════════════════════════════════════════════
-
-void CommandHandler::errorResponse(JsonDocument& response, const char* message) {
-    response["type"] = "error";
-    response["message"] = message;
-}
-
-void CommandHandler::ackResponse(JsonDocument& response, const char* cmd, bool success) {
-    response["type"] = "ack";
-    response["cmd"] = cmd;
-    response["success"] = success;
-}
+// ═══════════════════════════════════════════
+// Utility Functions
+// ═══════════════════════════════════════════
 
 void CommandHandler::updateBrightness() {
-    if (displayManager && settings && timeManager) {
-        uint8_t brightness = settings->getCurrentBrightness(timeManager->getHour());
-        displayManager->setBrightness(brightness);
+    if (_settings && _timeManager && _displayManager) {
+        int hour = _timeManager->getHour();
+        uint8_t brightness = _settings->getCurrentBrightness(hour);
+        _displayManager->setBrightness(brightness);
+        
+        Serial.printf("[Brightness] Updated to %d (hour=%d, night=%s)\n", 
+                     brightness, hour, _settings->isNightTime(hour) ? "yes" : "no");
     }
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Serial Command Processing (Legacy)
-// ═══════════════════════════════════════════════════════════════
-
-bool CommandHandler::processSerial(const String& cmd) {
-    if (cmd.length() == 0) return false;
+void CommandHandler::processSerial(const String& cmd) {
+    String response;
     
-    char first = cmd.charAt(0);
-    
-    // Prima prova TimeManager
-    if (timeManager->parseCommand(cmd)) {
-        return true;
+    // Try CSV command first
+    if (cmd.indexOf(',') != -1 || cmd.length() > 1) {
+        response = processCommand(cmd);
+    } else {
+        // Try legacy single-char command
+        response = processLegacyCommand(cmd);
     }
     
-    // Poi comandi effetti
-    switch (first) {
-        case 'p':
-            effectManager->pause();
-            Serial.println(F("[CMD] Paused"));
-            return true;
-            
-        case 'r':
-            effectManager->resume();
-            Serial.println(F("[CMD] Resumed"));
-            return true;
-            
-        case 'n':
-            effectManager->nextEffect();
-            Serial.println(F("[CMD] Next effect"));
-            return true;
-            
-        case '0'...'9':
-            effectManager->switchToEffect(first - '0');
-            return true;
-            
-        case 'b':
-        case 'B': {
-            // Brightness: B200 o b200
-            int brightness = cmd.substring(1).toInt();
-            if (brightness >= 0 && brightness <= 255) {
-                displayManager->setBrightness(brightness);
-                Serial.printf("[CMD] Brightness: %d\n", brightness);
-            }
-            return true;
-        }
-        
-        case 'w':
-        case 'W':
-            // WiFi info
-            Serial.printf("[WiFi] Status: %s\n", wifiManager->getStatusString().c_str());
-            Serial.printf("[WiFi] IP: %s\n", wifiManager->getIP().c_str());
-            return true;
+    if (!response.isEmpty()) {
+        Serial.println(response);
     }
-    
-    return false;
 }

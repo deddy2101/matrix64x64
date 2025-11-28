@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter_libserialport/flutter_libserialport.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -69,26 +69,33 @@ class DeviceStatus {
     this.freeHeap = 0,
   });
 
-  factory DeviceStatus.fromJson(Map<String, dynamic> json) {
+  /// Parse STATUS response
+  /// STATUS,time,date,mode,ds3231,temp,effect,idx,fps,auto,count,bright,night,wifi,ip,ssid,rssi,uptime,heap
+  factory DeviceStatus.fromResponse(String response) {
+    final parts = response.split(',');
+    if (parts.length < 19 || parts[0] != 'STATUS') {
+      return DeviceStatus();
+    }
+
     return DeviceStatus(
-      time: json['time'] ?? '--:--:--',
-      date: json['date'] ?? '----/--/--',
-      timeMode: json['timeMode'] ?? 'unknown',
-      ds3231Available: json['ds3231'] ?? false,
-      temperature: json['temperature']?.toDouble(),
-      effect: json['effect'] ?? 'unknown',
-      effectIndex: json['effectIndex'] ?? -1,
-      fps: (json['fps'] ?? 0).toDouble(),
-      autoSwitch: json['autoSwitch'] ?? false,
-      effectCount: json['effectCount'] ?? 0,
-      brightness: json['brightness'] ?? 0,
-      isNight: json['isNight'] ?? false,
-      wifiStatus: json['wifiStatus'] ?? 'unknown',
-      ip: json['ip'] ?? '0.0.0.0',
-      ssid: json['ssid'] ?? '',
-      rssi: json['rssi'],
-      uptime: json['uptime'] ?? 0,
-      freeHeap: json['freeHeap'] ?? 0,
+      time: parts[1],
+      date: parts[2],
+      timeMode: parts[3],
+      ds3231Available: parts[4] == '1',
+      temperature: double.tryParse(parts[5]),
+      effect: parts[6],
+      effectIndex: int.tryParse(parts[7]) ?? -1,
+      fps: double.tryParse(parts[8]) ?? 0,
+      autoSwitch: parts[9] == '1',
+      effectCount: int.tryParse(parts[10]) ?? 0,
+      brightness: int.tryParse(parts[11]) ?? 0,
+      isNight: parts[12] == '1',
+      wifiStatus: parts[13],
+      ip: parts[14],
+      ssid: parts[15],
+      rssi: int.tryParse(parts[16]),
+      uptime: int.tryParse(parts[17]) ?? 0,
+      freeHeap: int.tryParse(parts[18]) ?? 0,
     );
   }
 }
@@ -99,19 +106,7 @@ class EffectInfo {
   final String name;
   final bool isCurrent;
 
-  EffectInfo({
-    required this.index,
-    required this.name,
-    required this.isCurrent,
-  });
-
-  factory EffectInfo.fromJson(Map<String, dynamic> json) {
-    return EffectInfo(
-      index: json['index'] ?? 0,
-      name: json['name'] ?? 'unknown',
-      isCurrent: json['current'] ?? false,
-    );
-  }
+  EffectInfo({required this.index, required this.name, this.isCurrent = false});
 }
 
 /// Impostazioni dispositivo
@@ -140,30 +135,32 @@ class DeviceSettings {
     this.deviceName = 'ledmatrix',
   });
 
-  factory DeviceSettings.fromJson(Map<String, dynamic> json) {
-    final data = json['data'] ?? json;
-    final wifi = data['wifi'] ?? {};
-    final display = data['display'] ?? {};
-    final effects = data['effects'] ?? {};
-    final device = data['device'] ?? {};
+  /// Parse SETTINGS response
+  /// SETTINGS,ssid,apMode,brightDay,brightNight,nightStart,nightEnd,duration,auto,effect,deviceName
+  factory DeviceSettings.fromResponse(String response) {
+    final parts = response.split(',');
+    if (parts.length < 11 || parts[0] != 'SETTINGS') {
+      return DeviceSettings();
+    }
 
     return DeviceSettings(
-      ssid: wifi['ssid'] ?? '',
-      apMode: wifi['apMode'] ?? true,
-      brightnessDay: display['brightnessDay'] ?? 200,
-      brightnessNight: display['brightnessNight'] ?? 30,
-      nightStartHour: display['nightStartHour'] ?? 22,
-      nightEndHour: display['nightEndHour'] ?? 7,
-      effectDuration: effects['duration'] ?? 10000,
-      autoSwitch: effects['autoSwitch'] ?? true,
-      currentEffect: effects['currentEffect'] ?? -1,
-      deviceName: device['name'] ?? 'ledmatrix',
+      ssid: parts[1],
+      apMode: parts[2] == '1',
+      brightnessDay: int.tryParse(parts[3]) ?? 200,
+      brightnessNight: int.tryParse(parts[4]) ?? 30,
+      nightStartHour: int.tryParse(parts[5]) ?? 22,
+      nightEndHour: int.tryParse(parts[6]) ?? 7,
+      effectDuration: int.tryParse(parts[7]) ?? 10000,
+      autoSwitch: parts[8] == '1',
+      currentEffect: int.tryParse(parts[9]) ?? -1,
+      deviceName: parts[10],
     );
   }
 }
 
 /// Servizio unificato per comunicazione con LED Matrix
 /// Supporta sia connessione Seriale che WebSocket
+/// Protocollo: Stringhe CSV-like (no JSON)
 class DeviceService {
   static final DeviceService _instance = DeviceService._internal();
   factory DeviceService() => _instance;
@@ -222,18 +219,23 @@ class DeviceService {
 
   /// Lista dispositivi seriali disponibili
   List<SerialDevice> getSerialDevices() {
-    final ports = SerialPort.availablePorts;
-    return ports.map((portName) {
-      final port = SerialPort(portName);
-      final device = SerialDevice(
-        name: port.name ?? portName,
-        port: portName,
-        description: port.description,
-        manufacturer: port.manufacturer,
-      );
-      port.dispose();
-      return device;
-    }).toList();
+    try {
+      final ports = SerialPort.availablePorts;
+      return ports.map((portName) {
+        final port = SerialPort(portName);
+        final device = SerialDevice(
+          name: port.name ?? portName,
+          port: portName,
+          description: port.description,
+          manufacturer: port.manufacturer,
+        );
+        port.dispose();
+        return device;
+      }).toList();
+    } catch (e) {
+      print('Error getting serial devices: $e');
+      return [];
+    }
   }
 
   /// Connetti via seriale
@@ -318,7 +320,6 @@ class DeviceService {
       );
 
       _startPing();
-      getStatus();
 
       return true;
     } catch (e) {
@@ -388,138 +389,68 @@ class DeviceService {
 
       if (line.isNotEmpty) {
         _dataController.add(line);
-        _parseSerialLine(line);
-      }
-    }
-  }
-
-  void _parseSerialLine(String line) {
-    // Prova a parsare come JSON (risposte WebSocket-style via serial)
-    if (line.startsWith('{')) {
-      try {
-        final json = jsonDecode(line) as Map<String, dynamic>;
-        _handleJsonResponse(json);
-      } catch (_) {
-        // Non è JSON valido, ignora
+        _parseResponse(line);
       }
     }
   }
 
   void _onWebSocketMessage(dynamic message) {
-    try {
-      final json = jsonDecode(message as String) as Map<String, dynamic>;
-      _dataController.add(message);
-      _handleJsonResponse(json);
-    } catch (e) {
-      print('Error parsing WebSocket message: $e');
+    final line = (message as String).trim();
+    if (line.isNotEmpty) {
+      _dataController.add(line);
+      _parseResponse(line);
     }
   }
 
-  void _handleJsonResponse(Map<String, dynamic> json) {
-    final type = json['type'] as String?;
-
-    switch (type) {
-      case 'status':
-        _lastStatus = DeviceStatus.fromJson(json);
-        _statusController.add(_lastStatus!);
-        break;
-
-      case 'settings':
-        _lastSettings = DeviceSettings.fromJson(json);
-        _settingsController.add(_lastSettings!);
-        break;
-
-      case 'effects':
-        _lastEffects = (json['list'] as List)
-            .map((e) => EffectInfo.fromJson(e))
-            .toList();
-        _effectsController.add(_lastEffects!);
-        break;
-
-      case 'effectChange':
-        getStatus();
-        break;
-
-      case 'welcome':
-        print('Connected: ${json['message']}');
-        break;
+  void _parseResponse(String response) {
+    if (response.startsWith('STATUS,')) {
+      _lastStatus = DeviceStatus.fromResponse(response);
+      _statusController.add(_lastStatus!);
+    } else if (response.startsWith('EFFECTS,')) {
+      _lastEffects = _parseEffects(response);
+      _effectsController.add(_lastEffects!);
+    } else if (response.startsWith('SETTINGS,')) {
+      _lastSettings = DeviceSettings.fromResponse(response);
+      _settingsController.add(_lastSettings!);
+    } else if (response.startsWith('EFFECT,')) {
+      // Notifica cambio effetto: EFFECT,index,name
+      getStatus();
+    } else if (response.startsWith('WELCOME,')) {
+      print('Connected: $response');
     }
+  }
+
+  List<EffectInfo> _parseEffects(String response) {
+    // EFFECTS,name1,name2,name3,...
+    final parts = response.split(',');
+    if (parts.isEmpty || parts[0] != 'EFFECTS') return [];
+
+    final effects = <EffectInfo>[];
+    for (int i = 1; i < parts.length; i++) {
+      effects.add(
+        EffectInfo(
+          index: i - 1,
+          name: parts[i],
+          isCurrent: _lastStatus?.effectIndex == i - 1,
+        ),
+      );
+    }
+    return effects;
   }
 
   // ═══════════════════════════════════════════
   // Invio comandi
   // ═══════════════════════════════════════════
 
-  /// Invia comando raw (seriale)
-  void sendRaw(String command) {
-    if (!isConnected) return;
-
-    if (_connectionType == ConnectionType.serial &&
-        _serialPort?.isOpen == true) {
-      _serialPort!.write(Uint8List.fromList('$command\n'.codeUnits));
-    }
-  }
-
-  /// Invia comando JSON (WebSocket o seriale)
-  void sendJson(Map<String, dynamic> command) {
+  /// Invia comando stringa
+  void send(String command) {
     if (!isConnected) return;
 
     if (_connectionType == ConnectionType.websocket && _wsChannel != null) {
-      _wsChannel!.sink.add(jsonEncode(command));
-    } else if (_connectionType == ConnectionType.serial) {
-      // Per seriale, usa comandi legacy
-      _sendSerialCommand(command);
-    }
-  }
-
-  /// Converte comando JSON in comando seriale legacy
-  void _sendSerialCommand(Map<String, dynamic> cmd) {
-    final command = cmd['cmd'] as String?;
-
-    switch (command) {
-      case 'setDateTime':
-        final y = cmd['year'];
-        final mo = (cmd['month'] as int).toString().padLeft(2, '0');
-        final d = (cmd['day'] as int).toString().padLeft(2, '0');
-        final h = (cmd['hour'] as int).toString().padLeft(2, '0');
-        final m = (cmd['minute'] as int).toString().padLeft(2, '0');
-        final s = (cmd['second'] as int? ?? 0).toString().padLeft(2, '0');
-        sendRaw('D$y/$mo/$d $h:$m:$s');
-        break;
-
-      case 'setTime':
-        final h = (cmd['hour'] as int).toString().padLeft(2, '0');
-        final m = (cmd['minute'] as int).toString().padLeft(2, '0');
-        final s = (cmd['second'] as int? ?? 0).toString().padLeft(2, '0');
-        sendRaw('T$h:$m:$s');
-        break;
-
-      case 'setMode':
-        sendRaw('M${cmd['mode']}');
-        break;
-
-      case 'effect':
-        final action = cmd['action'];
-        if (action == 'next')
-          sendRaw('n');
-        else if (action == 'pause')
-          sendRaw('p');
-        else if (action == 'resume')
-          sendRaw('r');
-        else if (action == 'select' && cmd.containsKey('index')) {
-          sendRaw('${cmd['index']}');
-        }
-        break;
-
-      case 'getStatus':
-        sendRaw('S');
-        break;
-
-      case 'setBrightness':
-        if (cmd.containsKey('value')) {
-          sendRaw('B${cmd['value']}');
-        }
-        break;
+      _wsChannel!.sink.add(command);
+    } else if (_connectionType == ConnectionType.serial &&
+        _serialPort?.isOpen == true) {
+      _serialPort!.write(Uint8List.fromList('$command\n'.codeUnits));
     }
   }
 
@@ -527,20 +458,15 @@ class DeviceService {
   // Comandi high-level
   // ═══════════════════════════════════════════
 
-  void getStatus() => sendJson({'cmd': 'getStatus'});
-  void getSettings() => sendJson({'cmd': 'getSettings'});
-  void getEffects() => sendJson({'cmd': 'getEffects'});
-  void saveSettings() => sendJson({'cmd': 'saveSettings'});
-  void restart() => sendJson({'cmd': 'restart'});
+  void getStatus() => send('getStatus');
+  void getSettings() => send('getSettings');
+  void getEffects() => send('getEffects');
+  void saveSettings() => send('save');
+  void restart() => send('restart');
 
   // Time
   void setTime(int hour, int minute, [int second = 0]) {
-    sendJson({
-      'cmd': 'setTime',
-      'hour': hour,
-      'minute': minute,
-      'second': second,
-    });
+    send('setTime,$hour,$minute,$second');
   }
 
   void setDateTime(
@@ -551,15 +477,7 @@ class DeviceService {
     int minute, [
     int second = 0,
   ]) {
-    sendJson({
-      'cmd': 'setDateTime',
-      'year': year,
-      'month': month,
-      'day': day,
-      'hour': hour,
-      'minute': minute,
-      'second': second,
-    });
+    send('setDateTime,$year,$month,$day,$hour,$minute,$second');
   }
 
   void syncNow() {
@@ -567,43 +485,38 @@ class DeviceService {
     setDateTime(now.year, now.month, now.day, now.hour, now.minute, now.second);
   }
 
-  void setTimeMode(String mode) => sendJson({'cmd': 'setMode', 'mode': mode});
+  void setTimeMode(String mode) => send('setMode,$mode');
 
   // Effects
-  void nextEffect() => sendJson({'cmd': 'effect', 'action': 'next'});
-  void pause() => sendJson({'cmd': 'effect', 'action': 'pause'});
-  void resume() => sendJson({'cmd': 'effect', 'action': 'resume'});
-  void selectEffect(int index) =>
-      sendJson({'cmd': 'effect', 'action': 'select', 'index': index});
-  void selectEffectByName(String name) =>
-      sendJson({'cmd': 'effect', 'action': 'select', 'name': name});
-  void setEffectDuration(int ms) =>
-      sendJson({'cmd': 'setEffectDuration', 'ms': ms});
-  void setAutoSwitch(bool enabled) =>
-      sendJson({'cmd': 'setAutoSwitch', 'enabled': enabled});
+  void nextEffect() => send('effect,next');
+  void pause() => send('effect,pause');
+  void resume() => send('effect,resume');
+  void selectEffect(int index) => send('effect,select,$index');
+  void selectEffectByName(String name) => send('effect,name,$name');
+  void setEffectDuration(int ms) => send('duration,$ms');
+  void setAutoSwitch(bool enabled) => send('autoswitch,${enabled ? 1 : 0}');
 
   // Display
   void setBrightness({int? day, int? night, int? value}) {
-    final cmd = <String, dynamic>{'cmd': 'setBrightness'};
-    if (day != null) cmd['day'] = day;
-    if (night != null) cmd['night'] = night;
-    if (value != null) cmd['value'] = value;
-    sendJson(cmd);
+    if (value != null) {
+      send('brightness,$value');
+    } else if (day != null) {
+      send('brightness,day,$day');
+    } else if (night != null) {
+      send('brightness,night,$night');
+    }
   }
 
   void setNightTime(int startHour, int endHour) {
-    sendJson({'cmd': 'setNightTime', 'start': startHour, 'end': endHour});
+    send('nighttime,$startHour,$endHour');
   }
 
   // WiFi
   void setWiFi(String ssid, String password, {bool apMode = false}) {
-    sendJson({
-      'cmd': 'setWiFi',
-      'ssid': ssid,
-      'password': password,
-      'apMode': apMode,
-    });
+    send('wifi,$ssid,$password,${apMode ? 1 : 0}');
   }
+
+  void setDeviceName(String name) => send('devicename,$name');
 
   void dispose() {
     disconnect();

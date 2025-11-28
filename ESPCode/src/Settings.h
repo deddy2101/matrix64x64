@@ -3,7 +3,6 @@
 
 #include <Arduino.h>
 #include <Preferences.h>
-#include <ArduinoJson.h>
 
 // Struttura configurazione
 struct Config {
@@ -92,10 +91,9 @@ public:
     void setDeviceName(const char* name);
     
     // ═══════════════════════════════════════════
-    // Serializzazione JSON
+    // CSV Serialization (simple format)
     // ═══════════════════════════════════════════
-    String toJson() const;
-    bool fromJson(const String& json);
+    String toCSV() const;
     
     // Debug
     void print() const;

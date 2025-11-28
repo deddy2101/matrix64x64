@@ -169,101 +169,36 @@ void Settings::setDeviceName(const char* name) {
 }
 
 // ═══════════════════════════════════════════
-// JSON Serialization
+// CSV Serialization
 // ═══════════════════════════════════════════
 
-String Settings::toJson() const {
-    JsonDocument doc;
-    
-    // WiFi
-    JsonObject wifi = doc["wifi"].to<JsonObject>();
-    wifi["ssid"] = config.ssid;
-    wifi["password"] = "***";  // Non esporre la password
-    wifi["apMode"] = config.useAP;
-    
-    // Display
-    JsonObject display = doc["display"].to<JsonObject>();
-    display["brightnessDay"] = config.brightnessDay;
-    display["brightnessNight"] = config.brightnessNight;
-    display["nightStartHour"] = config.nightStartHour;
-    display["nightEndHour"] = config.nightEndHour;
-    
-    // Effects
-    JsonObject effects = doc["effects"].to<JsonObject>();
-    effects["duration"] = config.effectDuration;
-    effects["autoSwitch"] = config.autoSwitch;
-    effects["currentEffect"] = config.currentEffect;
-    
-    // Device
-    JsonObject device = doc["device"].to<JsonObject>();
-    device["name"] = config.deviceName;
-    
-    String output;
-    serializeJson(doc, output);
-    return output;
-}
-
-bool Settings::fromJson(const String& json) {
-    JsonDocument doc;
-    DeserializationError error = deserializeJson(doc, json);
-    
-    if (error) {
-        Serial.printf("[Settings] JSON parse error: %s\n", error.c_str());
-        return false;
-    }
-    
-    // WiFi
-    if (doc.containsKey("wifi")) {
-        JsonObject wifi = doc["wifi"];
-        if (wifi.containsKey("ssid")) setSSID(wifi["ssid"]);
-        if (wifi.containsKey("password")) {
-            const char* pwd = wifi["password"];
-            if (strcmp(pwd, "***") != 0) {  // Ignora placeholder
-                setPassword(pwd);
-            }
-        }
-        if (wifi.containsKey("apMode")) setAPMode(wifi["apMode"]);
-    }
-    
-    // Display
-    if (doc.containsKey("display")) {
-        JsonObject display = doc["display"];
-        if (display.containsKey("brightnessDay")) setBrightnessDay(display["brightnessDay"]);
-        if (display.containsKey("brightnessNight")) setBrightnessNight(display["brightnessNight"]);
-        if (display.containsKey("nightStartHour") && display.containsKey("nightEndHour")) {
-            setNightHours(display["nightStartHour"], display["nightEndHour"]);
-        }
-    }
-    
-    // Effects
-    if (doc.containsKey("effects")) {
-        JsonObject effects = doc["effects"];
-        if (effects.containsKey("duration")) setEffectDuration(effects["duration"]);
-        if (effects.containsKey("autoSwitch")) setAutoSwitch(effects["autoSwitch"]);
-        if (effects.containsKey("currentEffect")) setCurrentEffect(effects["currentEffect"]);
-    }
-    
-    // Device
-    if (doc.containsKey("device")) {
-        JsonObject device = doc["device"];
-        if (device.containsKey("name")) setDeviceName(device["name"]);
-    }
-    
-    return true;
+String Settings::toCSV() const {
+    String csv = "SETTINGS";
+    csv += "," + String(config.ssid);
+    csv += "," + String(config.useAP ? "1" : "0");
+    csv += "," + String(config.brightnessDay);
+    csv += "," + String(config.brightnessNight);
+    csv += "," + String(config.nightStartHour);
+    csv += "," + String(config.nightEndHour);
+    csv += "," + String(config.effectDuration);
+    csv += "," + String(config.autoSwitch ? "1" : "0");
+    csv += "," + String(config.currentEffect);
+    csv += "," + String(config.deviceName);
+    return csv;
 }
 
 void Settings::print() const {
-    Serial.println(F("╔══════════════════════════════════════╗"));
-    Serial.println(F("║           Current Settings           ║"));
-    Serial.println(F("╠══════════════════════════════════════╣"));
-    Serial.printf("║  WiFi SSID: %-24s  ║\n", config.ssid[0] ? config.ssid : "(not set)");
-    Serial.printf("║  WiFi Mode: %-24s  ║\n", config.useAP ? "Access Point" : "Station");
-    Serial.printf("║  Brightness Day: %-19d  ║\n", config.brightnessDay);
-    Serial.printf("║  Brightness Night: %-17d  ║\n", config.brightnessNight);
-    Serial.printf("║  Night Hours: %02d:00 - %02d:00          ║\n", 
+    Serial.println(F("╔═════════════════════════════════════╗"));
+    Serial.println(F("║        Current Settings             ║"));
+    Serial.println(F("╠═════════════════════════════════════╣"));
+    Serial.printf("║  WiFi SSID: %-24s║\n", config.ssid[0] ? config.ssid : "(not set)");
+    Serial.printf("║  WiFi Mode: %-24s║\n", config.useAP ? "Access Point" : "Station");
+    Serial.printf("║  Brightness Day: %-19d║\n", config.brightnessDay);
+    Serial.printf("║  Brightness Night: %-17d║\n", config.brightnessNight);
+    Serial.printf("║  Night Hours: %02d:00 - %02d:00        ║\n", 
                  config.nightStartHour, config.nightEndHour);
-    Serial.printf("║  Effect Duration: %-14lu ms  ║\n", config.effectDuration);
-    Serial.printf("║  Auto Switch: %-22s  ║\n", config.autoSwitch ? "ON" : "OFF");
-    Serial.printf("║  Device Name: %-22s  ║\n", config.deviceName);
-    Serial.println(F("╚══════════════════════════════════════╝"));
+    Serial.printf("║  Effect Duration: %-14lu ms║\n", config.effectDuration);
+    Serial.printf("║  Auto Switch: %-22s║\n", config.autoSwitch ? "ON" : "OFF");
+    Serial.printf("║  Device Name: %-22s║\n", config.deviceName);
+    Serial.println(F("╚═════════════════════════════════════╝"));
 }

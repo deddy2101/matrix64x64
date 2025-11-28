@@ -1,61 +1,97 @@
 #include "WebServerManager.h"
 
-WebServerManager::WebServerManager(uint16_t port) 
-    : server(port),
-      settings(nullptr),
-      commandHandler(nullptr) {
-}
+WebServerManager::WebServerManager(uint16_t port)
+    : _server(port)
+    , _cmdHandler(nullptr)
+{}
 
-bool WebServerManager::begin(Settings* s, CommandHandler* cmdHandler) {
-    settings = s;
-    commandHandler = cmdHandler;
-    
-    setupCORS();
+void WebServerManager::init(CommandHandler* cmdHandler) {
+    _cmdHandler = cmdHandler;
     setupRoutes();
-    
-    server.begin();
-    Serial.println(F("[WebServer] ✓ Server started on port 80"));
-    
-    return true;
-}
-
-void WebServerManager::setupCORS() {
-    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
-    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Headers", "Content-Type");
+    _server.begin();
+    Serial.println("[HTTP] Web server started");
 }
 
 void WebServerManager::setupRoutes() {
+    // CORS headers
+    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
+    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Headers", "Content-Type");
     
-    // GET / - info base
-    server.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
-        request->send(200, "text/plain", "LED Matrix Controller - Use WebSocket at /ws");
+    // Root - Info
+    _server.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->send(200, "text/plain", 
+            "LED Matrix Controller\n"
+            "---------------------\n"
+            "WebSocket: ws://<ip>/ws\n"
+            "API: /api/status, /api/effects, /api/settings\n"
+            "\n"
+            "Protocol: CSV-based commands\n"
+            "Example: getStatus, effect,next, brightness,200\n"
+        );
     });
     
-    // GET /api/status
-    server.on("/api/status", HTTP_GET, [this](AsyncWebServerRequest* request) {
-        String response = commandHandler->processJson("{\"cmd\":\"getStatus\"}");
-        request->send(200, "application/json", response);
-    });
-    
-    // GET /api/settings
-    server.on("/api/settings", HTTP_GET, [this](AsyncWebServerRequest* request) {
-        String response = commandHandler->processJson("{\"cmd\":\"getSettings\"}");
-        request->send(200, "application/json", response);
-    });
-    
-    // GET /api/effects
-    server.on("/api/effects", HTTP_GET, [this](AsyncWebServerRequest* request) {
-        String response = commandHandler->processJson("{\"cmd\":\"getEffects\"}");
-        request->send(200, "application/json", response);
-    });
-    
-    // OPTIONS handler per CORS preflight
-    server.onNotFound([](AsyncWebServerRequest* request) {
-        if (request->method() == HTTP_OPTIONS) {
-            request->send(200);
+    // API - Status
+    _server.on("/api/status", HTTP_GET, [this](AsyncWebServerRequest* request) {
+        if (_cmdHandler) {
+            request->send(200, "text/plain", _cmdHandler->getStatusResponse());
         } else {
-            request->send(404, "application/json", "{\"error\":\"Not found\"}");
+            request->send(500, "text/plain", "ERR,not initialized");
         }
+    });
+    
+    // API - Effects list
+    _server.on("/api/effects", HTTP_GET, [this](AsyncWebServerRequest* request) {
+        if (_cmdHandler) {
+            request->send(200, "text/plain", _cmdHandler->getEffectsResponse());
+        } else {
+            request->send(500, "text/plain", "ERR,not initialized");
+        }
+    });
+    
+    // API - Settings
+    _server.on("/api/settings", HTTP_GET, [this](AsyncWebServerRequest* request) {
+        if (_cmdHandler) {
+            request->send(200, "text/plain", _cmdHandler->getSettingsResponse());
+        } else {
+            request->send(500, "text/plain", "ERR,not initialized");
+        }
+    });
+    
+    // API - Command (POST)
+    _server.on("/api/cmd", HTTP_POST, [](AsyncWebServerRequest* request) {
+        request->send(400, "text/plain", "ERR,use body");
+    }, NULL, [this](AsyncWebServerRequest* request, uint8_t* data, size_t len, size_t index, size_t total) {
+        if (_cmdHandler) {
+            String cmd;
+            cmd.reserve(len + 1);
+            for (size_t i = 0; i < len; i++) {
+                cmd += (char)data[i];
+            }
+            String response = _cmdHandler->processCommand(cmd);
+            request->send(200, "text/plain", response);
+        } else {
+            request->send(500, "text/plain", "ERR,not initialized");
+        }
+    });
+    
+    // API - Command (GET with query param)
+    _server.on("/api/cmd", HTTP_GET, [this](AsyncWebServerRequest* request) {
+        if (request->hasParam("c")) {
+            String cmd = request->getParam("c")->value();
+            if (_cmdHandler) {
+                String response = _cmdHandler->processCommand(cmd);
+                request->send(200, "text/plain", response);
+            } else {
+                request->send(500, "text/plain", "ERR,not initialized");
+            }
+        } else {
+            request->send(400, "text/plain", "ERR,missing param c");
+        }
+    });
+    
+    // 404
+    _server.onNotFound([](AsyncWebServerRequest* request) {
+        request->send(404, "text/plain", "ERR,not found");
     });
 }

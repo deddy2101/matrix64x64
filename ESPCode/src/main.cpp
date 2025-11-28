@@ -1,6 +1,7 @@
 /*
  * LED Matrix Effects - Full Featured Version
  * With WiFi, WebSocket, mDNS, and persistent settings
+ * CSV Protocol
  */
 
 #include <Arduino.h>
@@ -77,7 +78,7 @@ void setup() {
     
     Serial.println(F(""));
     Serial.println(F("╔══════════════════════════════════════════════════════╗"));
-    Serial.println(F("║     ESP32 LED Matrix - Full Featured Version         ║"));
+    Serial.println(F("║     ESP32 LED Matrix - CSV Protocol Version         ║"));
     Serial.println(F("║     WiFi + WebSocket + mDNS + Persistent Settings    ║"));
     Serial.println(F("╚══════════════════════════════════════════════════════╝"));
     Serial.println(F(""));
@@ -164,14 +165,14 @@ void setup() {
     // ─────────────────────────────────────────
     // 6. Command Handler
     // ─────────────────────────────────────────
-    commandHandler.begin(timeManager, effectManager, displayManager, &settings, wifiManager);
+    commandHandler.init(timeManager, effectManager, displayManager, &settings, wifiManager);
     
     // ─────────────────────────────────────────
     // 7. Web Server
     // ─────────────────────────────────────────
     Serial.println(F("[Setup] Initializing WebServer..."));
     webServer = new WebServerManager(80);
-    webServer->begin(&settings, &commandHandler);
+    webServer->init(&commandHandler);
     Serial.println(F("[Setup] ✓ WebServer OK"));
     
     // ─────────────────────────────────────────
@@ -179,7 +180,8 @@ void setup() {
     // ─────────────────────────────────────────
     Serial.println(F("[Setup] Initializing WebSocket..."));
     wsManager = new WebSocketManager();
-    wsManager->begin(webServer->getServer(), &commandHandler);
+    wsManager->init(webServer->getServer(), &commandHandler);
+    commandHandler.setWebSocketManager(wsManager);
     Serial.println(F("[Setup] ✓ WebSocket OK"));
     
     // ─────────────────────────────────────────
@@ -204,7 +206,7 @@ void setup() {
                  wifiManager->getIP().c_str());
     Serial.println(F("╠══════════════════════════════════════════════════════╣"));
     Serial.println(F("║  Serial Commands: T, D, E, M, S, ?, p, r, n, 0-9     ║"));
-    Serial.println(F("║  WebSocket: JSON commands (see documentation)        ║"));
+    Serial.println(F("║  CSV Commands: getStatus, effect,next, etc.          ║"));
     Serial.println(F("╚══════════════════════════════════════════════════════╝"));
     Serial.println(F(""));
     
@@ -215,6 +217,9 @@ void setup() {
     
     // Imposta luminosità iniziale
     commandHandler.updateBrightness();
+    
+    // Start effects
+    effectManager->start();
 }
 
 // ═══════════════════════════════════════════
