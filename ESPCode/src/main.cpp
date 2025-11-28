@@ -149,8 +149,10 @@ void setup() {
         effectManager->resume();
     } else {
         effectManager->pause();
+        Serial.println(F("[Setup] Setting current effect from settings..."));
         if (settings.getCurrentEffect() >= 0) {
             effectManager->switchToEffect(settings.getCurrentEffect());
+            Serial.printf("[Setup] ✓ Effect set to index %d\n", settings.getCurrentEffect());
         }
     }
     

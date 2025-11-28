@@ -98,6 +98,7 @@ public:
      */
     void execute() {
         if (!initialized) {
+            Serial.printf("[Effect] Activating effect: %s\n", getName());
             activate();
         }
         update();

@@ -198,6 +198,7 @@ void Settings::print() const {
     Serial.printf("║  Night Hours: %02d:00 - %02d:00        ║\n", 
                  config.nightStartHour, config.nightEndHour);
     Serial.printf("║  Effect Duration: %-14lu ms║\n", config.effectDuration);
+    Serial.printf("║ Current Effect: %-16s║\n", config.currentEffect >= 0 ? String(config.currentEffect).c_str() : "Auto");
     Serial.printf("║  Auto Switch: %-22s║\n", config.autoSwitch ? "ON" : "OFF");
     Serial.printf("║  Device Name: %-22s║\n", config.deviceName);
     Serial.println(F("╚═════════════════════════════════════╝"));

@@ -39,10 +39,22 @@ void EffectManager::setDuration(unsigned long ms) {
 }
 
 void EffectManager::start() {
-    if (!effects.empty()) {
-        changeToEffect(0);
+    /*
+    if (effects.empty()) {
         Serial.printf("[EffectManager] Started with effect: %s\n", 
                      effects[0]->getName());
+    } else {
+        Serial.println("[EffectManager] Warning: No effects to start! Defaulting to first effect.");
+        changeToEffect(0);
+    }    
+    */
+   //se non è selezionato nessun effetto, seleziono il primo
+    if(currentEffectIndex == -1 && !effects.empty()) {
+        Serial.println("[EffectManager] No effect selected, defaulting to first effect.");
+        changeToEffect(0);
+    } else {
+        Serial.printf("[EffectManager] Starting with effect: %s\n", 
+                     effects[currentEffectIndex]->getName());
     }
 }
 
@@ -57,16 +69,20 @@ void EffectManager::update() {
     
     // Controlla se è il momento di cambiare effetto (SOLO se autoSwitch è attivo)
     if (autoSwitch) {
+        Serial.println("[EffectManager] Checking for effect switch...");
         bool shouldSwitch = false;
         
         // Cambia se l'effetto è completo O se è scaduto il tempo
         if (current->isComplete()) {
+            Serial.println("[EffectManager] Effect complete, switching...");
             shouldSwitch = true;
         } else if (getEffectRuntime() >= effectDuration) {
+            Serial.println("[EffectManager] Effect duration elapsed, switching...");
             shouldSwitch = true;
         }
         
         if (shouldSwitch) {
+            Serial.println("[EffectManager] Switching to next effect...");
             nextEffect();
         }
     }
