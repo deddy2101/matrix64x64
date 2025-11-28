@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:flutter_libserialport/flutter_libserialport.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+
+// Serial support (cross-platform, no external dependencies)
+import 'serial_native.dart' as serial;
 
 /// Tipo di connessione
 enum ConnectionType { none, serial, websocket }
@@ -25,6 +27,24 @@ class SerialDevice {
   });
 
   String get displayName => description ?? name;
+}
+
+/// Helper per verificare se siamo su piattaforma desktop
+bool get isDesktopPlatform {
+  try {
+    return Platform.isLinux || Platform.isMacOS || Platform.isWindows;
+  } catch (_) {
+    return false;
+  }
+}
+
+/// Helper per verificare se siamo su piattaforma mobile
+bool get isMobilePlatform {
+  try {
+    return Platform.isAndroid || Platform.isIOS;
+  } catch (_) {
+    return false;
+  }
 }
 
 /// Stato del dispositivo LED Matrix
@@ -171,9 +191,10 @@ class DeviceService {
   DeviceConnectionState _state = DeviceConnectionState.disconnected;
   String? _connectedName;
 
-  // Serial
-  SerialPort? _serialPort;
-  SerialPortReader? _serialReader;
+  // Serial (solo desktop)
+  dynamic _serialPort;
+  dynamic _serialReader;
+  StreamSubscription? _serialSubscription;
   String _serialBuffer = '';
 
   // WebSocket
@@ -213,66 +234,55 @@ class DeviceService {
   List<EffectInfo>? get lastEffects => _lastEffects;
   DeviceSettings? get lastSettings => _lastSettings;
 
+  /// Verifica se la connessione seriale è disponibile (solo desktop)
+  bool get isSerialAvailable => isDesktopPlatform;
+
   // ═══════════════════════════════════════════
   // Connessione
   // ═══════════════════════════════════════════
 
-  /// Lista dispositivi seriali disponibili
+  /// Lista dispositivi seriali disponibili (solo desktop)
   List<SerialDevice> getSerialDevices() {
-    try {
-      final ports = SerialPort.availablePorts;
-      return ports.map((portName) {
-        final port = SerialPort(portName);
-        final device = SerialDevice(
-          name: port.name ?? portName,
-          port: portName,
-          description: port.description,
-          manufacturer: port.manufacturer,
-        );
-        port.dispose();
-        return device;
-      }).toList();
-    } catch (e) {
-      print('Error getting serial devices: $e');
-      return [];
-    }
+    if (!isDesktopPlatform) return [];
+    return serial.getAvailableDevices();
   }
 
-  /// Connetti via seriale
+  /// Connetti via seriale (solo desktop)
   Future<bool> connectSerial(
     SerialDevice device, {
     int baudRate = 115200,
   }) async {
+    if (!isDesktopPlatform) {
+      print('Serial not available on this platform');
+      return false;
+    }
+
     disconnect();
 
     _setState(DeviceConnectionState.connecting);
     _connectionType = ConnectionType.serial;
 
     try {
-      _serialPort = SerialPort(device.port);
-
-      if (!_serialPort!.openReadWrite()) {
-        print('Failed to open port: ${SerialPort.lastError}');
-        _setState(DeviceConnectionState.disconnected);
-        return false;
-      }
-
-      _serialPort!.config = SerialPortConfig()
-        ..baudRate = baudRate
-        ..bits = 8
-        ..stopBits = 1
-        ..parity = SerialPortParity.none
-        ..setFlowControl(SerialPortFlowControl.none);
-
-      _serialReader = SerialPortReader(_serialPort!);
-      _serialReader!.stream.listen(
-        _onSerialData,
+      final result = await serial.connect(
+        device.port,
+        baudRate: baudRate,
+        onData: _onSerialData,
         onError: (e) {
           print('Serial error: $e');
           disconnect();
         },
         onDone: disconnect,
       );
+
+      if (result == null) {
+        print('Failed to open serial port');
+        _setState(DeviceConnectionState.disconnected);
+        return false;
+      }
+
+      _serialPort = result['port'];
+      _serialReader = result['reader'];
+      _serialSubscription = result['subscription'];
 
       _connectedName = device.displayName;
       _setState(DeviceConnectionState.connected);
@@ -334,11 +344,13 @@ class DeviceService {
     _pingTimer?.cancel();
     _reconnectTimer?.cancel();
 
-    // Serial
-    _serialReader?.close();
+    // Serial (solo desktop)
+    _serialSubscription?.cancel();
+    _serialSubscription = null;
+    if (isDesktopPlatform && _serialPort != null) {
+      serial.closePort(_serialPort, _serialReader);
+    }
     _serialReader = null;
-    _serialPort?.close();
-    _serialPort?.dispose();
     _serialPort = null;
     _serialBuffer = '';
 
@@ -449,8 +461,8 @@ class DeviceService {
     if (_connectionType == ConnectionType.websocket && _wsChannel != null) {
       _wsChannel!.sink.add(command);
     } else if (_connectionType == ConnectionType.serial &&
-        _serialPort?.isOpen == true) {
-      _serialPort!.write(Uint8List.fromList('$command\n'.codeUnits));
+        _serialPort != null) {
+      serial.write(_serialPort, '$command\n');
     }
   }
 

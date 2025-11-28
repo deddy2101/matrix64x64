@@ -30,7 +30,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flutter_libserialport: ^0.4.0
+  #flutter_libserialport: ^0.4.0
   google_fonts: ^6.1.0
   web_socket_channel: ^2.4.0
 

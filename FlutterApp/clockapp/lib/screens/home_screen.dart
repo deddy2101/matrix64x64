@@ -731,6 +731,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildBrightnessCard() {
+    final nightStart = _settings?.nightStartHour ?? 22;
+    final nightEnd = _settings?.nightEndHour ?? 7;
+
     return _GlassCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -746,9 +749,50 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 'Luminosità',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
               ),
+              const Spacer(),
+              // Indicatore giorno/notte
+              if (_status != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _status!.isNight
+                        ? Colors.indigo.withOpacity(0.2)
+                        : Colors.orange.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _status!.isNight
+                            ? Icons.nightlight_round
+                            : Icons.wb_sunny,
+                        size: 14,
+                        color: _status!.isNight
+                            ? Colors.indigo[300]
+                            : Colors.orange[300],
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _status!.isNight ? 'Notte' : 'Giorno',
+                        style: TextStyle(
+                          color: _status!.isNight
+                              ? Colors.indigo[300]
+                              : Colors.orange[300],
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 16),
+
+          // Slider luminosità giorno
           _BrightnessSlider(
             label: 'Giorno',
             icon: Icons.wb_sunny,
@@ -758,6 +802,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             },
           ),
           const SizedBox(height: 12),
+
+          // Slider luminosità notte
           _BrightnessSlider(
             label: 'Notte',
             icon: Icons.nightlight_round,
@@ -766,6 +812,46 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               _device.setBrightness(night: value);
             },
           ),
+
+          const SizedBox(height: 20),
+
+          // Orari notte
+          Row(
+            children: [
+              Icon(Icons.schedule, size: 20, color: Colors.grey[400]),
+              const SizedBox(width: 12),
+              Text(
+                'Orario notturno:',
+                style: TextStyle(color: Colors.grey[400]),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          Row(
+            children: [
+              // Ora inizio notte
+              Expanded(
+                child: _TimePickerButton(
+                  label: 'Dalle',
+                  hour: nightStart,
+                  icon: Icons.nightlight_round,
+                  onTap: () => _showNightTimeStartPicker(nightStart, nightEnd),
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Ora fine notte
+              Expanded(
+                child: _TimePickerButton(
+                  label: 'Alle',
+                  hour: nightEnd,
+                  icon: Icons.wb_sunny,
+                  onTap: () => _showNightTimeEndPicker(nightStart, nightEnd),
+                ),
+              ),
+            ],
+          ),
+
           const SizedBox(height: 16),
           Row(
             children: [
@@ -785,6 +871,51 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ],
       ),
     );
+  }
+
+  Future<void> _showNightTimeStartPicker(
+    int currentStart,
+    int currentEnd,
+  ) async {
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: currentStart, minute: 0),
+      helpText: 'Inizio modalità notte',
+      builder: (context, child) {
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+          child: child!,
+        );
+      },
+    );
+
+    if (time != null) {
+      _device.setNightTime(time.hour, currentEnd);
+      _device.getSettings(); // Refresh settings
+      _addLog('→ Night start: ${time.hour}:00');
+      HapticFeedback.lightImpact();
+    }
+  }
+
+  Future<void> _showNightTimeEndPicker(int currentStart, int currentEnd) async {
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: currentEnd, minute: 0),
+      helpText: 'Fine modalità notte',
+      builder: (context, child) {
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+          child: child!,
+        );
+      },
+    );
+
+    if (time != null) {
+      _device.setNightTime(currentStart, time.hour);
+      _device.getSettings(); // Refresh settings
+      _addLog('→ Night end: ${time.hour}:00');
+      HapticFeedback.lightImpact();
+    }
   }
 
   Widget _buildWiFiCard() {
@@ -1425,6 +1556,63 @@ class _ActionButton extends StatelessWidget {
   }
 }
 
+class _TimePickerButton extends StatelessWidget {
+  final String label;
+  final int hour;
+  final IconData icon;
+  final VoidCallback? onTap;
+
+  const _TimePickerButton({
+    required this.label,
+    required this.hour,
+    required this.icon,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+          decoration: BoxDecoration(
+            color: Colors.grey.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey.withOpacity(0.2)),
+          ),
+          child: Row(
+            children: [
+              Icon(icon, size: 18, color: Colors.grey[400]),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                  ),
+                  Text(
+                    '${hour.toString().padLeft(2, '0')}:00',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              const Spacer(),
+              Icon(Icons.edit, size: 16, color: Colors.grey[500]),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _CircleButton extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -1646,7 +1834,7 @@ class _ConnectionDialogState extends State<_ConnectionDialog>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
-  // Serial
+  // Serial (solo desktop)
   List<SerialDevice> _serialDevices = [];
   SerialDevice? _selectedDevice;
   bool _scanningSerial = false;
@@ -1658,11 +1846,15 @@ class _ConnectionDialogState extends State<_ConnectionDialog>
   bool _connecting = false;
   String? _error;
 
+  bool get _showSerialTab => widget.device.isSerialAvailable;
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-    _scanSerialDevices();
+    _tabController = TabController(length: _showSerialTab ? 2 : 1, vsync: this);
+    if (_showSerialTab) {
+      _scanSerialDevices();
+    }
   }
 
   @override
@@ -1767,27 +1959,33 @@ class _ConnectionDialogState extends State<_ConnectionDialog>
             ),
             const SizedBox(height: 16),
 
-            // Tabs
-            TabBar(
-              controller: _tabController,
-              indicatorColor: const Color(0xFF8B5CF6),
-              labelColor: const Color(0xFF8B5CF6),
-              unselectedLabelColor: Colors.grey,
-              tabs: const [
-                Tab(icon: Icon(Icons.usb), text: 'Seriale'),
-                Tab(icon: Icon(Icons.wifi), text: 'WiFi'),
-              ],
-            ),
-            const SizedBox(height: 24),
-
-            // Tab content
-            SizedBox(
-              height: 200,
-              child: TabBarView(
+            // Tabs (seriale solo su desktop)
+            if (_showSerialTab) ...[
+              TabBar(
                 controller: _tabController,
-                children: [_buildSerialTab(), _buildWebSocketTab()],
+                indicatorColor: const Color(0xFF8B5CF6),
+                labelColor: const Color(0xFF8B5CF6),
+                unselectedLabelColor: Colors.grey,
+                tabs: const [
+                  Tab(icon: Icon(Icons.usb), text: 'Seriale'),
+                  Tab(icon: Icon(Icons.wifi), text: 'WiFi'),
+                ],
               ),
-            ),
+              const SizedBox(height: 24),
+
+              // Tab content
+              SizedBox(
+                height: 200,
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [_buildSerialTab(), _buildWebSocketTab()],
+                ),
+              ),
+            ] else ...[
+              // Solo WiFi su mobile
+              const SizedBox(height: 8),
+              SizedBox(height: 200, child: _buildWebSocketTab()),
+            ],
 
             // Error
             if (_error != null) ...[
@@ -1828,7 +2026,7 @@ class _ConnectionDialogState extends State<_ConnectionDialog>
                 onPressed: _connecting
                     ? null
                     : () {
-                        if (_tabController.index == 0) {
+                        if (_showSerialTab && _tabController.index == 0) {
                           _connectSerial();
                         } else {
                           _connectWebSocket();
