@@ -8,7 +8,7 @@ WiFiManager::WiFiManager(Settings* settings)
 }
 
 bool WiFiManager::begin() {
-    Serial.println(F("[WiFi] Initializing..."));
+    DEBUG_PRINTLN(F("[WiFi] Initializing..."));
     
     // Prova prima la modalità configurata
     if (settings->isAPMode() || strlen(settings->getSSID()) == 0) {
@@ -19,14 +19,14 @@ bool WiFiManager::begin() {
         if (startSTA()) {
             return true;
         } else {
-            Serial.println(F("[WiFi] STA failed, falling back to AP mode"));
+            DEBUG_PRINTLN(F("[WiFi] STA failed, falling back to AP mode"));
             return startAP();
         }
     }
 }
 
 bool WiFiManager::startSTA() {
-    Serial.printf("[WiFi] Connecting to: %s\n", settings->getSSID());
+    DEBUG_PRINTF("[WiFi] Connecting to: %s\n", settings->getSSID());
     
     WiFi.mode(WIFI_STA);
     WiFi.begin(settings->getSSID(), settings->getPassword());
@@ -36,28 +36,28 @@ bool WiFiManager::startSTA() {
     
     while (WiFi.status() != WL_CONNECTED && retryCount < MAX_RETRIES) {
         delay(RETRY_INTERVAL);
-        Serial.print(".");
+        DEBUG_PRINT(".");
         retryCount++;
     }
-    Serial.println();
+    DEBUG_PRINTLN();
     
     if (WiFi.status() == WL_CONNECTED) {
         state = WiFiState::CONNECTED_STA;
-        Serial.println(F("[WiFi] ✓ Connected to WiFi"));
-        Serial.printf("[WiFi] IP: %s\n", WiFi.localIP().toString().c_str());
-        Serial.printf("[WiFi] RSSI: %d dBm\n", WiFi.RSSI());
+        DEBUG_PRINTLN(F("[WiFi] ✓ Connected to WiFi"));
+        DEBUG_PRINTF("[WiFi] IP: %s\n", WiFi.localIP().toString().c_str());
+        DEBUG_PRINTF("[WiFi] RSSI: %d dBm\n", WiFi.RSSI());
         
         startMDNS();
         return true;
     }
     
-    Serial.println(F("[WiFi] ✗ Connection failed"));
+    DEBUG_PRINTLN(F("[WiFi] ✗ Connection failed"));
     state = WiFiState::DISCONNECTED;
     return false;
 }
 
 bool WiFiManager::startAP() {
-    Serial.println(F("[WiFi] Starting Access Point..."));
+    DEBUG_PRINTLN(F("[WiFi] Starting Access Point..."));
     
     WiFi.mode(WIFI_AP);
     
@@ -72,16 +72,16 @@ bool WiFiManager::startAP() {
     
     if (WiFi.softAP(apName.c_str(), AP_PASSWORD)) {
         state = WiFiState::CONNECTED_AP;
-        Serial.println(F("[WiFi] ✓ Access Point started"));
-        Serial.printf("[WiFi] SSID: %s\n", apName.c_str());
-        Serial.printf("[WiFi] Password: %s\n", AP_PASSWORD);
-        Serial.printf("[WiFi] IP: %s\n", WiFi.softAPIP().toString().c_str());
+        DEBUG_PRINTLN(F("[WiFi] ✓ Access Point started"));
+        DEBUG_PRINTF("[WiFi] SSID: %s\n", apName.c_str());
+        DEBUG_PRINTF("[WiFi] Password: %s\n", AP_PASSWORD);
+        DEBUG_PRINTF("[WiFi] IP: %s\n", WiFi.softAPIP().toString().c_str());
         
         startMDNS();
         return true;
     }
     
-    Serial.println(F("[WiFi] ✗ Failed to start AP"));
+    DEBUG_PRINTLN(F("[WiFi] ✗ Failed to start AP"));
     state = WiFiState::DISCONNECTED;
     return false;
 }
@@ -93,18 +93,18 @@ bool WiFiManager::startMDNS() {
         MDNS.addService("ws", "tcp", 80);
         MDNS.addService("ledmatrix", "tcp", 80);
         
-        Serial.printf("[mDNS] ✓ Started: %s.local\n", settings->getDeviceName());
+        DEBUG_PRINTF("[mDNS] ✓ Started: %s.local\n", settings->getDeviceName());
         return true;
     }
     
-    Serial.println(F("[mDNS] ✗ Failed to start"));
+    DEBUG_PRINTLN(F("[mDNS] ✗ Failed to start"));
     return false;
 }
 
 void WiFiManager::update() {
     // Controlla disconnessione in modalità STA
     if (state == WiFiState::CONNECTED_STA && WiFi.status() != WL_CONNECTED) {
-        Serial.println(F("[WiFi] Connection lost, reconnecting..."));
+        DEBUG_PRINTLN(F("[WiFi] Connection lost, reconnecting..."));
         state = WiFiState::DISCONNECTED;
         reconnect();
     }
@@ -138,7 +138,7 @@ void WiFiManager::switchToSTA(const char* ssid, const char* password) {
     settings->setAPMode(false);
     
     if (!startSTA()) {
-        Serial.println(F("[WiFi] STA failed, reverting to AP"));
+        DEBUG_PRINTLN(F("[WiFi] STA failed, reverting to AP"));
         startAP();
     }
 }

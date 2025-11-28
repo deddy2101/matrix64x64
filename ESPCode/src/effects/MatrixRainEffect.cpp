@@ -5,7 +5,7 @@ MatrixRainEffect::MatrixRainEffect(DisplayManager* dm)
 }
 
 void MatrixRainEffect::init() {
-    Serial.println("Initializing Matrix Rain Effect");
+    DEBUG_PRINTLN("Initializing Matrix Rain Effect");
     initDrops();
     displayManager->fillScreen(0, 0, 0);
 }

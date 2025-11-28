@@ -22,7 +22,7 @@ DisplayManager::~DisplayManager() {
 
 bool DisplayManager::begin() {
     if (!display->begin()) {
-        Serial.println("ERROR: I2S memory allocation failed");
+        DEBUG_PRINTLN("ERROR: I2S memory allocation failed");
         return false;
     }
     display->setBrightness8(brightness);

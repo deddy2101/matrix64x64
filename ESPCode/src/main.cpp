@@ -4,6 +4,7 @@
  * CSV Protocol
  */
 
+#include "Debug.h"
 #include <Arduino.h>
 #include "DisplayManager.h"
 #include "EffectManager.h"
@@ -19,18 +20,16 @@
 #include "effects/MarioClockEffect.h"
 #include "effects/PlasmaEffect.h"
 #include "effects/ScrollTextEffect.h"
-#include "effects/MatrixRainEffect.h"
-#include "effects/FireEffect.h"
-#include "effects/StarFieldEffect.h"
+//#include "effects/MatrixRainEffect.h"
+//#include "effects/FireEffect.h"
+//#include "effects/StarFieldEffect.h"
 #include "effects/ImageEffect.h"
 
 // Images
 #include "andre.h"
 #include "mario.h"
-#include "paese.h"
 #include "pokemon.h"
 #include "luigi.h"
-#include "cave.h"
 #include "fox.h"
 
 // ═══════════════════════════════════════════
@@ -73,49 +72,49 @@ String serialBuffer = "";
 // Setup
 // ═══════════════════════════════════════════
 void setup() {
-    Serial.begin(115200);
+    DEBUG_INIT(115200);
     delay(500);
     
-    Serial.println(F(""));
-    Serial.println(F("╔══════════════════════════════════════════════════════╗"));
-    Serial.println(F("║     ESP32 LED Matrix - CSV Protocol Version         ║"));
-    Serial.println(F("║     WiFi + WebSocket + mDNS + Persistent Settings    ║"));
-    Serial.println(F("╚══════════════════════════════════════════════════════╝"));
-    Serial.println(F(""));
+    DEBUG_PRINTLN(F(""));
+    DEBUG_PRINTLN(F("╔══════════════════════════════════════════════════════╗"));
+    DEBUG_PRINTLN(F("║     ESP32 LED Matrix - CSV Protocol Version         ║"));
+    DEBUG_PRINTLN(F("║     WiFi + WebSocket + mDNS + Persistent Settings    ║"));
+    DEBUG_PRINTLN(F("╚══════════════════════════════════════════════════════╝"));
+    DEBUG_PRINTLN(F(""));
     
     // ─────────────────────────────────────────
     // 1. Settings
     // ─────────────────────────────────────────
-    Serial.println(F("[Setup] Loading settings..."));
+    DEBUG_PRINTLN(F("[Setup] Loading settings..."));
     settings.begin();
     
     // ─────────────────────────────────────────
     // 2. Display
     // ─────────────────────────────────────────
-    Serial.println(F("[Setup] Initializing display..."));
+    DEBUG_PRINTLN(F("[Setup] Initializing display..."));
     displayManager = new DisplayManager(PANEL_WIDTH, PANEL_HEIGHT, PANELS_NUMBER, PIN_E);
     
     if (!displayManager->begin()) {
-        Serial.println(F("FATAL: Display initialization failed!"));
+        DEBUG_PRINTLN(F("FATAL: Display initialization failed!"));
         while (1) delay(100);
     }
     
     displayManager->setBrightness(settings.getBrightnessDay());
     displayManager->fillScreen(0, 0, 0);
-    Serial.println(F("[Setup] ✓ Display OK"));
+    DEBUG_PRINTLN(F("[Setup] ✓ Display OK"));
     
     // ─────────────────────────────────────────
     // 3. Time Manager
     // ─────────────────────────────────────────
-    Serial.println(F("[Setup] Initializing TimeManager..."));
+    DEBUG_PRINTLN(F("[Setup] Initializing TimeManager..."));
     timeManager = new TimeManager(false);  // RTC mode
     timeManager->begin();
-    Serial.println(F("[Setup] ✓ TimeManager OK"));
+    DEBUG_PRINTLN(F("[Setup] ✓ TimeManager OK"));
     
     // ─────────────────────────────────────────
     // 4. Effect Manager
     // ─────────────────────────────────────────
-    Serial.println(F("[Setup] Initializing EffectManager..."));
+    DEBUG_PRINTLN(F("[Setup] Initializing EffectManager..."));
     effectManager = new EffectManager(displayManager, settings.getEffectDuration());
     
     // Aggiungi effetti
@@ -123,11 +122,9 @@ void setup() {
         "PROSSIMA FERMATA FIRENZE 6 GIARDINI ROSSI"));
     effectManager->addEffect(new PlasmaEffect(displayManager));
     effectManager->addEffect(new PongEffect(displayManager));
-    effectManager->addEffect(new MatrixRainEffect(displayManager));
-    effectManager->addEffect(new FireEffect(displayManager));
-    effectManager->addEffect(new StarfieldEffect(displayManager));
-    effectManager->addEffect(new ImageEffect(displayManager, 
-        (DrawImageFunction)draw_paese, "Paese"));
+    //effectManager->addEffect(new MatrixRainEffect(displayManager));
+    //effectManager->addEffect(new FireEffect(displayManager));
+    //effectManager->addEffect(new StarfieldEffect(displayManager));
     effectManager->addEffect(new ImageEffect(displayManager, 
         (DrawImageFunction)draw_pokemon, "Pokemon"));
     effectManager->addEffect(new MarioClockEffect(displayManager, timeManager));
@@ -138,31 +135,29 @@ void setup() {
     effectManager->addEffect(new ImageEffect(displayManager, 
         (DrawImageFunction)draw_luigi, "Luigi"));
     effectManager->addEffect(new ImageEffect(displayManager, 
-        (DrawImageFunction)draw_cave, "Cave"));
-    effectManager->addEffect(new ImageEffect(displayManager, 
         (DrawImageFunction)draw_fox, "Fox"));
     
-    Serial.printf("[Setup] ✓ Loaded %d effects\n", effectManager->getEffectCount());
+    DEBUG_PRINTF("[Setup] ✓ Loaded %d effects\n", effectManager->getEffectCount());
     
     // Applica impostazioni salvate
     if (settings.isAutoSwitch()) {
         effectManager->resume();
     } else {
         effectManager->pause();
-        Serial.println(F("[Setup] Setting current effect from settings..."));
+        DEBUG_PRINTLN(F("[Setup] Setting current effect from settings..."));
         if (settings.getCurrentEffect() >= 0) {
             effectManager->switchToEffect(settings.getCurrentEffect());
-            Serial.printf("[Setup] ✓ Effect set to index %d\n", settings.getCurrentEffect());
+            DEBUG_PRINTF("[Setup] ✓ Effect set to index %d\n", settings.getCurrentEffect());
         }
     }
     
     // ─────────────────────────────────────────
     // 5. WiFi
     // ─────────────────────────────────────────
-    Serial.println(F("[Setup] Initializing WiFi..."));
+    DEBUG_PRINTLN(F("[Setup] Initializing WiFi..."));
     wifiManager = new WiFiManager(&settings);
     wifiManager->begin();
-    Serial.println(F("[Setup] ✓ WiFi OK"));
+    DEBUG_PRINTLN(F("[Setup] ✓ WiFi OK"));
     
     // ─────────────────────────────────────────
     // 6. Command Handler
@@ -172,19 +167,19 @@ void setup() {
     // ─────────────────────────────────────────
     // 7. Web Server
     // ─────────────────────────────────────────
-    Serial.println(F("[Setup] Initializing WebServer..."));
+    DEBUG_PRINTLN(F("[Setup] Initializing WebServer..."));
     webServer = new WebServerManager(80);
     webServer->init(&commandHandler);
-    Serial.println(F("[Setup] ✓ WebServer OK"));
+    DEBUG_PRINTLN(F("[Setup] ✓ WebServer OK"));
     
     // ─────────────────────────────────────────
     // 8. WebSocket
     // ─────────────────────────────────────────
-    Serial.println(F("[Setup] Initializing WebSocket..."));
+    DEBUG_PRINTLN(F("[Setup] Initializing WebSocket..."));
     wsManager = new WebSocketManager();
     wsManager->init(webServer->getServer(), &commandHandler);
     commandHandler.setWebSocketManager(wsManager);
-    Serial.println(F("[Setup] ✓ WebSocket OK"));
+    DEBUG_PRINTLN(F("[Setup] ✓ WebSocket OK"));
     
     // ─────────────────────────────────────────
     // 9. Callbacks per notifiche
@@ -197,20 +192,20 @@ void setup() {
     // ─────────────────────────────────────────
     // Setup complete
     // ─────────────────────────────────────────
-    Serial.println(F(""));
-    Serial.println(F("╔══════════════════════════════════════════════════════╗"));
-    Serial.println(F("║                   Setup Complete!                    ║"));
-    Serial.println(F("╠══════════════════════════════════════════════════════╣"));
-    Serial.printf("║  IP Address: %-39s ║\n", wifiManager->getIP().c_str());
-    Serial.printf("║  mDNS: %-45s ║\n", 
+    DEBUG_PRINTLN(F(""));
+    DEBUG_PRINTLN(F("╔══════════════════════════════════════════════════════╗"));
+    DEBUG_PRINTLN(F("║                   Setup Complete!                    ║"));
+    DEBUG_PRINTLN(F("╠══════════════════════════════════════════════════════╣"));
+    DEBUG_PRINTF("║  IP Address: %-39s ║\n", wifiManager->getIP().c_str());
+    DEBUG_PRINTF("║  mDNS: %-45s ║\n", 
                  (String(settings.getDeviceName()) + ".local").c_str());
-    Serial.printf("║  WebSocket: ws://%s/ws                        ║\n", 
+    DEBUG_PRINTF("║  WebSocket: ws://%s/ws                        ║\n", 
                  wifiManager->getIP().c_str());
-    Serial.println(F("╠══════════════════════════════════════════════════════╣"));
-    Serial.println(F("║  Serial Commands: T, D, E, M, S, ?, p, r, n, 0-9     ║"));
-    Serial.println(F("║  CSV Commands: getStatus, effect,next, etc.          ║"));
-    Serial.println(F("╚══════════════════════════════════════════════════════╝"));
-    Serial.println(F(""));
+    DEBUG_PRINTLN(F("╠══════════════════════════════════════════════════════╣"));
+    DEBUG_PRINTLN(F("║  Serial Commands: T, D, E, M, S, ?, p, r, n, 0-9     ║"));
+    DEBUG_PRINTLN(F("║  CSV Commands: getStatus, effect,next, etc.          ║"));
+    DEBUG_PRINTLN(F("╚══════════════════════════════════════════════════════╝"));
+    DEBUG_PRINTLN(F(""));
     
     // Inizializza timer
     statsTimer = millis();
@@ -266,7 +261,7 @@ void loop() {
     // ─────────────────────────────────────────
     if (now - statsTimer >= STATS_INTERVAL) {
         effectManager->printStats();
-        Serial.printf("[Stats] Heap: %u bytes | WS Clients: %u\n", 
+        DEBUG_PRINTF("[Stats] Heap: %u bytes | WS Clients: %u\n", 
                      ESP.getFreeHeap(), 
                      wsManager->getClientsConnected());
         statsTimer = now;

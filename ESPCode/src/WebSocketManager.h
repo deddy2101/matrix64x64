@@ -4,6 +4,8 @@
 #include <Arduino.h>
 #include <ESPAsyncWebServer.h>
 #include "CommandHandler.h"
+#include "Debug.h"
+
 
 class WebSocketManager {
 public:

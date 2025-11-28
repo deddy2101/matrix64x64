@@ -40,14 +40,14 @@ void FireEffect::freeHeat() {
 }
 
 void FireEffect::init() {
-    Serial.println("[FireEffect] Initializing");
+    DEBUG_PRINTLN("[FireEffect] Initializing");
     
     allocateHeat();
     displayManager->fillScreen(0, 0, 0);
 }
 
 void FireEffect::cleanup() {
-    Serial.println("[FireEffect] Cleanup - freeing heat buffer");
+    DEBUG_PRINTLN("[FireEffect] Cleanup - freeing heat buffer");
     freeHeat();
 }
 

@@ -2,6 +2,8 @@
 #define DISPLAY_MANAGER_H
 
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
+#include "Debug.h"
+
 
 class DisplayManager {
 private:

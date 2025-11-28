@@ -9,7 +9,7 @@ void WebServerManager::init(CommandHandler* cmdHandler) {
     _cmdHandler = cmdHandler;
     setupRoutes();
     _server.begin();
-    Serial.println("[HTTP] Web server started");
+    DEBUG_PRINTLN("[HTTP] Web server started");
 }
 
 void WebServerManager::setupRoutes() {

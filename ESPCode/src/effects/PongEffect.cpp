@@ -9,7 +9,7 @@ PongEffect::PongEffect(DisplayManager* dm)
 }
 
 void PongEffect::init() {
-    Serial.println("Initializing Pong Effect");
+    DEBUG_PRINTLN("Initializing Pong Effect");
     
     int width = displayManager->getWidth();
     int height = displayManager->getHeight();

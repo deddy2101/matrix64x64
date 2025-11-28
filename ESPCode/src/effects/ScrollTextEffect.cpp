@@ -14,7 +14,7 @@ ScrollTextEffect::ScrollTextEffect(DisplayManager* dm, const String& scrollText,
 }
 
 void ScrollTextEffect::init() {
-    Serial.printf("[ScrollTextEffect] Initializing: \"%s\"\n", text.c_str());
+    DEBUG_PRINTF("[ScrollTextEffect] Initializing: \"%s\"\n", text.c_str());
     
     scrollX = displayManager->getWidth();
     completed = false;
@@ -36,7 +36,7 @@ void ScrollTextEffect::update() {
     // Controlla se il testo è completamente uscito dallo schermo
     if (scrollX <= -textWidth) {
         completed = true;
-        Serial.println("[ScrollTextEffect] Completed!");
+        DEBUG_PRINTLN("[ScrollTextEffect] Completed!");
     }
 }
 

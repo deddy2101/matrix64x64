@@ -13,7 +13,7 @@ ImageEffect::~ImageEffect() {
 }
 
 void ImageEffect::init() {
-    Serial.printf("Initializing Image Effect: %s\n", imageName.c_str());
+    DEBUG_PRINTF("Initializing Image Effect: %s\n", imageName.c_str());
     
     displayManager->fillScreen(0, 0, 0);
     imageDrawn = false;

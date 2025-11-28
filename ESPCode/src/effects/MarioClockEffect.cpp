@@ -44,7 +44,7 @@ MarioClockEffect::~MarioClockEffect() {
 }
 
 void MarioClockEffect::init() {
-    Serial.println("[MarioClockEffect] Initializing");
+    DEBUG_PRINTLN("[MarioClockEffect] Initializing");
     
     initMario();
     initBlocks();
@@ -64,7 +64,7 @@ void MarioClockEffect::init() {
     minuteBlock->text = String(minStr);
     
     timeManager->setOnMinuteChange([this](int h, int m, int s) {
-        Serial.printf("[MarioClockEffect] Minute changed callback: %02d:%02d\n", h, m);
+        DEBUG_PRINTF("[MarioClockEffect] Minute changed callback: %02d:%02d\n", h, m);
         
         bool hourChanged = (h != lastHour);
         bool minuteChanged = (m != lastMinute);
@@ -78,25 +78,25 @@ void MarioClockEffect::init() {
 #endif
         
         if (hourChanged && minuteChanged) {
-            Serial.println("[MarioClockEffect] Hour AND minute changed - jump to BOTH");
+            DEBUG_PRINTLN("[MarioClockEffect] Hour AND minute changed - jump to BOTH");
             marioJump(BOTH_BLOCKS);
         } else if (hourChanged) {
-            Serial.println("[MarioClockEffect] Hour changed - jump to HOUR block");
+            DEBUG_PRINTLN("[MarioClockEffect] Hour changed - jump to HOUR block");
             marioJump(HOUR_BLOCK);
         } else if (minuteChanged) {
-            Serial.println("[MarioClockEffect] Minute changed - jump to MINUTE block");
+            DEBUG_PRINTLN("[MarioClockEffect] Minute changed - jump to MINUTE block");
             marioJump(MINUTE_BLOCK);
         }
     });
     
-    Serial.printf("[MarioClockEffect] Synced with time: %02d:%02d\n", lastHour, lastMinute);
+    DEBUG_PRINTF("[MarioClockEffect] Synced with time: %02d:%02d\n", lastHour, lastMinute);
     
     lastMarioUpdate = millis();
     needsRedraw = true;
 }
 
 void MarioClockEffect::cleanup() {
-    Serial.println("[MarioClockEffect] Cleanup - removing TimeManager callback");
+    DEBUG_PRINTLN("[MarioClockEffect] Cleanup - removing TimeManager callback");
     
     if (timeManager) {
         timeManager->setOnMinuteChange(nullptr);
@@ -166,14 +166,14 @@ void MarioClockEffect::initPipe() {
     lastPipeUpdate = 0;
     pipeVisibleUntil = 0;
     
-    Serial.printf("[MarioClockEffect] Pipe initialized at x=%d, hiddenY=%d, targetY=%d\n", 
+    DEBUG_PRINTF("[MarioClockEffect] Pipe initialized at x=%d, hiddenY=%d, targetY=%d\n", 
                   pipe->x, pipe->hiddenY, pipe->targetY);
 }
 
 void MarioClockEffect::triggerPipe() {
     if (pipe->state == PIPE_HIDDEN) {
         pipe->state = PIPE_RISING;
-        Serial.println("[MarioClockEffect] Pipe triggered - starting to rise");
+        DEBUG_PRINTLN("[MarioClockEffect] Pipe triggered - starting to rise");
     }
 }
 
@@ -197,7 +197,7 @@ void MarioClockEffect::updatePipe() {
                     pipe->y = pipe->targetY;
                     pipe->state = PIPE_VISIBLE;
                     pipeVisibleUntil = now + PIPE_VISIBLE_TIME;
-                    Serial.println("[MarioClockEffect] Pipe fully visible");
+                    DEBUG_PRINTLN("[MarioClockEffect] Pipe fully visible");
                 }
                 
                 drawPipe();
@@ -207,7 +207,7 @@ void MarioClockEffect::updatePipe() {
                 // Aspetta che scada il timer
                 if (now >= pipeVisibleUntil) {
                     pipe->state = PIPE_LOWERING;
-                    Serial.println("[MarioClockEffect] Pipe starting to lower");
+                    DEBUG_PRINTLN("[MarioClockEffect] Pipe starting to lower");
                 }
                 break;
                 
@@ -222,7 +222,7 @@ void MarioClockEffect::updatePipe() {
                     pipe->state = PIPE_HIDDEN;
                     // Ridisegna il terreno dove era il tubo
                     redrawBackground(pipe->x, displayManager->getHeight() - 8, pipe->width, 8);
-                    Serial.println("[MarioClockEffect] Pipe hidden");
+                    DEBUG_PRINTLN("[MarioClockEffect] Pipe hidden");
                 } else {
                     drawPipe();
                 }
@@ -534,15 +534,15 @@ void MarioClockEffect::marioJump(JumpTarget target) {
         switch(target) {
             case HOUR_BLOCK:
                 marioTargetX = 8;
-                Serial.println("[MarioClockEffect] Walking to HOUR block");
+                DEBUG_PRINTLN("[MarioClockEffect] Walking to HOUR block");
                 break;
             case MINUTE_BLOCK:
                 marioTargetX = 40;
-                Serial.println("[MarioClockEffect] Walking to MINUTE block");
+                DEBUG_PRINTLN("[MarioClockEffect] Walking to MINUTE block");
                 break;
             case BOTH_BLOCKS:
                 marioTargetX = 8;
-                Serial.println("[MarioClockEffect] Walking to HOUR block first");
+                DEBUG_PRINTLN("[MarioClockEffect] Walking to HOUR block first");
                 break;
             default:
                 marioTargetX = 23;
@@ -617,7 +617,7 @@ void MarioClockEffect::updateMario() {
         marioFacingRight = (marioTargetX > marioSprite->x);
         walkingToJump = true;
         
-        Serial.println("[MarioClockEffect] Walking to MINUTE block");
+        DEBUG_PRINTLN("[MarioClockEffect] Walking to MINUTE block");
         
         if (abs(marioSprite->x - marioTargetX) <= WALK_SPEED) {
             marioSprite->x = marioTargetX;
@@ -645,7 +645,7 @@ void MarioClockEffect::updateMario() {
             
             if (marioSprite->direction == 1) {
                 if (checkCollision(*marioSprite, *hourBlock) && !marioSprite->collisionDetected) {
-                    Serial.println("[MarioClockEffect] Collision with hour block!");
+                    DEBUG_PRINTLN("[MarioClockEffect] Collision with hour block!");
                     hourBlock->isHit = true;
                     marioSprite->direction = -1;
                     marioSprite->collisionDetected = true;
@@ -653,7 +653,7 @@ void MarioClockEffect::updateMario() {
                     hourBlock->text = String(timeManager->getHour());
                     needsRedraw = true;
                 } else if (checkCollision(*marioSprite, *minuteBlock) && !marioSprite->collisionDetected) {
-                    Serial.println("[MarioClockEffect] Collision with minute block!");
+                    DEBUG_PRINTLN("[MarioClockEffect] Collision with minute block!");
                     minuteBlock->isHit = true;
                     marioSprite->direction = -1;
                     marioSprite->collisionDetected = true;
@@ -680,7 +680,7 @@ void MarioClockEffect::updateMario() {
                 marioSprite->sprite = MARIO_IDLE;
                 
                 if (currentJumpTarget == BOTH_BLOCKS) {
-                    Serial.println("[MarioClockEffect] Preparing for second jump...");
+                    DEBUG_PRINTLN("[MarioClockEffect] Preparing for second jump...");
                     waitingForNextJump = true;
                     nextJumpDelay = millis() + 300;
                 } else {

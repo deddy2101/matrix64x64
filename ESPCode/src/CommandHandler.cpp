@@ -53,7 +53,7 @@ String CommandHandler::processCommand(const String& command) {
         return "ERR,empty command";
     }
     
-    Serial.printf("[CMD] Processing: %s\n", cmd.c_str());
+    DEBUG_PRINTF("[CMD] Processing: %s\n", cmd.c_str());
     
     std::vector<String> parts = splitCommand(cmd, ',');
     String mainCmd = parts[0];
@@ -158,17 +158,17 @@ String CommandHandler::processLegacyCommand(const String& command) {
             return "OK,settings saved";
             
         case '?':
-            Serial.println(F("\n=== LED Matrix Commands ==="));
-            Serial.println(F("T - Time status"));
-            Serial.println(F("D - Time debug"));
-            Serial.println(F("E - Next effect"));
-            Serial.println(F("M - Toggle time mode"));
-            Serial.println(F("S - Save settings"));
-            Serial.println(F("P - Pause auto-switch"));
-            Serial.println(F("R - Resume auto-switch"));
-            Serial.println(F("N - Next effect"));
-            Serial.println(F("0-9 - Select effect"));
-            Serial.println(F("\nCSV Commands: getStatus, effect,next, brightness,200, etc."));
+            DEBUG_PRINTLN(F("\n=== LED Matrix Commands ==="));
+            DEBUG_PRINTLN(F("T - Time status"));
+            DEBUG_PRINTLN(F("D - Time debug"));
+            DEBUG_PRINTLN(F("E - Next effect"));
+            DEBUG_PRINTLN(F("M - Toggle time mode"));
+            DEBUG_PRINTLN(F("S - Save settings"));
+            DEBUG_PRINTLN(F("P - Pause auto-switch"));
+            DEBUG_PRINTLN(F("R - Resume auto-switch"));
+            DEBUG_PRINTLN(F("N - Next effect"));
+            DEBUG_PRINTLN(F("0-9 - Select effect"));
+            DEBUG_PRINTLN(F("\nCSV Commands: getStatus, effect,next, brightness,200, etc."));
             return "OK";
             
         case 'P':
@@ -614,7 +614,7 @@ String CommandHandler::handleRestart() {
     if (_settings) {
         _settings->save();
     }
-    Serial.println(F("[CMD] Restarting in 2 seconds..."));
+    DEBUG_PRINTLN(F("[CMD] Restarting in 2 seconds..."));
     delay(2000);
     ESP.restart();
     return "OK,restarting";
@@ -630,7 +630,7 @@ void CommandHandler::updateBrightness() {
         uint8_t brightness = _settings->getCurrentBrightness(hour);
         _displayManager->setBrightness(brightness);
         
-        Serial.printf("[Brightness] Updated to %d (hour=%d, night=%s)\n", 
+        DEBUG_PRINTF("[Brightness] Updated to %d (hour=%d, night=%s)\n", 
                      brightness, hour, _settings->isNightTime(hour) ? "yes" : "no");
     }
 }
@@ -647,6 +647,6 @@ void CommandHandler::processSerial(const String& cmd) {
     }
     
     if (!response.isEmpty()) {
-        Serial.println(response);
+        DEBUG_PRINTLN(response);
     }
 }

@@ -3,6 +3,8 @@
 
 #include "Effect.h"
 #include <vector>
+#include "Debug.h"
+
 
 class EffectManager {
 private:
@@ -21,7 +23,7 @@ private:
         
         // Disattiva effetto corrente
         if (currentEffectIndex >= 0 && currentEffectIndex < effects.size()) {
-            Serial.printf("[EffectManager] Switching from effect: %s to %s\n",
+            DEBUG_PRINTF("[EffectManager] Switching from effect: %s to %s\n",
                           effects[currentEffectIndex]->getName(),
                           effects[index]->getName());
             effects[currentEffectIndex]->deactivate();
@@ -31,7 +33,7 @@ private:
         currentEffectIndex = index;
         effectStartTime = millis();
         effects[currentEffectIndex]->activate();
-        Serial.printf("[EffectManager] Activated effect: %s\n", effects[currentEffectIndex]->getName());
+        DEBUG_PRINTF("[EffectManager] Activated effect: %s\n", effects[currentEffectIndex]->getName());
     }
     
 public:

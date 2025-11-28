@@ -8,6 +8,8 @@
 #include "DisplayManager.h"
 #include "Settings.h"
 #include "WiFiManager.h"
+#include "Debug.h"
+
 
 // Forward declaration
 class WebSocketManager;

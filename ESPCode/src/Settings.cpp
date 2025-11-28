@@ -55,7 +55,7 @@ void Settings::load() {
     
     dirty = false;
     
-    Serial.println(F("[Settings] Loaded from NVS"));
+    DEBUG_PRINTLN(F("[Settings] Loaded from NVS"));
     print();
 }
 
@@ -81,7 +81,7 @@ void Settings::save() {
     
     dirty = false;
     
-    Serial.println(F("[Settings] Saved to NVS"));
+    DEBUG_PRINTLN(F("[Settings] Saved to NVS"));
 }
 
 // ═══════════════════════════════════════════
@@ -188,18 +188,18 @@ String Settings::toCSV() const {
 }
 
 void Settings::print() const {
-    Serial.println(F("╔═════════════════════════════════════╗"));
-    Serial.println(F("║        Current Settings             ║"));
-    Serial.println(F("╠═════════════════════════════════════╣"));
-    Serial.printf("║  WiFi SSID: %-24s║\n", config.ssid[0] ? config.ssid : "(not set)");
-    Serial.printf("║  WiFi Mode: %-24s║\n", config.useAP ? "Access Point" : "Station");
-    Serial.printf("║  Brightness Day: %-19d║\n", config.brightnessDay);
-    Serial.printf("║  Brightness Night: %-17d║\n", config.brightnessNight);
-    Serial.printf("║  Night Hours: %02d:00 - %02d:00        ║\n", 
+    DEBUG_PRINTLN(F("╔═════════════════════════════════════╗"));
+    DEBUG_PRINTLN(F("║        Current Settings             ║"));
+    DEBUG_PRINTLN(F("╠═════════════════════════════════════╣"));
+    DEBUG_PRINTF("║  WiFi SSID: %-24s║\n", config.ssid[0] ? config.ssid : "(not set)");
+    DEBUG_PRINTF("║  WiFi Mode: %-24s║\n", config.useAP ? "Access Point" : "Station");
+    DEBUG_PRINTF("║  Brightness Day: %-19d║\n", config.brightnessDay);
+    DEBUG_PRINTF("║  Brightness Night: %-17d║\n", config.brightnessNight);
+    DEBUG_PRINTF("║  Night Hours: %02d:00 - %02d:00        ║\n", 
                  config.nightStartHour, config.nightEndHour);
-    Serial.printf("║  Effect Duration: %-14lu ms║\n", config.effectDuration);
-    Serial.printf("║ Current Effect: %-16s║\n", config.currentEffect >= 0 ? String(config.currentEffect).c_str() : "Auto");
-    Serial.printf("║  Auto Switch: %-22s║\n", config.autoSwitch ? "ON" : "OFF");
-    Serial.printf("║  Device Name: %-22s║\n", config.deviceName);
-    Serial.println(F("╚═════════════════════════════════════╝"));
+    DEBUG_PRINTF("║  Effect Duration: %-14lu ms║\n", config.effectDuration);
+    DEBUG_PRINTF("║ Current Effect: %-16s║\n", config.currentEffect >= 0 ? String(config.currentEffect).c_str() : "Auto");
+    DEBUG_PRINTF("║  Auto Switch: %-22s║\n", config.autoSwitch ? "ON" : "OFF");
+    DEBUG_PRINTF("║  Device Name: %-22s║\n", config.deviceName);
+    DEBUG_PRINTLN(F("╚═════════════════════════════════════╝"));
 }

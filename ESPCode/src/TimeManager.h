@@ -7,6 +7,7 @@
 #include <sys/time.h>
 #include <Wire.h>
 #include <RTClib.h>
+#include "Debug.h"
 
 // Callback per notificare cambiamenti di tempo
 typedef std::function<void(int hour, int minute, int second)> TimeCallback;

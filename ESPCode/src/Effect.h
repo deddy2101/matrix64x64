@@ -3,6 +3,8 @@
 
 #include "DisplayManager.h"
 #include <Arduino.h>
+#include "Debug.h"
+
 
 class Effect {
 protected:
@@ -78,7 +80,7 @@ public:
         init();  // Chiama l'init dell'effetto concreto
         initialized = true;
         
-        Serial.printf("[Effect] Activated: %s\n", getName());
+        DEBUG_PRINTF("[Effect] Activated: %s\n", getName());
     }
     
     /**
@@ -88,7 +90,7 @@ public:
         if (initialized) {
             cleanup();
             initialized = false;
-            Serial.printf("[Effect] Deactivated: %s\n", getName());
+            DEBUG_PRINTF("[Effect] Deactivated: %s\n", getName());
         }
     }
     
@@ -98,7 +100,7 @@ public:
      */
     void execute() {
         if (!initialized) {
-            Serial.printf("[Effect] Activating effect: %s\n", getName());
+            DEBUG_PRINTF("[Effect] Activating effect: %s\n", getName());
             activate();
         }
         update();

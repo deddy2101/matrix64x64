@@ -25,16 +25,16 @@ bool TimeManager::initDS3231() {
     
     // Prova a inizializzare il DS3231
     if (!ds3231.begin()) {
-        Serial.println(F("[TimeManager] ⚠ DS3231 non trovato!"));
+        DEBUG_PRINTLN(F("[TimeManager] ⚠ DS3231 non trovato!"));
         return false;
     }
     
     // Controlla se ha perso l'alimentazione
     if (ds3231.lostPower()) {
-        Serial.println(F("[TimeManager] ⚠ DS3231 ha perso alimentazione, necessita sync"));
+        DEBUG_PRINTLN(F("[TimeManager] ⚠ DS3231 ha perso alimentazione, necessita sync"));
     }
     
-    Serial.println(F("[TimeManager] ✓ DS3231 inizializzato"));
+    DEBUG_PRINTLN(F("[TimeManager] ✓ DS3231 inizializzato"));
     return true;
 }
 
@@ -63,7 +63,7 @@ void TimeManager::syncFromDS3231() {
     currentMinute = timeinfo.tm_min;
     currentSecond = timeinfo.tm_sec;
     
-    Serial.printf("[TimeManager] ✓ Sincronizzato da DS3231: %04d/%02d/%02d %02d:%02d:%02d\n",
+    DEBUG_PRINTF("[TimeManager] ✓ Sincronizzato da DS3231: %04d/%02d/%02d %02d:%02d:%02d\n",
                  currentYear, currentMonth, currentDay,
                  currentHour, currentMinute, currentSecond);
 }
@@ -97,7 +97,7 @@ void TimeManager::syncToDS3231() {
     // Salva nel DS3231 (in UTC)
     ds3231.adjust(DateTime(localEpoch));
     
-    Serial.printf("[TimeManager] ✓ DS3231 aggiornato (UTC epoch: %lu)\n", 
+    DEBUG_PRINTF("[TimeManager] ✓ DS3231 aggiornato (UTC epoch: %lu)\n", 
                  (unsigned long)localEpoch);
 }
 
@@ -139,50 +139,50 @@ void TimeManager::begin(int hour, int minute, int second) {
         }
     }
     
-    Serial.println(F(""));
-    Serial.println(F("╔════════════════════════════════════════════════════╗"));
-    Serial.println(F("║           TimeManager - Serial Sync Ready          ║"));
-    Serial.println(F("╠════════════════════════════════════════════════════╣"));
-    Serial.printf(  "║  Mode: %-44s ║\n", getModeString().c_str());
-    Serial.printf(  "║  Time: %02d:%02d:%02d                                    ║\n", 
+    DEBUG_PRINTLN(F(""));
+    DEBUG_PRINTLN(F("╔════════════════════════════════════════════════════╗"));
+    DEBUG_PRINTLN(F("║           TimeManager - Serial Sync Ready          ║"));
+    DEBUG_PRINTLN(F("╠════════════════════════════════════════════════════╣"));
+    DEBUG_PRINTF(  "║  Mode: %-44s ║\n", getModeString().c_str());
+    DEBUG_PRINTF(  "║  Time: %02d:%02d:%02d                                    ║\n", 
                    currentHour, currentMinute, currentSecond);
-    Serial.printf(  "║  Date: %04d/%02d/%02d                                 ║\n",
+    DEBUG_PRINTF(  "║  Date: %04d/%02d/%02d                                 ║\n",
                    currentYear, currentMonth, currentDay);
-    Serial.printf(  "║  DS3231: %-42s ║\n", 
+    DEBUG_PRINTF(  "║  DS3231: %-42s ║\n", 
                    ds3231Available ? "✓ Connected" : "✗ Not found");
     if (ds3231Available) {
-        Serial.printf("║  DS3231 Temp: %.1f°C                              ║\n",
+        DEBUG_PRINTF("║  DS3231 Temp: %.1f°C                              ║\n",
                      getDS3231Temperature());
     }
-    Serial.println(F("╠════════════════════════════════════════════════════╣"));
-    Serial.println(F("║  Serial Commands:                                  ║"));
-    Serial.println(F("║    T12:30:00  - Set time (HH:MM:SS)                ║"));
-    Serial.println(F("║    T12:30     - Set time (HH:MM)                   ║"));
-    Serial.println(F("║    D2025/01/15 12:30:00 - Set full datetime        ║"));
-    Serial.println(F("║    E1234567890 - Sync from epoch (UTC)             ║"));
-    Serial.println(F("║    Mfake     - Switch to fake/fast mode            ║"));
-    Serial.println(F("║    Mrtc      - Switch to RTC real-time mode        ║"));
-    Serial.println(F("║    S         - Show current status                 ║"));
-    Serial.println(F("║    ?         - Show this help                      ║"));
-    Serial.println(F("╚════════════════════════════════════════════════════╝"));
-    Serial.println(F(""));
+    DEBUG_PRINTLN(F("╠════════════════════════════════════════════════════╣"));
+    DEBUG_PRINTLN(F("║  Serial Commands:                                  ║"));
+    DEBUG_PRINTLN(F("║    T12:30:00  - Set time (HH:MM:SS)                ║"));
+    DEBUG_PRINTLN(F("║    T12:30     - Set time (HH:MM)                   ║"));
+    DEBUG_PRINTLN(F("║    D2025/01/15 12:30:00 - Set full datetime        ║"));
+    DEBUG_PRINTLN(F("║    E1234567890 - Sync from epoch (UTC)             ║"));
+    DEBUG_PRINTLN(F("║    Mfake     - Switch to fake/fast mode            ║"));
+    DEBUG_PRINTLN(F("║    Mrtc      - Switch to RTC real-time mode        ║"));
+    DEBUG_PRINTLN(F("║    S         - Show current status                 ║"));
+    DEBUG_PRINTLN(F("║    ?         - Show this help                      ║"));
+    DEBUG_PRINTLN(F("╚════════════════════════════════════════════════════╝"));
+    DEBUG_PRINTLN(F(""));
 }
 
 void TimeManager::printHelp() {
-    Serial.println(F("\n=== TimeManager Commands ==="));
-    Serial.println(F("T12:30:00  - Set time HH:MM:SS"));
-    Serial.println(F("T12:30     - Set time HH:MM"));
-    Serial.println(F("D2025/01/15 12:30:00 - Set datetime"));
-    Serial.println(F("E<epoch>   - Sync from Unix epoch (UTC)"));
-    Serial.println(F("Mfake      - Fast time mode"));
-    Serial.println(F("Mrtc       - Real time mode"));
-    Serial.println(F("S          - Show status"));
-    Serial.println(F("?          - This help\n"));
+    DEBUG_PRINTLN(F("\n=== TimeManager Commands ==="));
+    DEBUG_PRINTLN(F("T12:30:00  - Set time HH:MM:SS"));
+    DEBUG_PRINTLN(F("T12:30     - Set time HH:MM"));
+    DEBUG_PRINTLN(F("D2025/01/15 12:30:00 - Set datetime"));
+    DEBUG_PRINTLN(F("E<epoch>   - Sync from Unix epoch (UTC)"));
+    DEBUG_PRINTLN(F("Mfake      - Fast time mode"));
+    DEBUG_PRINTLN(F("Mrtc       - Real time mode"));
+    DEBUG_PRINTLN(F("S          - Show status"));
+    DEBUG_PRINTLN(F("?          - This help\n"));
 }
 
 void TimeManager::setFakeSpeed(unsigned long ms) {
     updateInterval = ms;
-    Serial.printf("[TimeManager] Fake speed: %lu ms/min\n", ms);
+    DEBUG_PRINTF("[TimeManager] Fake speed: %lu ms/min\n", ms);
 }
 
 void TimeManager::processSerialCommand(const String& cmd) {
@@ -201,9 +201,9 @@ void TimeManager::processSerialCommand(const String& cmd) {
             
             if (parsed >= 2) {
                 setTime(h, m, s);
-                Serial.printf("[TimeManager] ✓ Time synced: %02d:%02d:%02d\n", h, m, s);
+                DEBUG_PRINTF("[TimeManager] ✓ Time synced: %02d:%02d:%02d\n", h, m, s);
             } else {
-                Serial.println("[TimeManager] ✗ Invalid format. Use T12:30:00 or T12:30");
+                DEBUG_PRINTLN("[TimeManager] ✗ Invalid format. Use T12:30:00 or T12:30");
             }
             break;
         }
@@ -216,10 +216,10 @@ void TimeManager::processSerialCommand(const String& cmd) {
             
             if (parsed >= 5) {
                 setDateTime(y, mo, d, h, m, s);
-                Serial.printf("[TimeManager] ✓ DateTime synced: %04d/%02d/%02d %02d:%02d:%02d\n", 
+                DEBUG_PRINTF("[TimeManager] ✓ DateTime synced: %04d/%02d/%02d %02d:%02d:%02d\n", 
                              y, mo, d, h, m, s);
             } else {
-                Serial.println("[TimeManager] ✗ Invalid format. Use D2025/01/15 12:30:00");
+                DEBUG_PRINTLN("[TimeManager] ✗ Invalid format. Use D2025/01/15 12:30:00");
             }
             break;
         }
@@ -230,9 +230,9 @@ void TimeManager::processSerialCommand(const String& cmd) {
             unsigned long epoch = strtoul(arg.c_str(), NULL, 10);
             if (epoch > 0) {
                 syncFromEpoch(epoch);
-                Serial.printf("[TimeManager] ✓ Synced from epoch: %lu\n", epoch);
+                DEBUG_PRINTF("[TimeManager] ✓ Synced from epoch: %lu\n", epoch);
             } else {
-                Serial.println("[TimeManager] ✗ Invalid epoch");
+                DEBUG_PRINTLN("[TimeManager] ✗ Invalid epoch");
             }
             break;
         }
@@ -243,19 +243,19 @@ void TimeManager::processSerialCommand(const String& cmd) {
             arg.toLowerCase();
             if (arg == "fake" || arg == "f") {
                 setMode(TimeMode::FAKE);
-                Serial.println("[TimeManager] ✓ Switched to FAKE mode");
+                DEBUG_PRINTLN("[TimeManager] ✓ Switched to FAKE mode");
             } else if (arg == "rtc" || arg == "r") {
                 setMode(TimeMode::RTC);
-                Serial.println("[TimeManager] ✓ Switched to RTC mode");
+                DEBUG_PRINTLN("[TimeManager] ✓ Switched to RTC mode");
             } else {
-                Serial.println("[TimeManager] ✗ Use Mfake or Mrtc");
+                DEBUG_PRINTLN("[TimeManager] ✗ Use Mfake or Mrtc");
             }
             break;
         }
         
         case 'S':
         case 's': {
-            Serial.println(getFullStatus());
+            DEBUG_PRINTLN(getFullStatus());
             break;
         }
         
@@ -440,7 +440,7 @@ void TimeManager::setDateTime(int year, int month, int day, int hour, int minute
     // Aggiorna anche il DS3231
     syncToDS3231();
     
-    Serial.printf("[TimeManager] DateTime set: %04d/%02d/%02d %02d:%02d:%02d\n",
+    DEBUG_PRINTF("[TimeManager] DateTime set: %04d/%02d/%02d %02d:%02d:%02d\n",
                  year, month, day, currentHour, currentMinute, currentSecond);
 }
 
@@ -455,10 +455,10 @@ void TimeManager::syncFromEpoch(unsigned long epoch) {
     // Salva nel DS3231 (in UTC)
     if (ds3231Available) {
         ds3231.adjust(DateTime((uint32_t)epoch));
-        Serial.println("[TimeManager] ✓ DS3231 synchronized");
+        DEBUG_PRINTLN("[TimeManager] ✓ DS3231 synchronized");
     }
     
-    Serial.printf("[TimeManager] Synced from epoch, local time: %02d:%02d:%02d\n",
+    DEBUG_PRINTF("[TimeManager] Synced from epoch, local time: %02d:%02d:%02d\n",
                  currentHour, currentMinute, currentSecond);
 }
 

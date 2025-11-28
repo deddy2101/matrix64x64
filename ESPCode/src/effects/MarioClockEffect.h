@@ -7,6 +7,7 @@
 #include "assets.h"  // Contiene GROUND, HILL, BUSH, CLOUD1, CLOUD2, BLOCK, _MASK, ecc.
 #include "Super_Mario_Bros__24pt7b.h"
 
+
 // ========== FEATURE FLAGS ==========
 #define ENABLE_PIPE_ANIMATION 1  // Metti 0 per disabilitare il tubo
 // ===================================

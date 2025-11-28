@@ -12,7 +12,7 @@ PlasmaEffect::PlasmaEffect(DisplayManager* dm)
 }
 
 void PlasmaEffect::init() {
-    Serial.println("Initializing Plasma Effect");
+    DEBUG_PRINTLN("Initializing Plasma Effect");
     
     // Palette casuale
     currentPaletteIndex = random(0, 5);
@@ -35,7 +35,7 @@ void PlasmaEffect::update() {
         cycles = 0;
         timeCounter = 0;
         
-        Serial.printf("Plasma: Changed to palette %d\n", currentPaletteIndex);
+        DEBUG_PRINTF("Plasma: Changed to palette %d\n", currentPaletteIndex);
     }
 }
 

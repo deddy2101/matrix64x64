@@ -5,6 +5,8 @@
 #include <WiFi.h>
 #include <ESPmDNS.h>
 #include "Settings.h"
+#include "Debug.h"
+
 
 enum class WiFiState {
     DISCONNECTED,

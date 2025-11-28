@@ -18,7 +18,7 @@ void WebSocketManager::init(AsyncWebServer* server, CommandHandler* cmdHandler) 
     
     server->addHandler(&_ws);
     
-    Serial.println("[WS] WebSocket initialized on /ws");
+    DEBUG_PRINTLN("[WS] WebSocket initialized on /ws");
 }
 
 void WebSocketManager::update() {
@@ -63,7 +63,7 @@ void WebSocketManager::onEvent(AsyncWebSocket* server, AsyncWebSocketClient* cli
                                 AwsEventType type, void* arg, uint8_t* data, size_t len) {
     switch (type) {
         case WS_EVT_CONNECT:
-            Serial.printf("[WS] Client #%u connected from %s\n", 
+            DEBUG_PRINTF("[WS] Client #%u connected from %s\n", 
                          client->id(), client->remoteIP().toString().c_str());
             // Invia messaggio di benvenuto con stato
             client->text("WELCOME,LED Matrix Controller");
@@ -73,7 +73,7 @@ void WebSocketManager::onEvent(AsyncWebSocket* server, AsyncWebSocketClient* cli
             break;
             
         case WS_EVT_DISCONNECT:
-            Serial.printf("[WS] Client #%u disconnected\n", client->id());
+            DEBUG_PRINTF("[WS] Client #%u disconnected\n", client->id());
             break;
             
         case WS_EVT_DATA:
@@ -85,7 +85,7 @@ void WebSocketManager::onEvent(AsyncWebSocket* server, AsyncWebSocketClient* cli
             break;
             
         case WS_EVT_ERROR:
-            Serial.printf("[WS] Client #%u error\n", client->id());
+            DEBUG_PRINTF("[WS] Client #%u error\n", client->id());
             break;
     }
 }
@@ -101,14 +101,14 @@ void WebSocketManager::handleMessage(AsyncWebSocketClient* client, uint8_t* data
     }
     message.trim();
     
-    Serial.printf("[WS] Received from #%u: %s\n", client->id(), message.c_str());
+    DEBUG_PRINTF("[WS] Received from #%u: %s\n", client->id(), message.c_str());
     
     if (_cmdHandler && !message.isEmpty()) {
         String response = _cmdHandler->processCommand(message);
         if (!response.isEmpty()) {
             client->text(response);
             _messagesSent++;
-            Serial.printf("[WS] Response: %s\n", response.c_str());
+            DEBUG_PRINTF("[WS] Response: %s\n", response.c_str());
         }
     }
 }

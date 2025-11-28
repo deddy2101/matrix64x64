@@ -5,7 +5,7 @@ StarfieldEffect::StarfieldEffect(DisplayManager* dm)
 }
 
 void StarfieldEffect::init() {
-    Serial.println("Initializing Starfield Effect");
+    DEBUG_PRINTLN("Initializing Starfield Effect");
     initStars();
     displayManager->fillScreen(0, 0, 5);
 }
