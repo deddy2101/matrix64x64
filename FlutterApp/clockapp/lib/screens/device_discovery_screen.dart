@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 import '../services/discovery_service.dart';
 import '../services/device_service.dart';
+import '../services/permission_service.dart';
+import '../widgets/discovery/discovery_widgets.dart';
 import 'home_screen.dart';
 
 class DeviceDiscoveryScreen extends StatefulWidget {
@@ -43,8 +45,72 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen> {
       }
     });
 
-    // Avvia scansione automatica
+    // Richiedi permessi e avvia scansione
+    _requestPermissionsAndScan();
+  }
+
+  /// Richiede permessi Android (se necessario) e avvia scansione
+  Future<void> _requestPermissionsAndScan() async {
+    // Su Android, richiedi permessi prima di scansionare
+    if (Platform.isAndroid) {
+      final hasPermission =
+          await PermissionService.requestDiscoveryPermissions();
+
+      if (!hasPermission) {
+        if (mounted) {
+          setState(() {
+            _error = 'Permessi necessari per trovare dispositivi';
+          });
+
+          // Mostra dialog per aprire impostazioni
+          _showPermissionDialog();
+        }
+        return;
+      }
+    }
+
+    // Permessi OK (o non necessari), avvia scansione
     _startScan();
+  }
+
+  /// Dialog per richiedere permessi
+  Future<void> _showPermissionDialog() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1a1a2e),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning, color: Colors.orange),
+            SizedBox(width: 12),
+            Text('Permessi Necessari'),
+          ],
+        ),
+        content: Text(PermissionService.getPermissionMessage()),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Annulla'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF8B5CF6),
+            ),
+            child: const Text('Apri Impostazioni'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true) {
+      await PermissionService.openSettings();
+      // Dopo che l'utente torna dalle impostazioni, riprova
+      if (mounted && await PermissionService.hasDiscoveryPermissions()) {
+        _startScan();
+      }
+    }
   }
 
   @override
@@ -134,7 +200,7 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen> {
       Navigator.of(context).pop(); // Chiudi loading dialog
 
       if (success) {
-        // Torna alla home con successo
+        // Vai alla home
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const HomeScreen()),
         );
@@ -178,7 +244,7 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen> {
       Navigator.of(context).pop(); // Chiudi loading dialog
 
       if (success) {
-        // Torna alla home con successo
+        // Vai alla home
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const HomeScreen()),
         );
@@ -269,7 +335,10 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen> {
             itemCount: _discoveredDevices.length,
             itemBuilder: (context, index) {
               final device = _discoveredDevices[index];
-              return _buildDeviceCard(device);
+              return DeviceCard(
+                device: device,
+                onTap: () => _connectToDevice(device),
+              );
             },
           ),
         ),
@@ -277,86 +346,6 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen> {
         // Error message
         if (_error != null) _buildErrorBanner(),
       ],
-    );
-  }
-
-  Widget _buildDeviceCard(DiscoveredDevice device) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      color: const Color(0xFF121218),
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey.withOpacity(0.2)),
-      ),
-      child: InkWell(
-        onTap: () => _connectToDevice(device),
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              // Icona
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF8B5CF6).withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.grid_on,
-                  color: Color(0xFF8B5CF6),
-                  size: 28,
-                ),
-              ),
-              const SizedBox(width: 16),
-
-              // Info
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      device.name,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${device.ip}:${device.port}',
-                      style: TextStyle(color: Colors.grey[400], fontSize: 14),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Icon(Icons.wifi, size: 14, color: Colors.grey[500]),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Trovato ${_formatTime(device.discoveredAt)}',
-                          style: TextStyle(
-                            color: Colors.grey[500],
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-
-              // Freccia
-              const Icon(
-                Icons.arrow_forward_ios,
-                size: 20,
-                color: Color(0xFF8B5CF6),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 
@@ -402,7 +391,10 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen> {
             itemCount: _serialDevices.length,
             itemBuilder: (context, index) {
               final device = _serialDevices[index];
-              return _buildSerialCard(device);
+              return SerialCard(
+                device: device,
+                onTap: () => _connectToSerial(device),
+              );
             },
           ),
         ),
@@ -410,68 +402,6 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen> {
         // Error message
         if (_error != null) _buildErrorBanner(),
       ],
-    );
-  }
-
-  Widget _buildSerialCard(SerialDevice device) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      color: const Color(0xFF121218),
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey.withOpacity(0.2)),
-      ),
-      child: InkWell(
-        onTap: () => _connectToSerial(device),
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              // Icona
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.usb, color: Colors.orange, size: 28),
-              ),
-              const SizedBox(width: 16),
-
-              // Info
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      device.displayName,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      device.port,
-                      style: TextStyle(color: Colors.grey[400], fontSize: 14),
-                    ),
-                  ],
-                ),
-              ),
-
-              // Freccia
-              const Icon(
-                Icons.arrow_forward_ios,
-                size: 20,
-                color: Colors.orange,
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 
@@ -597,15 +527,5 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen> {
         ],
       ),
     );
-  }
-
-  String _formatTime(DateTime time) {
-    final now = DateTime.now();
-    final diff = now.difference(time);
-
-    if (diff.inSeconds < 10) return 'ora';
-    if (diff.inSeconds < 60) return '${diff.inSeconds}s fa';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m fa';
-    return '${time.hour}:${time.minute.toString().padLeft(2, '0')}';
   }
 }

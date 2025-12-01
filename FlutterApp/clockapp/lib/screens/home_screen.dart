@@ -1,180 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
-import 'dart:io';
 import '../services/device_service.dart';
-import '../services/discovery_service.dart';
+import '../widgets/common/common_widgets.dart';
+import '../widgets/home/home_widgets.dart';
+import '../dialogs/wifi_config_dialog.dart';
+import '../dialogs/restart_confirm_dialog.dart';
 import 'device_discovery_screen.dart';
-
-/// Informazioni su una rete WiFi
-class WiFiNetwork {
-  final String ssid;
-  final int signalStrength;
-  final bool isSecured;
-
-  WiFiNetwork({
-    required this.ssid,
-    required this.signalStrength,
-    this.isSecured = true,
-  });
-
-  String get signalIcon {
-    if (signalStrength > 70) return '📶';
-    if (signalStrength > 40) return '📶';
-    return '📶';
-  }
-}
-
-/// Scanner WiFi cross-platform
-class WiFiScanner {
-  static Future<List<WiFiNetwork>> scan() async {
-    try {
-      if (Platform.isLinux) {
-        return await _scanLinux();
-      } else if (Platform.isMacOS) {
-        return await _scanMacOS();
-      } else if (Platform.isWindows) {
-        return await _scanWindows();
-      }
-    } catch (e) {
-      print('WiFi scan error: $e');
-    }
-    return [];
-  }
-
-  static Future<List<WiFiNetwork>> _scanLinux() async {
-    final result = await Process.run('nmcli', [
-      '-t',
-      '-f',
-      'SSID,SIGNAL,SECURITY',
-      'dev',
-      'wifi',
-      'list',
-    ]);
-    if (result.exitCode != 0) return [];
-
-    final networks = <WiFiNetwork>[];
-    final seen = <String>{};
-
-    for (final line in (result.stdout as String).split('\n')) {
-      if (line.trim().isEmpty) continue;
-      final parts = line.split(':');
-      if (parts.isEmpty || parts[0].isEmpty) continue;
-
-      final ssid = parts[0];
-      if (seen.contains(ssid)) continue;
-      seen.add(ssid);
-
-      final signal = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
-      final security = parts.length > 2 ? parts[2] : '';
-
-      networks.add(
-        WiFiNetwork(
-          ssid: ssid,
-          signalStrength: signal,
-          isSecured: security.isNotEmpty && security != '--',
-        ),
-      );
-    }
-
-    networks.sort((a, b) => b.signalStrength.compareTo(a.signalStrength));
-    return networks;
-  }
-
-  static Future<List<WiFiNetwork>> _scanMacOS() async {
-    final result = await Process.run(
-      '/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport',
-      ['-s'],
-    );
-    if (result.exitCode != 0) return [];
-
-    final networks = <WiFiNetwork>[];
-    final seen = <String>{};
-    final lines = (result.stdout as String).split('\n');
-
-    for (int i = 1; i < lines.length; i++) {
-      final line = lines[i].trim();
-      if (line.isEmpty) continue;
-
-      // Format: SSID BSSID RSSI CHANNEL HT CC SECURITY
-      final match = RegExp(r'^(.+?)\s+([0-9a-f:]+)\s+(-?\d+)').firstMatch(line);
-      if (match == null) continue;
-
-      final ssid = match.group(1)!.trim();
-      if (ssid.isEmpty || seen.contains(ssid)) continue;
-      seen.add(ssid);
-
-      final rssi = int.tryParse(match.group(3)!) ?? -100;
-      final signal = ((rssi + 100) * 2).clamp(0, 100);
-
-      networks.add(
-        WiFiNetwork(
-          ssid: ssid,
-          signalStrength: signal,
-          isSecured: line.contains('WPA') || line.contains('WEP'),
-        ),
-      );
-    }
-
-    networks.sort((a, b) => b.signalStrength.compareTo(a.signalStrength));
-    return networks;
-  }
-
-  static Future<List<WiFiNetwork>> _scanWindows() async {
-    final result = await Process.run('netsh', [
-      'wlan',
-      'show',
-      'networks',
-      'mode=Bssid',
-    ]);
-    if (result.exitCode != 0) return [];
-
-    final networks = <WiFiNetwork>[];
-    final seen = <String>{};
-    String? currentSsid;
-    int currentSignal = 0;
-    bool currentSecured = false;
-
-    for (final line in (result.stdout as String).split('\n')) {
-      if (line.contains('SSID') && !line.contains('BSSID')) {
-        if (currentSsid != null && !seen.contains(currentSsid)) {
-          seen.add(currentSsid);
-          networks.add(
-            WiFiNetwork(
-              ssid: currentSsid,
-              signalStrength: currentSignal,
-              isSecured: currentSecured,
-            ),
-          );
-        }
-        currentSsid = line.split(':').last.trim();
-        currentSignal = 0;
-        currentSecured = false;
-      } else if (line.contains('Signal') || line.contains('Segnale')) {
-        final match = RegExp(r'(\d+)%').firstMatch(line);
-        if (match != null) {
-          currentSignal = int.tryParse(match.group(1)!) ?? 0;
-        }
-      } else if (line.contains('Authentication') ||
-          line.contains('Autenticazione')) {
-        currentSecured = !line.contains('Open');
-      }
-    }
-
-    if (currentSsid != null && !seen.contains(currentSsid)) {
-      networks.add(
-        WiFiNetwork(
-          ssid: currentSsid,
-          signalStrength: currentSignal,
-          isSecured: currentSecured,
-        ),
-      );
-    }
-
-    networks.sort((a, b) => b.signalStrength.compareTo(a.signalStrength));
-    return networks;
-  }
-}
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -217,7 +49,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         // Se era connesso e ora non lo è più, torna alla discovery
         if (wasConnected && state == DeviceConnectionState.disconnected) {
           _addLog('Ritorno alla schermata di ricerca...');
-          // Piccolo delay per far vedere il messaggio
           Future.delayed(const Duration(milliseconds: 500), () {
             if (mounted) {
               Navigator.of(context).pushReplacement(
@@ -249,14 +80,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       }),
     ];
 
-    // FIX: Controlla stato iniziale dopo le sottoscrizioni
-    // Se l'utente arriva dalla discovery già connesso, aggiorna lo stato
+    // Controlla stato iniziale
     _isConnected = _device.isConnected;
     if (_isConnected) {
       _addLog(
         '✓ Già connesso a ${_device.connectedName} (${_device.connectionType.name})',
       );
-      // Richiedi dati iniziali
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && _isConnected) {
           _device.getStatus();
@@ -284,19 +113,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _consoleLog.insert(0, '[$time] $message');
       if (_consoleLog.length > 50) _consoleLog.removeLast();
     });
-  }
-
-  Future<void> _showConnectionDialog() async {
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) => _ConnectionDialog(device: _device),
-    );
-
-    if (result == true && _isConnected) {
-      // Connesso, richiedi dati
-      _device.getEffects();
-      _device.getSettings();
-    }
   }
 
   @override
@@ -397,7 +213,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildConnectionCard() {
-    return _GlassCard(
+    return GlassCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -427,7 +243,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           Row(
             children: [
               Expanded(
-                child: _ActionButton(
+                child: ActionButton(
                   icon: _isConnected ? Icons.link_off : Icons.link,
                   label: _isConnected ? 'Disconnetti' : 'Connetti',
                   color: _isConnected ? Colors.red[400]! : Colors.green[400]!,
@@ -435,7 +251,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     if (_isConnected) {
                       _device.disconnect();
                     } else {
-                      _showConnectionDialog();
+                      // Torna alla discovery
+                      Navigator.of(context).pushReplacement(
+                        MaterialPageRoute(
+                          builder: (_) => const DeviceDiscoveryScreen(),
+                        ),
+                      );
                     }
                   },
                 ),
@@ -443,7 +264,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               if (_isConnected) ...[
                 const SizedBox(width: 12),
                 Expanded(
-                  child: _ActionButton(
+                  child: ActionButton(
                     icon: Icons.refresh,
                     label: 'Refresh',
                     onTap: () {
@@ -465,7 +286,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget _buildStatusCard() {
     if (_status == null) return const SizedBox.shrink();
 
-    return _GlassCard(
+    return GlassCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -483,34 +304,34 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ],
           ),
           const SizedBox(height: 16),
-          _StatusRow(label: 'Ora', value: _status!.time),
-          _StatusRow(label: 'Data', value: _status!.date),
-          _StatusRow(label: 'Effetto', value: _status!.effect),
-          _StatusRow(label: 'FPS', value: _status!.fps.toStringAsFixed(1)),
-          _StatusRow(
+          StatusRow(label: 'Ora', value: _status!.time),
+          StatusRow(label: 'Data', value: _status!.date),
+          StatusRow(label: 'Effetto', value: _status!.effect),
+          StatusRow(label: 'FPS', value: _status!.fps.toStringAsFixed(1)),
+          StatusRow(
             label: 'DS3231',
             value: _status!.ds3231Available
                 ? '✓ ${_status!.temperature?.toStringAsFixed(1)}°C'
                 : '✗ Non trovato',
           ),
-          _StatusRow(
+          StatusRow(
             label: 'Auto-switch',
             value: _status!.autoSwitch ? 'ON' : 'OFF',
           ),
-          _StatusRow(
+          StatusRow(
             label: 'Luminosità',
             value:
                 '${_status!.brightness} ${_status!.isNight ? '(notte)' : '(giorno)'}',
           ),
           if (_status!.wifiStatus.isNotEmpty)
-            _StatusRow(label: 'WiFi', value: _status!.wifiStatus),
+            StatusRow(label: 'WiFi', value: _status!.wifiStatus),
         ],
       ),
     );
   }
 
   Widget _buildTimeCard() {
-    return _GlassCard(
+    return GlassCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -531,7 +352,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           Row(
             children: [
               Expanded(
-                child: _ActionButton(
+                child: ActionButton(
                   icon: Icons.sync,
                   label: 'Sincronizza',
                   onTap: () {
@@ -543,7 +364,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: _ActionButton(
+                child: ActionButton(
                   icon: Icons.schedule,
                   label: 'Imposta',
                   onTap: () => _showTimePicker(),
@@ -555,7 +376,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           Row(
             children: [
               Expanded(
-                child: _ActionButton(
+                child: ActionButton(
                   icon: Icons.timer,
                   label: 'RTC Mode',
                   color: _status?.timeMode.contains('RTC') == true
@@ -570,7 +391,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: _ActionButton(
+                child: ActionButton(
                   icon: Icons.fast_forward,
                   label: 'Fake Mode',
                   color: _status?.timeMode.contains('FAKE') == true
@@ -613,7 +434,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget _buildEffectsCard() {
     final effectsList = _effects.isNotEmpty ? _effects : _getDefaultEffects();
 
-    return _GlassCard(
+    return GlassCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -667,7 +488,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               final isSelected =
                   effect.isCurrent || (_status?.effectIndex == index);
 
-              return _EffectButton(
+              return EffectButton(
                 name: effect.name,
                 index: index,
                 isSelected: isSelected,
@@ -709,7 +530,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildPlaybackCard() {
-    return _GlassCard(
+    return GlassCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -730,7 +551,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _CircleButton(
+              CircleButton(
                 icon: Icons.pause,
                 label: 'Pausa',
                 isActive: _status?.autoSwitch == false,
@@ -740,7 +561,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   HapticFeedback.lightImpact();
                 },
               ),
-              _CircleButton(
+              CircleButton(
                 icon: Icons.play_arrow,
                 label: 'Play',
                 isActive: _status?.autoSwitch == true,
@@ -750,7 +571,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   HapticFeedback.lightImpact();
                 },
               ),
-              _CircleButton(
+              CircleButton(
                 icon: Icons.skip_next,
                 label: 'Next',
                 onTap: () {
@@ -770,7 +591,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final nightStart = _settings?.nightStartHour ?? 22;
     final nightEnd = _settings?.nightEndHour ?? 7;
 
-    return _GlassCard(
+    return GlassCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -786,7 +607,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
               ),
               const Spacer(),
-              // Indicatore giorno/notte
               if (_status != null)
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -829,7 +649,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           const SizedBox(height: 16),
 
           // Slider luminosità giorno
-          _BrightnessSlider(
+          BrightnessSlider(
             label: 'Giorno',
             icon: Icons.wb_sunny,
             value: _settings?.brightnessDay ?? 200,
@@ -840,7 +660,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           const SizedBox(height: 12),
 
           // Slider luminosità notte
-          _BrightnessSlider(
+          BrightnessSlider(
             label: 'Notte',
             icon: Icons.nightlight_round,
             value: _settings?.brightnessNight ?? 30,
@@ -866,9 +686,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
           Row(
             children: [
-              // Ora inizio notte
               Expanded(
-                child: _TimePickerButton(
+                child: TimePickerButton(
                   label: 'Dalle',
                   hour: nightStart,
                   icon: Icons.nightlight_round,
@@ -876,9 +695,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
               ),
               const SizedBox(width: 12),
-              // Ora fine notte
               Expanded(
-                child: _TimePickerButton(
+                child: TimePickerButton(
                   label: 'Alle',
                   hour: nightEnd,
                   icon: Icons.wb_sunny,
@@ -892,7 +710,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           Row(
             children: [
               Expanded(
-                child: _ActionButton(
+                child: ActionButton(
                   icon: Icons.save,
                   label: 'Salva',
                   onTap: () {
@@ -927,7 +745,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     if (time != null) {
       _device.setNightTime(time.hour, currentEnd);
-      _device.getSettings(); // Refresh settings
+      _device.getSettings();
       _addLog('→ Night start: ${time.hour}:00');
       HapticFeedback.lightImpact();
     }
@@ -948,14 +766,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     if (time != null) {
       _device.setNightTime(currentStart, time.hour);
-      _device.getSettings(); // Refresh settings
+      _device.getSettings();
       _addLog('→ Night end: ${time.hour}:00');
       HapticFeedback.lightImpact();
     }
   }
 
   Widget _buildWiFiCard() {
-    return _GlassCard(
+    return GlassCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -996,21 +814,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
           // Info corrente
           if (_status != null) ...[
-            _StatusRow(label: 'IP', value: _status!.ip),
-            _StatusRow(
+            StatusRow(label: 'IP', value: _status!.ip),
+            StatusRow(
               label: 'SSID',
               value: _status!.ssid.isNotEmpty ? _status!.ssid : '(AP Mode)',
             ),
             if (_status!.rssi != null)
-              _StatusRow(label: 'Segnale', value: '${_status!.rssi} dBm'),
+              StatusRow(label: 'Segnale', value: '${_status!.rssi} dBm'),
             const SizedBox(height: 16),
           ],
 
-          // Pulsante configura
+          // Pulsanti
           Row(
             children: [
               Expanded(
-                child: _ActionButton(
+                child: ActionButton(
                   icon: Icons.settings,
                   label: 'Configura WiFi',
                   onTap: () => _showWiFiConfigDialog(),
@@ -1018,13 +836,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: _ActionButton(
+                child: ActionButton(
                   icon: Icons.restart_alt,
                   label: 'Riavvia',
                   color: Colors.orange[400],
-                  onTap: () {
-                    _showRestartConfirmDialog();
-                  },
+                  onTap: () => _showRestartConfirmDialog(),
                 ),
               ),
             ],
@@ -1035,367 +851,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _showWiFiConfigDialog() async {
-    final ssidController = TextEditingController(text: _settings?.ssid ?? '');
-    final passwordController = TextEditingController();
-    bool apMode = _settings?.apMode ?? true;
-    List<WiFiNetwork> networks = [];
-    bool scanning = false;
-    String? selectedSsid;
-
-    Future<void> scanNetworks(StateSetter setDialogState) async {
-      setDialogState(() => scanning = true);
-      try {
-        networks = await WiFiScanner.scan();
-        if (networks.isNotEmpty && selectedSsid == null) {
-          selectedSsid = networks.first.ssid;
-          ssidController.text = selectedSsid!;
-        }
-      } catch (e) {
-        print('Scan error: $e');
-      }
-      setDialogState(() => scanning = false);
-    }
-
-    final result = await showDialog<bool>(
+    final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          // Avvia scan automatico quando si apre in Station mode
-          if (!apMode && networks.isEmpty && !scanning) {
-            scanNetworks(setDialogState);
-          }
-
-          return Dialog(
-            backgroundColor: const Color(0xFF1a1a2e),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Container(
-              width: 420,
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.wifi, color: Color(0xFF8B5CF6)),
-                      const SizedBox(width: 12),
-                      const Text(
-                        'Configura WiFi ESP32',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const Spacer(),
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => Navigator.of(context).pop(),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Mode selector
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.grey.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () {
-                              setDialogState(() => apMode = false);
-                              if (networks.isEmpty) {
-                                scanNetworks(setDialogState);
-                              }
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              decoration: BoxDecoration(
-                                color: !apMode
-                                    ? const Color(0xFF8B5CF6)
-                                    : Colors.transparent,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.wifi,
-                                    size: 18,
-                                    color: !apMode ? Colors.white : Colors.grey,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Station',
-                                    style: TextStyle(
-                                      color: !apMode
-                                          ? Colors.white
-                                          : Colors.grey,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () => setDialogState(() => apMode = true),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              decoration: BoxDecoration(
-                                color: apMode
-                                    ? const Color(0xFF8B5CF6)
-                                    : Colors.transparent,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.router,
-                                    size: 18,
-                                    color: apMode ? Colors.white : Colors.grey,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Access Point',
-                                    style: TextStyle(
-                                      color: apMode
-                                          ? Colors.white
-                                          : Colors.grey,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  if (!apMode) ...[
-                    // Network selector
-                    Row(
-                      children: [
-                        const Text(
-                          'Rete WiFi:',
-                          style: TextStyle(fontWeight: FontWeight.w500),
-                        ),
-                        const Spacer(),
-                        IconButton(
-                          icon: scanning
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.refresh, size: 20),
-                          onPressed: scanning
-                              ? null
-                              : () => scanNetworks(setDialogState),
-                          tooltip: 'Scansiona reti',
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-
-                    if (networks.isNotEmpty)
-                      Container(
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: Colors.grey.withOpacity(0.3),
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: networks.any((n) => n.ssid == selectedSsid)
-                                ? selectedSsid
-                                : null,
-                            isExpanded: true,
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            dropdownColor: const Color(0xFF1a1a2e),
-                            hint: const Text('Seleziona una rete'),
-                            items: networks.map((network) {
-                              return DropdownMenuItem(
-                                value: network.ssid,
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      network.isSecured
-                                          ? Icons.lock
-                                          : Icons.lock_open,
-                                      size: 16,
-                                      color: Colors.grey[400],
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        network.ssid,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    _SignalIndicator(
-                                      strength: network.signalStrength,
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }).toList(),
-                            onChanged: (value) {
-                              setDialogState(() {
-                                selectedSsid = value;
-                                ssidController.text = value ?? '';
-                              });
-                            },
-                          ),
-                        ),
-                      )
-                    else if (scanning)
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                            SizedBox(width: 12),
-                            Text('Scansione reti in corso...'),
-                          ],
-                        ),
-                      )
-                    else
-                      TextField(
-                        controller: ssidController,
-                        decoration: InputDecoration(
-                          hintText: 'Inserisci SSID manualmente',
-                          filled: true,
-                          fillColor: Colors.grey.withOpacity(0.1),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide.none,
-                          ),
-                          prefixIcon: const Icon(Icons.wifi),
-                        ),
-                      ),
-
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Password:',
-                      style: TextStyle(fontWeight: FontWeight.w500),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: passwordController,
-                      obscureText: true,
-                      decoration: InputDecoration(
-                        hintText: 'Password WiFi',
-                        filled: true,
-                        fillColor: Colors.grey.withOpacity(0.1),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide.none,
-                        ),
-                        prefixIcon: const Icon(Icons.lock),
-                      ),
-                    ),
-                  ] else ...[
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.blue.withOpacity(0.3)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.info_outline,
-                                color: Colors.blue[400],
-                                size: 20,
-                              ),
-                              const SizedBox(width: 8),
-                              const Text(
-                                'Modalità Access Point',
-                                style: TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'L\'ESP32 creerà una rete WiFi propria.\n'
-                            'SSID: ${_settings?.deviceName ?? "ledmatrix"}\n'
-                            'Password: ledmatrix123\n'
-                            'IP: 192.168.4.1',
-                            style: TextStyle(
-                              color: Colors.grey[400],
-                              fontSize: 13,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-
-                  const SizedBox(height: 24),
-
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: ElevatedButton(
-                      onPressed: () => Navigator.of(context).pop(true),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF8B5CF6),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text(
-                        'Salva e Riavvia',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
+      builder: (context) => WiFiConfigDialog(
+        currentSsid: _settings?.ssid,
+        currentApMode: _settings?.apMode ?? false,
+        deviceName: _settings?.deviceName,
       ),
     );
 
-    if (result == true) {
+    if (result != null) {
       _device.setWiFi(
-        ssidController.text,
-        passwordController.text,
-        apMode: apMode,
+        result['ssid'],
+        result['password'],
+        apMode: result['apMode'],
       );
       _device.saveSettings();
       _addLog('→ WiFi config saved');
@@ -1403,40 +872,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       // Chiedi se riavviare
       _showRestartConfirmDialog();
     }
-
-    ssidController.dispose();
-    passwordController.dispose();
   }
 
   Future<void> _showRestartConfirmDialog() async {
     final result = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1a1a2e),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
-          children: [
-            Icon(Icons.restart_alt, color: Colors.orange),
-            SizedBox(width: 12),
-            Text('Riavviare?'),
-          ],
-        ),
-        content: const Text(
-          'L\'ESP32 si riavvierà per applicare le nuove impostazioni WiFi.\n\n'
-          'Dovrai riconnetterti dopo il riavvio.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Annulla'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-            child: const Text('Riavvia'),
-          ),
-        ],
-      ),
+      builder: (context) => const RestartConfirmDialog(),
     );
 
     if (result == true) {
@@ -1446,7 +887,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildConsoleCard() {
-    return _GlassCard(
+    return GlassCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1505,966 +946,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ),
         ],
       ),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════
-// Widgets
-// ═══════════════════════════════════════════
-
-class _GlassCard extends StatelessWidget {
-  final Widget child;
-
-  const _GlassCard({required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.1)),
-      ),
-      child: child,
-    );
-  }
-}
-
-class _ActionButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback? onTap;
-  final Color? color;
-  final bool enabled;
-
-  const _ActionButton({
-    required this.icon,
-    required this.label,
-    this.onTap,
-    this.color,
-    this.enabled = true,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: enabled ? onTap : null,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-          decoration: BoxDecoration(
-            color: (color ?? Theme.of(context).colorScheme.primary).withOpacity(
-              enabled ? 0.15 : 0.05,
-            ),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: (color ?? Theme.of(context).colorScheme.primary)
-                  .withOpacity(enabled ? 0.3 : 0.1),
-            ),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 20,
-                color: enabled
-                    ? (color ?? Theme.of(context).colorScheme.primary)
-                    : Colors.grey,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: TextStyle(
-                  color: enabled ? Colors.white : Colors.grey,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _TimePickerButton extends StatelessWidget {
-  final String label;
-  final int hour;
-  final IconData icon;
-  final VoidCallback? onTap;
-
-  const _TimePickerButton({
-    required this.label,
-    required this.hour,
-    required this.icon,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-          decoration: BoxDecoration(
-            color: Colors.grey.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey.withOpacity(0.2)),
-          ),
-          child: Row(
-            children: [
-              Icon(icon, size: 18, color: Colors.grey[400]),
-              const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: TextStyle(fontSize: 11, color: Colors.grey[500]),
-                  ),
-                  Text(
-                    '${hour.toString().padLeft(2, '0')}:00',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-              const Spacer(),
-              Icon(Icons.edit, size: 16, color: Colors.grey[500]),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CircleButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback? onTap;
-  final bool isActive;
-
-  const _CircleButton({
-    required this.icon,
-    required this.label,
-    this.onTap,
-    this.isActive = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: onTap,
-            customBorder: const CircleBorder(),
-            child: Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: isActive
-                    ? Theme.of(context).colorScheme.primary
-                    : Theme.of(context).colorScheme.primary.withOpacity(0.15),
-                border: Border.all(
-                  color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
-                ),
-              ),
-              child: Icon(
-                icon,
-                color: isActive
-                    ? Colors.white
-                    : Theme.of(context).colorScheme.primary,
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(label, style: TextStyle(fontSize: 12, color: Colors.grey[400])),
-      ],
-    );
-  }
-}
-
-class _EffectButton extends StatelessWidget {
-  final String name;
-  final int index;
-  final bool isSelected;
-  final VoidCallback? onTap;
-
-  const _EffectButton({
-    required this.name,
-    required this.index,
-    required this.isSelected,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          decoration: BoxDecoration(
-            color: isSelected
-                ? Theme.of(context).colorScheme.primary.withOpacity(0.3)
-                : Colors.white.withOpacity(0.05),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isSelected
-                  ? Theme.of(context).colorScheme.primary
-                  : Colors.white.withOpacity(0.1),
-              width: isSelected ? 2 : 1,
-            ),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                '$index',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: isSelected
-                      ? Theme.of(context).colorScheme.primary
-                      : Colors.white,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                name.length > 8 ? '${name.substring(0, 8)}...' : name,
-                style: TextStyle(fontSize: 9, color: Colors.grey[400]),
-                textAlign: TextAlign.center,
-                maxLines: 1,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _StatusRow extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _StatusRow({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Text(label, style: TextStyle(color: Colors.grey[400])),
-          const Spacer(),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
-        ],
-      ),
-    );
-  }
-}
-
-class _BrightnessSlider extends StatefulWidget {
-  final String label;
-  final IconData icon;
-  final int value;
-  final Function(int) onChanged;
-
-  const _BrightnessSlider({
-    required this.label,
-    required this.icon,
-    required this.value,
-    required this.onChanged,
-  });
-
-  @override
-  State<_BrightnessSlider> createState() => _BrightnessSliderState();
-}
-
-class _BrightnessSliderState extends State<_BrightnessSlider> {
-  late double _value;
-  Timer? _debounce;
-
-  @override
-  void initState() {
-    super.initState();
-    _value = widget.value.toDouble();
-  }
-
-  @override
-  void didUpdateWidget(_BrightnessSlider oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.value != widget.value) {
-      _value = widget.value.toDouble();
-    }
-  }
-
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    super.dispose();
-  }
-
-  void _onChanged(double value) {
-    setState(() => _value = value);
-
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 300), () {
-      widget.onChanged(value.round());
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(widget.icon, size: 20, color: Colors.grey[400]),
-        const SizedBox(width: 12),
-        Text(widget.label, style: TextStyle(color: Colors.grey[400])),
-        Expanded(
-          child: Slider(value: _value, min: 0, max: 255, onChanged: _onChanged),
-        ),
-        SizedBox(
-          width: 40,
-          child: Text(
-            _value.round().toString(),
-            textAlign: TextAlign.right,
-            style: const TextStyle(fontWeight: FontWeight.w500),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ═══════════════════════════════════════════
-// Connection Dialog
-// ═══════════════════════════════════════════
-
-class _ConnectionDialog extends StatefulWidget {
-  final DeviceService device;
-
-  const _ConnectionDialog({required this.device});
-
-  @override
-  State<_ConnectionDialog> createState() => _ConnectionDialogState();
-}
-
-class _ConnectionDialogState extends State<_ConnectionDialog>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-
-  // Serial (solo desktop)
-  List<SerialDevice> _serialDevices = [];
-  SerialDevice? _selectedDevice;
-  bool _scanningSerial = false;
-
-  // Network Discovery
-  final DiscoveryService _discovery = DiscoveryService();
-  List<DiscoveredDevice> _discoveredDevices = [];
-  DiscoveredDevice? _selectedNetworkDevice;
-  bool _scanningNetwork = false;
-
-  // Manual input
-  final _hostController = TextEditingController();
-  final _portController = TextEditingController(text: '80');
-  bool _manualMode = false;
-
-  bool _connecting = false;
-  String? _error;
-
-  bool get _showSerialTab => widget.device.isSerialAvailable;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: _showSerialTab ? 2 : 1, vsync: this);
-    if (_showSerialTab) {
-      _scanSerialDevices();
-    }
-    // Auto-scan network all'avvio
-    _scanNetwork();
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    _hostController.dispose();
-    _portController.dispose();
-    _discovery.dispose();
-    super.dispose();
-  }
-
-  void _scanSerialDevices() {
-    setState(() => _scanningSerial = true);
-
-    try {
-      _serialDevices = widget.device.getSerialDevices();
-      if (_serialDevices.isNotEmpty) {
-        _selectedDevice = _serialDevices.first;
-      }
-    } catch (e) {
-      print('Error scanning serial: $e');
-    }
-
-    setState(() => _scanningSerial = false);
-  }
-
-  Future<void> _scanNetwork() async {
-    setState(() {
-      _scanningNetwork = true;
-      _error = null;
-    });
-
-    try {
-      _discoveredDevices = await _discovery.scan();
-      if (_discoveredDevices.isNotEmpty && _selectedNetworkDevice == null) {
-        _selectedNetworkDevice = _discoveredDevices.first;
-      }
-    } catch (e) {
-      print('Error scanning network: $e');
-    }
-
-    if (mounted) {
-      setState(() => _scanningNetwork = false);
-    }
-  }
-
-  Future<void> _connectSerial() async {
-    if (_selectedDevice == null) return;
-
-    setState(() {
-      _connecting = true;
-      _error = null;
-    });
-
-    final success = await widget.device.connectSerial(_selectedDevice!);
-
-    if (mounted) {
-      if (success) {
-        Navigator.of(context).pop(true);
-      } else {
-        setState(() {
-          _connecting = false;
-          _error = 'Impossibile connettersi alla porta seriale';
-        });
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: const Color(0xFF1a1a2e),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Container(
-        width: 400,
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Header
-            Row(
-              children: [
-                const Icon(Icons.cable, color: Color(0xFF8B5CF6)),
-                const SizedBox(width: 12),
-                const Text(
-                  'Connetti Dispositivo',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Tabs (seriale solo su desktop)
-            if (_showSerialTab) ...[
-              TabBar(
-                controller: _tabController,
-                indicatorColor: const Color(0xFF8B5CF6),
-                labelColor: const Color(0xFF8B5CF6),
-                unselectedLabelColor: Colors.grey,
-                tabs: const [
-                  Tab(icon: Icon(Icons.usb), text: 'Seriale'),
-                  Tab(icon: Icon(Icons.wifi), text: 'WiFi'),
-                ],
-              ),
-              const SizedBox(height: 24),
-
-              // Tab content
-              SizedBox(
-                height: 200,
-                child: TabBarView(
-                  controller: _tabController,
-                  children: [_buildSerialTab(), _buildWebSocketTab()],
-                ),
-              ),
-            ] else ...[
-              // Solo WiFi su mobile
-              const SizedBox(height: 8),
-              SizedBox(height: 200, child: _buildWebSocketTab()),
-            ],
-
-            // Error
-            if (_error != null) ...[
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.red.withOpacity(0.3)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.error_outline,
-                      color: Colors.red,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _error!,
-                        style: const TextStyle(color: Colors.red),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-
-            const SizedBox(height: 24),
-
-            // Connect button
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton(
-                onPressed: _connecting
-                    ? null
-                    : () {
-                        if (_showSerialTab && _tabController.index == 0) {
-                          _connectSerial();
-                        } else {
-                          _connectNetwork();
-                        }
-                      },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF8B5CF6),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: _connecting
-                    ? const SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation(Colors.white),
-                        ),
-                      )
-                    : const Text(
-                        'Connetti',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSerialTab() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            const Text(
-              'Porta seriale:',
-              style: TextStyle(fontWeight: FontWeight.w500),
-            ),
-            const Spacer(),
-            IconButton(
-              icon: _scanningSerial
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.refresh),
-              onPressed: _scanningSerial ? null : _scanSerialDevices,
-              tooltip: 'Aggiorna lista',
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-
-        if (_serialDevices.isEmpty)
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.grey.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Center(
-              child: Text(
-                'Nessun dispositivo trovato',
-                style: TextStyle(color: Colors.grey),
-              ),
-            ),
-          )
-        else
-          Container(
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey.withOpacity(0.3)),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<SerialDevice>(
-                value: _selectedDevice,
-                isExpanded: true,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                dropdownColor: const Color(0xFF1a1a2e),
-                items: _serialDevices.map((device) {
-                  return DropdownMenuItem(
-                    value: device,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(device.displayName),
-                        Text(
-                          device.port,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[400],
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }).toList(),
-                onChanged: (device) => setState(() => _selectedDevice = device),
-              ),
-            ),
-          ),
-
-        const SizedBox(height: 16),
-        Text(
-          'Collega l\'ESP32 via USB e seleziona la porta seriale.',
-          style: TextStyle(fontSize: 12, color: Colors.grey[400]),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildWebSocketTab() {
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header con toggle
-          Row(
-            children: [
-              Icon(
-                _manualMode ? Icons.edit : Icons.search,
-                size: 18,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                _manualMode ? 'Inserimento manuale' : 'Dispositivi trovati',
-                style: const TextStyle(fontWeight: FontWeight.w500),
-              ),
-              const Spacer(),
-              TextButton.icon(
-                onPressed: () => setState(() => _manualMode = !_manualMode),
-                icon: Icon(_manualMode ? Icons.search : Icons.edit, size: 16),
-                label: Text(_manualMode ? 'Auto' : 'Manuale'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-
-          if (_manualMode) ...[
-            // Input manuale
-            TextField(
-              controller: _hostController,
-              decoration: InputDecoration(
-                hintText: 'es. 192.168.1.100',
-                filled: true,
-                fillColor: Colors.grey.withOpacity(0.1),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide.none,
-                ),
-                prefixIcon: const Icon(Icons.dns),
-                labelText: 'Host / IP',
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _portController,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                hintText: '80',
-                filled: true,
-                fillColor: Colors.grey.withOpacity(0.1),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide.none,
-                ),
-                prefixIcon: const Icon(Icons.numbers),
-                labelText: 'Porta',
-              ),
-            ),
-          ] else ...[
-            // Auto-discovery
-            if (_scanningNetwork)
-              Container(
-                padding: const EdgeInsets.all(20),
-                child: const Center(
-                  child: Column(
-                    children: [
-                      CircularProgressIndicator(),
-                      SizedBox(height: 12),
-                      Text('Ricerca dispositivi...'),
-                    ],
-                  ),
-                ),
-              )
-            else if (_discoveredDevices.isEmpty)
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.grey.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  children: [
-                    Icon(Icons.wifi_find, size: 32, color: Colors.grey[500]),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Nessun dispositivo trovato',
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                    const SizedBox(height: 12),
-                    OutlinedButton.icon(
-                      onPressed: _scanNetwork,
-                      icon: const Icon(Icons.refresh, size: 18),
-                      label: const Text('Riprova'),
-                    ),
-                  ],
-                ),
-              )
-            else
-              Column(
-                children: [
-                  // Lista dispositivi
-                  ...(_discoveredDevices.map(
-                    (device) => _DeviceListTile(
-                      device: device,
-                      isSelected: _selectedNetworkDevice == device,
-                      onTap: () =>
-                          setState(() => _selectedNetworkDevice = device),
-                    ),
-                  )),
-                  const SizedBox(height: 8),
-                  // Pulsante refresh
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton.icon(
-                      onPressed: _scanNetwork,
-                      icon: const Icon(Icons.refresh, size: 16),
-                      label: const Text('Aggiorna'),
-                    ),
-                  ),
-                ],
-              ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Future<void> _connectNetwork() async {
-    String host;
-    int port;
-
-    if (_manualMode) {
-      host = _hostController.text.trim();
-      port = int.tryParse(_portController.text) ?? 80;
-      if (host.isEmpty) {
-        setState(() => _error = 'Inserisci un indirizzo host');
-        return;
-      }
-    } else {
-      if (_selectedNetworkDevice == null) {
-        setState(() => _error = 'Seleziona un dispositivo');
-        return;
-      }
-      host = _selectedNetworkDevice!.ip;
-      port = _selectedNetworkDevice!.port;
-    }
-
-    setState(() {
-      _connecting = true;
-      _error = null;
-    });
-
-    final success = await widget.device.connectWebSocket(host, port: port);
-
-    if (mounted) {
-      if (success) {
-        Navigator.of(context).pop(true);
-      } else {
-        setState(() {
-          _connecting = false;
-          _error = 'Impossibile connettersi a $host:$port';
-        });
-      }
-    }
-  }
-}
-
-/// Tile per dispositivo scoperto
-class _DeviceListTile extends StatelessWidget {
-  final DiscoveredDevice device;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _DeviceListTile({
-    required this.device,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: isSelected
-                  ? Theme.of(context).colorScheme.primary.withOpacity(0.15)
-                  : Colors.grey.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: isSelected
-                    ? Theme.of(context).colorScheme.primary
-                    : Colors.transparent,
-                width: 2,
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.developer_board,
-                  color: isSelected
-                      ? Theme.of(context).colorScheme.primary
-                      : Colors.grey[400],
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        device.name,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: isSelected
-                              ? Theme.of(context).colorScheme.primary
-                              : null,
-                        ),
-                      ),
-                      Text(
-                        '${device.ip}:${device.port}',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[400]),
-                      ),
-                    ],
-                  ),
-                ),
-                if (isSelected)
-                  Icon(
-                    Icons.check_circle,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Widget per mostrare la potenza del segnale WiFi
-class _SignalIndicator extends StatelessWidget {
-  final int strength;
-
-  const _SignalIndicator({required this.strength});
-
-  @override
-  Widget build(BuildContext context) {
-    final bars = (strength / 25).ceil().clamp(1, 4);
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (int i = 1; i <= 4; i++)
-          Container(
-            width: 3,
-            height: 4.0 + (i * 3),
-            margin: const EdgeInsets.only(left: 1),
-            decoration: BoxDecoration(
-              color: i <= bars
-                  ? (bars >= 3
-                        ? Colors.green
-                        : (bars >= 2 ? Colors.orange : Colors.red))
-                  : Colors.grey.withOpacity(0.3),
-              borderRadius: BorderRadius.circular(1),
-            ),
-          ),
-        const SizedBox(width: 4),
-        Text(
-          '$strength%',
-          style: TextStyle(fontSize: 11, color: Colors.grey[400]),
-        ),
-      ],
     );
   }
 }
