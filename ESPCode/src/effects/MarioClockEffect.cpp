@@ -31,9 +31,6 @@ MarioClockEffect::MarioClockEffect(DisplayManager* dm, TimeManager* tm)
 }
 
 MarioClockEffect::~MarioClockEffect() {
-    if (timeManager) {
-        timeManager->setOnMinuteChange(nullptr);
-    }
     delete spriteRenderer;
     delete hourBlock;
     delete minuteBlock;
@@ -63,7 +60,7 @@ void MarioClockEffect::init() {
     sprintf(minStr, "%02d", lastMinute);
     minuteBlock->text = String(minStr);
     
-    timeManager->setOnMinuteChange([this](int h, int m, int s) {
+    timeManager->addOnMinuteChange([this](int h, int m, int s) {
         DEBUG_PRINTF("[MarioClockEffect] Minute changed callback: %02d:%02d\n", h, m);
         
         bool hourChanged = (h != lastHour);
@@ -97,10 +94,6 @@ void MarioClockEffect::init() {
 
 void MarioClockEffect::cleanup() {
     DEBUG_PRINTLN("[MarioClockEffect] Cleanup - removing TimeManager callback");
-    
-    if (timeManager) {
-        timeManager->setOnMinuteChange(nullptr);
-    }
 }
 
 void MarioClockEffect::initMario() {

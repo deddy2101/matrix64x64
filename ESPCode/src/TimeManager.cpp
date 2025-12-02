@@ -13,10 +13,8 @@ TimeManager::TimeManager(bool fakeTime, unsigned long fakeSpeedMs)
       lastSecond(-1),
       lastUpdate(0),
       updateInterval(fakeSpeedMs),
-      mode(fakeTime ? TimeMode::FAKE : TimeMode::RTC),
-      onSecondChange(nullptr),
-      onMinuteChange(nullptr),
-      onHourChange(nullptr) {
+      mode(fakeTime ? TimeMode::FAKE : TimeMode::RTC) {
+    // I vettori si inizializzano automaticamente vuoti
 }
 
 bool TimeManager::initDS3231() {
@@ -84,16 +82,6 @@ void TimeManager::syncToDS3231() {
     // mktime converte da locale a epoch (considera il TZ impostato)
     time_t localEpoch = mktime(&timeinfo);
     
-    // Ora dobbiamo convertire da locale a UTC
-    // Siccome abbiamo impostato TZ, localtime/mktime gestiscono il fuso
-    // Per ottenere UTC, usiamo gmtime sull'epoch
-    struct tm utcTime;
-    gmtime_r(&localEpoch, &utcTime);
-    
-    // In realtà è più semplice: l'epoch è sempre UTC-based
-    // mktime con TZ impostato restituisce l'epoch corretto
-    // Il DS3231 vuole l'epoch UTC
-    
     // Salva nel DS3231 (in UTC)
     ds3231.adjust(DateTime(localEpoch));
     
@@ -113,11 +101,6 @@ time_t TimeManager::getLocalEpoch(time_t utcEpoch) {
 
 void TimeManager::begin(int hour, int minute, int second) {
     // Configura timezone Italia PRIMA di tutto
-    // CET-1CEST,M3.5.0,M10.5.0/3 significa:
-    // - CET = Central European Time, offset -1 (ovvero UTC+1)
-    // - CEST = Central European Summer Time
-    // - M3.5.0 = ultima domenica di marzo alle 02:00
-    // - M10.5.0/3 = ultima domenica di ottobre alle 03:00
     setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
     tzset();
     
@@ -127,6 +110,10 @@ void TimeManager::begin(int hour, int minute, int second) {
     if (ds3231Available && mode == TimeMode::RTC) {
         // Se abbiamo il DS3231, carica l'ora da lì
         syncFromDS3231();
+        // ✅ Salva lastHour/minute/second per evitare callback inutili all'avvio
+        lastHour = currentHour;
+        lastMinute = currentMinute;
+        lastSecond = currentSecond;
     } else {
         // Altrimenti usa l'ora passata come parametro
         currentHour = hour;
@@ -293,6 +280,7 @@ void TimeManager::readRtcTime() {
     struct tm timeinfo;
     
     if (!getLocalTime(&timeinfo)) {
+        DEBUG_PRINTLN("[TimeManager] ✗ Failed to obtain time");
         return;
     }
     
@@ -321,6 +309,7 @@ void TimeManager::updateFakeTime() {
     }
 }
 
+// ✅ METODO UPDATE AGGIORNATO PER CHIAMARE TUTTI I CALLBACK
 void TimeManager::update() {
     switch (mode) {
         case TimeMode::FAKE:
@@ -332,24 +321,31 @@ void TimeManager::update() {
             break;
     }
     
+    // Callback per secondi
     if (currentSecond != lastSecond) {
         lastSecond = currentSecond;
-        if (onSecondChange) {
-            onSecondChange(currentHour, currentMinute, currentSecond);
+        for (auto& callback : onSecondChangeCallbacks) {
+            if (callback) callback(currentHour, currentMinute, currentSecond);
         }
     }
     
+    // Callback per minuti
     if (currentMinute != lastMinute) {
         lastMinute = currentMinute;
-        if (onMinuteChange) {
-            onMinuteChange(currentHour, currentMinute, currentSecond);
+        
+        DEBUG_PRINTF("[TimeManager] ⚡ Minute changed: %02d:%02d -> calling %d callbacks\n",
+                     currentHour, currentMinute, onMinuteChangeCallbacks.size());
+        
+        for (auto& callback : onMinuteChangeCallbacks) {
+            if (callback) callback(currentHour, currentMinute, currentSecond);
         }
     }
     
+    // Callback per ore
     if (currentHour != lastHour) {
         lastHour = currentHour;
-        if (onHourChange) {
-            onHourChange(currentHour, currentMinute, currentSecond);
+        for (auto& callback : onHourChangeCallbacks) {
+            if (callback) callback(currentHour, currentMinute, currentSecond);
         }
     }
 }
@@ -405,6 +401,13 @@ String TimeManager::getFullStatus() {
     localtime_r(&now, &timeinfo);
     sprintf(buf, "║  DST: %-30s  ║\n", 
             timeinfo.tm_isdst > 0 ? "Active (ora legale)" : "Inactive (ora solare)");
+    status += buf;
+    
+    // Mostra numero callbacks registrati
+    sprintf(buf, "║  Callbacks: %d second, %d minute, %d hour  ║\n",
+            onSecondChangeCallbacks.size(),
+            onMinuteChangeCallbacks.size(),
+            onHourChangeCallbacks.size());
     status += buf;
     
     status += "╚══════════════════════════════════════╝\n";

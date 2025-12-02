@@ -186,7 +186,7 @@ void setup() {
     // ─────────────────────────────────────────
     // 9. Callbacks per notifiche
     // ─────────────────────────────────────────
-    timeManager->setOnMinuteChange([](int h, int m, int s) {
+    timeManager->addOnMinuteChange([](int h, int m, int s) {
         // Aggiorna luminosità ogni minuto se necessario
         commandHandler.updateBrightness();
     });

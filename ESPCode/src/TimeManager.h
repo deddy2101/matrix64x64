@@ -7,6 +7,7 @@
 #include <sys/time.h>
 #include <Wire.h>
 #include <RTClib.h>
+#include <vector>
 #include "Debug.h"
 
 // Callback per notificare cambiamenti di tempo
@@ -47,10 +48,10 @@ private:
     unsigned long lastUpdate;
     unsigned long updateInterval;      // ms tra un minuto e l'altro (in fake mode)
     
-    // Callbacks per notifiche
-    TimeCallback onSecondChange;
-    TimeCallback onMinuteChange;
-    TimeCallback onHourChange;
+    // ✅ Callbacks per notifiche - ORA SUPPORTA MULTIPLI CALLBACKS!
+    std::vector<TimeCallback> onSecondChangeCallbacks;
+    std::vector<TimeCallback> onMinuteChangeCallbacks;
+    std::vector<TimeCallback> onHourChangeCallbacks;
     
     // Modalità
     TimeMode mode;
@@ -109,10 +110,53 @@ public:
     bool isDS3231Available() const { return ds3231Available; }
     float getDS3231Temperature();
     
-    // Callbacks (pattern Observer)
-    void setOnSecondChange(TimeCallback callback) { onSecondChange = callback; }
-    void setOnMinuteChange(TimeCallback callback) { onMinuteChange = callback; }
-    void setOnHourChange(TimeCallback callback) { onHourChange = callback; }
+    // ✅ Callbacks (pattern Observer) - NUOVI METODI CON SUPPORTO MULTIPLO
+    void addOnSecondChange(TimeCallback callback) { 
+        if (callback) {
+            onSecondChangeCallbacks.push_back(callback);
+            DEBUG_PRINTF("[TimeManager] Callback registered (total: %d)\n", 
+                         onSecondChangeCallbacks.size());
+        }
+    }
+    
+    void addOnMinuteChange(TimeCallback callback) { 
+        if (callback) {
+            onMinuteChangeCallbacks.push_back(callback);
+            DEBUG_PRINTF("[TimeManager] Minute callback registered (total: %d)\n", 
+                         onMinuteChangeCallbacks.size());
+        }
+    }
+    
+    void addOnHourChange(TimeCallback callback) { 
+        if (callback) {
+            onHourChangeCallbacks.push_back(callback);
+            DEBUG_PRINTF("[TimeManager] Hour callback registered (total: %d)\n", 
+                         onHourChangeCallbacks.size());
+        }
+    }
+    
+    // ✅ Metodi legacy per compatibilità (sovrascrivono tutti i callbacks)
+    void setOnSecondChange(TimeCallback callback) { 
+        onSecondChangeCallbacks.clear();
+        if (callback) onSecondChangeCallbacks.push_back(callback);
+    }
+    
+    void setOnMinuteChange(TimeCallback callback) { 
+        onMinuteChangeCallbacks.clear();
+        if (callback) onMinuteChangeCallbacks.push_back(callback);
+    }
+    
+    void setOnHourChange(TimeCallback callback) { 
+        onHourChangeCallbacks.clear();
+        if (callback) onHourChangeCallbacks.push_back(callback);
+    }
+    
+    // Rimuovi tutti i callbacks
+    void clearAllCallbacks() {
+        onSecondChangeCallbacks.clear();
+        onMinuteChangeCallbacks.clear();
+        onHourChangeCallbacks.clear();
+    }
     
     // Modalità
     void setMode(TimeMode newMode);
