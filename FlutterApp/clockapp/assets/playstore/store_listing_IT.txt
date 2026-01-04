@@ -1,0 +1,62 @@
+============================================
+PLAY STORE LISTING - ITALIANO
+============================================
+
+NOME APP: Matrix Clock
+
+--------------------------------------------
+DESCRIZIONE BREVE (max 80 caratteri):
+--------------------------------------------
+Controlla la tua matrice LED 64x64: orologio, effetti e luminosità via WiFi
+
+--------------------------------------------
+DESCRIZIONE COMPLETA (max 4000 caratteri):
+--------------------------------------------
+Matrix Clock è l'app companion per controllare la tua matrice LED 64x64 basata su ESP32.
+
+🎮 FUNZIONALITÀ PRINCIPALI
+
+• Connessione WiFi automatica - Trova automaticamente il dispositivo nella tua rete locale
+• Controllo orologio - Sincronizza l'ora, imposta manualmente o usa il modulo RTC DS3231
+• 14+ effetti visivi - Scroll Text, Plasma, Pong, Matrix Rain, Fire, Starfield e molti altri
+• Luminosità intelligente - Regolazione automatica giorno/notte con orari personalizzabili
+• Configurazione WiFi - Configura la rete WiFi dell'ESP32 direttamente dall'app
+• Console di debug - Monitora in tempo reale la comunicazione con il dispositivo
+
+⚙️ CONTROLLI DISPONIBILI
+
+• Play/Pausa/Next - Controlla la riproduzione degli effetti
+• Selezione effetto - Scegli tra oltre 14 animazioni diverse
+• Sincronizzazione ora - Sincronizza con il telefono o imposta manualmente
+• Modalità RTC/Fake - Usa l'orologio hardware o simula il tempo
+• Luminosità giorno/notte - Slider separati per ogni modalità
+• Orari notturni - Imposta quando attivare la modalità notte
+
+📡 CONNETTIVITÀ
+
+L'app si connette al tuo dispositivo ESP32 tramite WebSocket su rete WiFi locale. Supporta sia la modalità Station (connesso al router) che Access Point (rete propria dell'ESP32).
+
+🔧 REQUISITI
+
+• Matrice LED 64x64 con controller ESP32
+• Firmware compatibile installato sul dispositivo
+• Connessione alla stessa rete WiFi del dispositivo
+
+💡 PERFETTO PER
+
+• Progetti maker e DIY
+• Orologi da scrivania personalizzati
+• Display decorativi
+• Installazioni artistiche LED
+
+L'app è completamente gratuita e senza pubblicità.
+
+--------------------------------------------
+CATEGORIA: Strumenti / Tools
+--------------------------------------------
+
+--------------------------------------------
+TAG/PAROLE CHIAVE:
+--------------------------------------------
+LED matrix, ESP32, orologio, clock, WiFi, IoT, maker, DIY, controller, RGB, display, effetti, animazioni
+

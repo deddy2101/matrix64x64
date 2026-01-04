@@ -1,4 +1,4 @@
-package com.example.clockapp
+package com.deddy.matrixclock
 
 import io.flutter.embedding.android.FlutterActivity
 

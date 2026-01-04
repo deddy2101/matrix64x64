@@ -1,0 +1,8 @@
+services:
+  privacy-policy:
+    image: nginx:alpine
+    ports:
+      - "8888:80"
+    volumes:
+      - ../privacy_policy.html:/usr/share/nginx/html/index.html:ro
+    restart: unless-stopped
