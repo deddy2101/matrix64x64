@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'screens/device_discovery_screen.dart'; // Cambia import
-// Rimuovi: import 'screens/home_screen.dart';
+import 'screens/device_discovery_screen.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const LedMatrixApp());
 }
 
@@ -23,11 +23,20 @@ class LedMatrixApp extends StatelessWidget {
         ),
         scaffoldBackgroundColor: const Color(0xFF0A0A0F),
         useMaterial3: true,
-        textTheme: GoogleFonts.spaceGroteskTextTheme(
-          ThemeData.dark().textTheme,
-        ),
+        textTheme: _buildTextTheme(),
       ),
-      home: const DeviceDiscoveryScreen(), // Cambia qui
+      home: const DeviceDiscoveryScreen(),
     );
+  }
+
+  TextTheme _buildTextTheme() {
+    try {
+      return GoogleFonts.spaceGroteskTextTheme(
+        ThemeData.dark().textTheme,
+      );
+    } catch (e) {
+      // Fallback se Google Fonts fallisce
+      return ThemeData.dark().textTheme;
+    }
   }
 }

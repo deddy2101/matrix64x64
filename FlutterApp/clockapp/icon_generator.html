@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clock App Icon Generator</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            font-family: Arial, sans-serif;
+        }
+
+        .instructions {
+            color: white;
+            text-align: center;
+            max-width: 600px;
+        }
+
+        #iconCanvas {
+            border: 2px solid #666;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+
+        button {
+            padding: 15px 30px;
+            font-size: 16px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div class="instructions">
+        <h1>Icona Clock App - Matrice LED 64x64</h1>
+        <p>Icona 1024x1024 px con Mario e numeri in stile LED</p>
+        <p>Clicca sui pulsanti per scaricare i PNG</p>
+    </div>
+
+    <canvas id="iconCanvas" width="1024" height="1024"></canvas>
+    <canvas id="iconCanvas512" width="512" height="512" style="display:none;"></canvas>
+
+    <button onclick="downloadIcon(1024)">Scarica Icon PNG (1024x1024)</button>
+    <button onclick="downloadIcon(512)">Scarica Icon PNG (512x512)</button>
+
+    <script>
+        const canvas = document.getElementById('iconCanvas');
+        const ctx = canvas.getContext('2d');
+        const size = 1024;
+        const pixelSize = 16; // Dimensione di ogni "LED"
+
+        // Colori
+        const bgColor = '#000814';
+        const ledOnColor = '#00ff41';
+        const ledDimColor = '#003311';
+        const marioRed = '#ff0000';
+        const marioSkin = '#ffb380';
+        const marioBrown = '#8b4513';
+        const marioBlue = '#0066ff';
+
+        // Riempimento sfondo
+        ctx.fillStyle = bgColor;
+        ctx.fillRect(0, 0, size, size);
+
+        // Funzione per disegnare un LED
+        function drawLED(x, y, color, glow = true) {
+            const ledX = x * pixelSize;
+            const ledY = y * pixelSize;
+            const radius = pixelSize * 0.4;
+
+            // Effetto glow
+            if (glow && color !== ledDimColor) {
+                const gradient = ctx.createRadialGradient(
+                    ledX + pixelSize/2, ledY + pixelSize/2, 0,
+                    ledX + pixelSize/2, ledY + pixelSize/2, pixelSize
+                );
+                gradient.addColorStop(0, color + 'aa');
+                gradient.addColorStop(0.5, color + '44');
+                gradient.addColorStop(1, color + '00');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(ledX, ledY, pixelSize, pixelSize);
+            }
+
+            // LED principale
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(ledX + pixelSize/2, ledY + pixelSize/2, radius, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Disegna griglia di LED spenti (sfondo)
+        for (let y = 0; y < 64; y++) {
+            for (let x = 0; x < 64; x++) {
+                drawLED(x, y, ledDimColor, false);
+            }
+        }
+
+        // Mario pixel art (semplificato, centrato in alto)
+        const marioData = [
+            [0,0,0,0,1,1,1,1,1,0,0,0,0],
+            [0,0,0,1,1,1,1,1,1,1,1,0,0],
+            [0,0,0,2,2,2,3,3,3,0,0,0,0],
+            [0,0,2,3,2,3,3,3,3,3,0,0,0],
+            [0,0,2,3,2,2,3,3,3,3,3,0,0],
+            [0,0,2,2,3,3,3,3,3,3,3,0,0],
+            [0,0,0,0,3,3,3,3,3,3,0,0,0],
+            [0,0,0,1,1,4,1,1,1,0,0,0,0],
+            [0,0,1,1,1,4,1,1,4,1,1,1,0],
+            [0,1,1,1,1,4,4,4,4,1,1,1,1],
+            [0,3,3,1,4,5,4,4,5,4,1,3,3],
+            [0,3,3,3,4,4,4,4,4,4,3,3,3],
+            [0,3,3,4,4,4,4,4,4,4,4,3,3],
+            [0,0,0,4,4,4,0,0,4,4,4,0,0],
+            [0,0,2,2,2,0,0,0,0,2,2,2,0],
+            [0,2,2,2,2,0,0,0,0,2,2,2,2]
+        ];
+
+        const marioColors = {
+            0: null,
+            1: marioRed,
+            2: marioBrown,
+            3: marioSkin,
+            4: marioBlue,
+            5: '#ffff00' // bottoni gialli
+        };
+
+        const marioStartX = 8;
+        const marioStartY = 8;
+
+        marioData.forEach((row, y) => {
+            row.forEach((pixel, x) => {
+                if (pixel !== 0) {
+                    drawLED(marioStartX + x, marioStartY + y, marioColors[pixel]);
+                }
+            });
+        });
+
+        // Numeri "12:34" in stile LED (cifre più grandi)
+        const digitPatterns = {
+            '1': [
+                [0,1,1,0],
+                [1,1,1,0],
+                [0,1,1,0],
+                [0,1,1,0],
+                [0,1,1,0],
+                [1,1,1,1]
+            ],
+            '2': [
+                [1,1,1,1],
+                [0,0,1,1],
+                [1,1,1,1],
+                [1,1,0,0],
+                [1,1,0,0],
+                [1,1,1,1]
+            ],
+            '3': [
+                [1,1,1,1],
+                [0,0,1,1],
+                [1,1,1,1],
+                [0,0,1,1],
+                [0,0,1,1],
+                [1,1,1,1]
+            ],
+            '4': [
+                [1,1,0,1],
+                [1,1,0,1],
+                [1,1,1,1],
+                [0,0,0,1],
+                [0,0,0,1],
+                [0,0,0,1]
+            ],
+            ':': [
+                [0],
+                [1],
+                [0],
+                [0],
+                [1],
+                [0]
+            ]
+        };
+
+        // Disegna "12:34" nella parte bassa
+        const timeY = 40;
+        let timeX = 12;
+        const timeString = '12:34';
+        const digitSpacing = 1;
+
+        for (let char of timeString) {
+            const pattern = digitPatterns[char];
+            if (pattern) {
+                pattern.forEach((row, y) => {
+                    row.forEach((pixel, x) => {
+                        if (pixel === 1) {
+                            // Disegna 2x2 pixel per ogni LED per renderlo più visibile
+                            drawLED(timeX + x*2, timeY + y*2, ledOnColor);
+                            drawLED(timeX + x*2 + 1, timeY + y*2, ledOnColor);
+                            drawLED(timeX + x*2, timeY + y*2 + 1, ledOnColor);
+                            drawLED(timeX + x*2 + 1, timeY + y*2 + 1, ledOnColor);
+                        }
+                    });
+                });
+                timeX += (char === ':' ? 1 : 4) * 2 + digitSpacing;
+            }
+        }
+
+        // Aggiungi alcuni LED casuali accesi qua e là per effetto "matrice"
+        for (let i = 0; i < 30; i++) {
+            const rx = Math.floor(Math.random() * 64);
+            const ry = Math.floor(Math.random() * 64);
+            drawLED(rx, ry, ledOnColor + '33', false);
+        }
+
+        // Crea anche la versione 512x512
+        const canvas512 = document.getElementById('iconCanvas512');
+        const ctx512 = canvas512.getContext('2d');
+        ctx512.drawImage(canvas, 0, 0, 1024, 1024, 0, 0, 512, 512);
+
+        function downloadIcon(size) {
+            const link = document.createElement('a');
+            if (size === 1024) {
+                link.download = 'icon.png';
+                link.href = canvas.toDataURL('image/png');
+            } else {
+                link.download = 'icon_512.png';
+                link.href = canvas512.toDataURL('image/png');
+            }
+            link.click();
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feature Graphic Generator - Clock App</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            font-family: Arial, sans-serif;
+        }
+
+        .instructions {
+            color: white;
+            text-align: center;
+            max-width: 800px;
+        }
+
+        #featureCanvas {
+            border: 2px solid #666;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            max-width: 100%;
+        }
+
+        button {
+            padding: 15px 30px;
+            font-size: 16px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #45a049;
+        }
+
+        .preview {
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="instructions">
+        <h1>Feature Graphic - Play Store</h1>
+        <p>Grafica in evidenza 1024x500 px per Google Play Store</p>
+        <p>Stile matrice LED con Mario e orologio</p>
+    </div>
+
+    <div class="preview">
+        <canvas id="featureCanvas" width="1024" height="500"></canvas>
+    </div>
+
+    <button onclick="downloadFeatureGraphic()">Scarica Feature Graphic PNG (1024x500)</button>
+
+    <script>
+        const canvas = document.getElementById('featureCanvas');
+        const ctx = canvas.getContext('2d');
+        const width = 1024;
+        const height = 500;
+
+        // Colori
+        const bgColor = '#000814';
+        const ledOnColor = '#00ff41';
+        const ledDimColor = '#002211';
+        const marioRed = '#ff0000';
+        const marioSkin = '#ffb380';
+        const marioBrown = '#8b4513';
+        const marioBlue = '#0066ff';
+        const yellow = '#ffff00';
+
+        // Parametri matrice
+        const pixelSize = 8;
+        const matrixCols = Math.floor(width / pixelSize);
+        const matrixRows = Math.floor(height / pixelSize);
+
+        // Riempimento sfondo
+        ctx.fillStyle = bgColor;
+        ctx.fillRect(0, 0, width, height);
+
+        // Funzione per disegnare un LED
+        function drawLED(x, y, color, glow = true) {
+            const ledX = x * pixelSize;
+            const ledY = y * pixelSize;
+            const radius = pixelSize * 0.35;
+
+            // Effetto glow
+            if (glow && color !== ledDimColor) {
+                const gradient = ctx.createRadialGradient(
+                    ledX + pixelSize/2, ledY + pixelSize/2, 0,
+                    ledX + pixelSize/2, ledY + pixelSize/2, pixelSize * 1.2
+                );
+                gradient.addColorStop(0, color + 'bb');
+                gradient.addColorStop(0.5, color + '44');
+                gradient.addColorStop(1, color + '00');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(ledX - pixelSize/2, ledY - pixelSize/2, pixelSize * 2, pixelSize * 2);
+            }
+
+            // LED principale
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(ledX + pixelSize/2, ledY + pixelSize/2, radius, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Disegna griglia di LED spenti (sfondo)
+        for (let y = 0; y < matrixRows; y++) {
+            for (let x = 0; x < matrixCols; x++) {
+                drawLED(x, y, ledDimColor, false);
+            }
+        }
+
+        // Mario pixel art (sinistra)
+        const marioData = [
+            [0,0,0,0,1,1,1,1,1,0,0,0,0],
+            [0,0,0,1,1,1,1,1,1,1,1,0,0],
+            [0,0,0,2,2,2,3,3,3,0,0,0,0],
+            [0,0,2,3,2,3,3,3,3,3,0,0,0],
+            [0,0,2,3,2,2,3,3,3,3,3,0,0],
+            [0,0,2,2,3,3,3,3,3,3,3,0,0],
+            [0,0,0,0,3,3,3,3,3,3,0,0,0],
+            [0,0,0,1,1,4,1,1,1,0,0,0,0],
+            [0,0,1,1,1,4,1,1,4,1,1,1,0],
+            [0,1,1,1,1,4,4,4,4,1,1,1,1],
+            [0,3,3,1,4,5,4,4,5,4,1,3,3],
+            [0,3,3,3,4,4,4,4,4,4,3,3,3],
+            [0,3,3,4,4,4,4,4,4,4,4,3,3],
+            [0,0,0,4,4,4,0,0,4,4,4,0,0],
+            [0,0,2,2,2,0,0,0,0,2,2,2,0],
+            [0,2,2,2,2,0,0,0,0,2,2,2,2]
+        ];
+
+        const marioColors = {
+            0: null,
+            1: marioRed,
+            2: marioBrown,
+            3: marioSkin,
+            4: marioBlue,
+            5: yellow
+        };
+
+        const marioScale = 2;
+        const marioStartX = 8;
+        const marioStartY = Math.floor(matrixRows / 2) - (marioData.length * marioScale / 2);
+
+        marioData.forEach((row, y) => {
+            row.forEach((pixel, x) => {
+                if (pixel !== 0) {
+                    for (let dy = 0; dy < marioScale; dy++) {
+                        for (let dx = 0; dx < marioScale; dx++) {
+                            drawLED(
+                                marioStartX + x * marioScale + dx,
+                                marioStartY + y * marioScale + dy,
+                                marioColors[pixel]
+                            );
+                        }
+                    }
+                }
+            });
+        });
+
+        // Orologio digitale "12:34" al centro
+        const digitPatterns = {
+            '1': [
+                [0,1,1,0],
+                [1,1,1,0],
+                [0,1,1,0],
+                [0,1,1,0],
+                [0,1,1,0],
+                [0,1,1,0],
+                [1,1,1,1]
+            ],
+            '2': [
+                [1,1,1,1],
+                [0,0,1,1],
+                [0,0,1,1],
+                [1,1,1,1],
+                [1,1,0,0],
+                [1,1,0,0],
+                [1,1,1,1]
+            ],
+            '3': [
+                [1,1,1,1],
+                [0,0,1,1],
+                [0,0,1,1],
+                [1,1,1,1],
+                [0,0,1,1],
+                [0,0,1,1],
+                [1,1,1,1]
+            ],
+            '4': [
+                [1,1,0,1],
+                [1,1,0,1],
+                [1,1,0,1],
+                [1,1,1,1],
+                [0,0,0,1],
+                [0,0,0,1],
+                [0,0,0,1]
+            ],
+            ':': [
+                [0],
+                [1],
+                [1],
+                [0],
+                [1],
+                [1],
+                [0]
+            ]
+        };
+
+        const timeScale = 2;
+        let timeX = 48;
+        const timeY = Math.floor(matrixRows / 2) - 7;
+        const timeString = '12:34';
+
+        for (let char of timeString) {
+            const pattern = digitPatterns[char];
+            if (pattern) {
+                pattern.forEach((row, y) => {
+                    row.forEach((pixel, x) => {
+                        if (pixel === 1) {
+                            for (let dy = 0; dy < timeScale; dy++) {
+                                for (let dx = 0; dx < timeScale; dx++) {
+                                    drawLED(
+                                        timeX + x * timeScale + dx,
+                                        timeY + y * timeScale + dy,
+                                        ledOnColor
+                                    );
+                                }
+                            }
+                        }
+                    });
+                });
+                timeX += (char === ':' ? 1 : 4) * timeScale + 2;
+            }
+        }
+
+        // Testo "MATRIX CLOCK" a destra
+        const letters = {
+            'M': [
+                [1,0,0,0,1],
+                [1,1,0,1,1],
+                [1,0,1,0,1],
+                [1,0,0,0,1],
+                [1,0,0,0,1]
+            ],
+            'A': [
+                [0,1,1,0],
+                [1,0,0,1],
+                [1,1,1,1],
+                [1,0,0,1],
+                [1,0,0,1]
+            ],
+            'T': [
+                [1,1,1,1,1],
+                [0,0,1,0,0],
+                [0,0,1,0,0],
+                [0,0,1,0,0],
+                [0,0,1,0,0]
+            ],
+            'R': [
+                [1,1,1,0],
+                [1,0,0,1],
+                [1,1,1,0],
+                [1,0,1,0],
+                [1,0,0,1]
+            ],
+            'I': [
+                [1,1,1],
+                [0,1,0],
+                [0,1,0],
+                [0,1,0],
+                [1,1,1]
+            ],
+            'X': [
+                [1,0,0,0,1],
+                [0,1,0,1,0],
+                [0,0,1,0,0],
+                [0,1,0,1,0],
+                [1,0,0,0,1]
+            ],
+            'C': [
+                [0,1,1,1],
+                [1,0,0,0],
+                [1,0,0,0],
+                [1,0,0,0],
+                [0,1,1,1]
+            ],
+            'L': [
+                [1,0,0,0],
+                [1,0,0,0],
+                [1,0,0,0],
+                [1,0,0,0],
+                [1,1,1,1]
+            ],
+            'O': [
+                [0,1,1,0],
+                [1,0,0,1],
+                [1,0,0,1],
+                [1,0,0,1],
+                [0,1,1,0]
+            ],
+            'K': [
+                [1,0,0,1],
+                [1,0,1,0],
+                [1,1,0,0],
+                [1,0,1,0],
+                [1,0,0,1]
+            ],
+            ' ': [
+                [0,0],
+                [0,0],
+                [0,0],
+                [0,0],
+                [0,0]
+            ]
+        };
+
+        // "MATRIX" riga superiore
+        let textX = 85;
+        let textY = 18;
+        const word1 = 'MATRIX';
+
+        for (let char of word1) {
+            const pattern = letters[char];
+            if (pattern) {
+                pattern.forEach((row, y) => {
+                    row.forEach((pixel, x) => {
+                        if (pixel === 1) {
+                            drawLED(textX + x, textY + y, ledOnColor);
+                        }
+                    });
+                });
+                textX += (pattern[0]?.length || 0) + 1;
+            }
+        }
+
+        // "CLOCK" riga inferiore
+        textX = 88;
+        textY = 38;
+        const word2 = 'CLOCK';
+
+        for (let char of word2) {
+            const pattern = letters[char];
+            if (pattern) {
+                pattern.forEach((row, y) => {
+                    row.forEach((pixel, x) => {
+                        if (pixel === 1) {
+                            drawLED(textX + x, textY + y, ledOnColor);
+                        }
+                    });
+                });
+                textX += (pattern[0]?.length || 0) + 1;
+            }
+        }
+
+        // LED casuali sparsi per effetto "matrice attiva"
+        for (let i = 0; i < 80; i++) {
+            const rx = Math.floor(Math.random() * matrixCols);
+            const ry = Math.floor(Math.random() * matrixRows);
+            const alpha = ['11', '22', '33', '44'][Math.floor(Math.random() * 4)];
+            drawLED(rx, ry, ledOnColor + alpha, false);
+        }
+
+        function downloadFeatureGraphic() {
+            const link = document.createElement('a');
+            link.download = 'feature_graphic.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+    </script>
+</body>
+</html>

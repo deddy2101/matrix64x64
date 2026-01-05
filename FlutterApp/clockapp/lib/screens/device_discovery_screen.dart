@@ -45,8 +45,10 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen> {
       }
     });
 
-    // Richiedi permessi e avvia scansione
-    _requestPermissionsAndScan();
+    // Richiedi permessi e avvia scansione con protezione da errori
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _requestPermissionsAndScan();
+    });
   }
 
   /// Richiede permessi Android (se necessario) e avvia scansione
