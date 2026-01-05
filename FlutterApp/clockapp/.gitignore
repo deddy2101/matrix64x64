@@ -47,3 +47,4 @@ app.*.map.json
 # Signing keys - DO NOT COMMIT
 android/key.properties
 android/app/keystore/
+.claude/
