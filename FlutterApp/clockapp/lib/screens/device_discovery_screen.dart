@@ -3,8 +3,11 @@ import 'dart:io';
 import '../services/discovery_service.dart';
 import '../services/device_service.dart';
 import '../services/permission_service.dart';
+import '../services/demo_service.dart';
 import '../widgets/discovery/discovery_widgets.dart';
 import 'home_screen.dart';
+import 'demo_home_screen.dart';
+import 'faq_screen.dart';
 
 class DeviceDiscoveryScreen extends StatefulWidget {
   const DeviceDiscoveryScreen({super.key});
@@ -267,6 +270,14 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen> {
         title: const Text('Trova Dispositivi'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.help_outline),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const FaqScreen()),
+            ),
+            tooltip: 'FAQ',
+          ),
+          IconButton(
             icon: _isScanning
                 ? const SizedBox(
                     width: 20,
@@ -453,7 +464,7 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen> {
   }
 
   Widget _buildEmptyState() {
-    return Center(
+    return SingleChildScrollView(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
@@ -491,9 +502,82 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen> {
                 ),
               ),
             ),
+            const SizedBox(height: 48),
+            // Sezione Demo
+            _buildDemoSection(),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildDemoSection() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1a1a2e),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFF8B5CF6).withOpacity(0.3),
+        ),
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.play_circle_outline,
+                color: Colors.orange[400],
+                size: 24,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Modalità Demo',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.orange[400],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Non hai un dispositivo LED Matrix?\nProva l\'app con un dispositivo simulato!',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey[400],
+            ),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton.icon(
+            onPressed: _startDemoMode,
+            icon: const Icon(Icons.visibility),
+            label: const Text('Avvia Demo'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange[700],
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 32,
+                vertical: 14,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _startDemoMode() {
+    DemoService().startDemo();
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => const DemoHomeScreen()),
     );
   }
 
