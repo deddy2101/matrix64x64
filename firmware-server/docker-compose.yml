@@ -12,8 +12,6 @@ services:
       - ./public/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./public/index.html:/usr/share/nginx/html/index.html:ro
     restart: unless-stopped
-    networks:
-      - firmware-net
 
   # Node.js - Admin interface (porta 81)
   admin:
@@ -28,12 +26,6 @@ services:
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-changeme}
       - PORT=3000
     restart: unless-stopped
-    networks:
-      - firmware-net
-
-networks:
-  firmware-net:
-    driver: bridge
 
 volumes:
   binaries:
