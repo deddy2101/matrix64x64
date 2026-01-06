@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
+import 'package:file_picker/file_picker.dart';
 import '../services/device_service.dart';
+import '../services/ota_service.dart';
 import '../widgets/common/common_widgets.dart';
 import '../widgets/home/home_widgets.dart';
 import '../dialogs/wifi_config_dialog.dart';
@@ -17,6 +19,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final DeviceService _device = DeviceService();
+  late final OtaService _otaService;
 
   // State
   bool _isConnected = false;
@@ -34,6 +37,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+
+    _otaService = OtaService(_device);
 
     _subscriptions = [
       _device.connectionState.listen((state) {
@@ -140,6 +145,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     _buildBrightnessCard(),
                     const SizedBox(height: 16),
                     _buildWiFiCard(),
+                    const SizedBox(height: 16),
+                    _buildOTACard(),
                     const SizedBox(height: 16),
                   ],
                   _buildConsoleCard(),
@@ -883,6 +890,183 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (result == true) {
       _device.restart();
       _addLog('→ Restarting...');
+    }
+  }
+
+  Widget _buildOTACard() {
+    return GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.system_update_alt,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Firmware Update (OTA)',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Info
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.blue.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.blue.withOpacity(0.3)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline, size: 20, color: Colors.blue[300]),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Aggiorna il firmware dell\'ESP32. Il progresso verrà mostrato sul display LED.',
+                    style: TextStyle(color: Colors.blue[200], fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Progress indicator se update in corso
+          if (_otaService.isUpdating) ...[
+            Column(
+              children: [
+                LinearProgressIndicator(
+                  value: _otaService.progress / 100,
+                  backgroundColor: Colors.grey[800],
+                  color: Colors.green[400],
+                  minHeight: 8,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  '${_otaService.status} (${_otaService.progress}%)',
+                  style: TextStyle(color: Colors.grey[400], fontSize: 14),
+                ),
+                const SizedBox(height: 16),
+                ActionButton(
+                  icon: Icons.cancel,
+                  label: 'Annulla',
+                  color: Colors.red[400],
+                  onTap: () {
+                    _otaService.abortUpdate();
+                    _addLog('⚠ OTA annullato');
+                    setState(() {});
+                  },
+                ),
+              ],
+            ),
+          ] else ...[
+            // Pulsante per selezionare file
+            ActionButton(
+              icon: Icons.upload_file,
+              label: 'Seleziona file .bin',
+              color: Colors.purple[400],
+              onTap: () => _selectAndUploadFirmware(),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _selectAndUploadFirmware() async {
+    try {
+      // Seleziona file
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['bin'],
+      );
+
+      if (result == null || result.files.isEmpty) {
+        return;
+      }
+
+      final filePath = result.files.first.path;
+      if (filePath == null) {
+        _addLog('⚠ Impossibile leggere il file');
+        return;
+      }
+
+      _addLog('→ Inizio OTA update...');
+      _addLog('→ File: ${result.files.first.name}');
+
+      setState(() {}); // Aggiorna UI per mostrare progress
+
+      // Esegui update
+      final success = await _otaService.updateFirmware(filePath);
+
+      if (success) {
+        _addLog('✓ Firmware aggiornato con successo!');
+        _addLog('→ Il dispositivo si riavvierà automaticamente');
+
+        // Mostra dialog di successo
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              backgroundColor: const Color(0xFF1a1a2e),
+              title: Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.green[400]),
+                  const SizedBox(width: 12),
+                  const Text('Update Completato'),
+                ],
+              ),
+              content: const Text(
+                'Il firmware è stato aggiornato con successo.\n\n'
+                'Il dispositivo si riavvierà automaticamente tra pochi secondi.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        }
+      } else {
+        _addLog('✗ Errore durante l\'update: ${_otaService.status}');
+
+        // Mostra dialog di errore
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              backgroundColor: const Color(0xFF1a1a2e),
+              title: Row(
+                children: [
+                  Icon(Icons.error, color: Colors.red[400]),
+                  const SizedBox(width: 12),
+                  const Text('Errore Update'),
+                ],
+              ),
+              content: Text(_otaService.status),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        }
+      }
+
+      setState(() {}); // Aggiorna UI finale
+
+    } catch (e) {
+      _addLog('✗ Errore: $e');
     }
   }
 

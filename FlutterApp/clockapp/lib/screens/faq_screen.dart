@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 /// Schermata FAQ con domande frequenti sull'app e sul dispositivo
 class FaqScreen extends StatelessWidget {
@@ -27,6 +28,8 @@ class FaqScreen extends StatelessWidget {
             icon: item['icon'] as IconData,
           )),
           const SizedBox(height: 32),
+          _buildVersionSection(),
+          const SizedBox(height: 16),
           _buildContactSection(context),
         ],
       ),
@@ -90,6 +93,46 @@ class FaqScreen extends StatelessWidget {
     );
   }
 
+  Widget _buildVersionSection() {
+    return FutureBuilder<PackageInfo>(
+      future: PackageInfo.fromPlatform(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const SizedBox.shrink();
+        }
+
+        final info = snapshot.data!;
+        final version = 'v${info.version}+${info.buildNumber}';
+
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1a1a2e),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.info_outline,
+                size: 16,
+                color: Colors.grey[600],
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Versione $version',
+                style: TextStyle(
+                  color: Colors.grey[500],
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildContactSection(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -122,7 +165,7 @@ class FaqScreen extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Text(
-            'support@ledmatrix.app',
+            'deddy@server21.it',
             style: TextStyle(
               color: const Color(0xFF8B5CF6),
               fontSize: 14,
@@ -207,20 +250,6 @@ L'ESP32 cambia automaticamente luminosità in base all'ora.''',
 Se il tuo ESP32 ha un modulo DS3231 (RTC), l'ora viene mantenuta anche dopo lo spegnimento. Altrimenti, dovrai risincronizzare ad ogni riavvio.
 
 La modalità "RTC" usa il modulo hardware, "Fake" simula l'avanzamento del tempo via software.''',
-    },
-    {
-      'icon': Icons.usb,
-      'question': 'Posso connettermi via USB?',
-      'answer': '''Sì, su desktop (Linux, macOS, Windows) puoi connetterti via porta seriale USB.
-
-1. Collega l'ESP32 al computer via USB
-2. L'app mostrerà automaticamente le porte seriali disponibili
-3. Seleziona la porta corretta (es. /dev/ttyUSB0 su Linux)
-
-Questa modalità è utile per:
-• Debug e sviluppo
-• Quando non hai accesso WiFi
-• Configurazione iniziale''',
     },
     {
       'icon': Icons.memory,

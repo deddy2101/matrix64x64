@@ -1,0 +1,14 @@
+{
+  "versions": [
+    {
+      "version": "1.0.0",
+      "buildNumber": 1,
+      "fullVersion": "1.0.0+1",
+      "url": "/binaries/1.0.0+1/firmware.bin",
+      "size": 0,
+      "md5": "placeholder",
+      "releaseDate": "2026-01-06T00:00:00+01:00"
+    }
+  ],
+  "generatedAt": "2026-01-06T12:00:00+01:00"
+}

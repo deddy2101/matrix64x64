@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firmware Admin Panel</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            padding: 40px 0;
+            color: white;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .subtitle {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            margin: 20px 0;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+
+        .upload-section {
+            border: 3px dashed #667eea;
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            background: #f8f9ff;
+            transition: all 0.3s ease;
+        }
+
+        .upload-section:hover {
+            border-color: #764ba2;
+            background: #f0f2ff;
+        }
+
+        .form-group {
+            margin: 20px 0;
+            text-align: left;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        input[type="text"],
+        input[type="file"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: border 0.3s ease;
+        }
+
+        input[type="text"]:focus,
+        input[type="file"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            border-radius: 8px;
+            font-size: 1.1em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #f56565 0%, #c53030 100%);
+        }
+
+        .btn-small {
+            padding: 8px 16px;
+            font-size: 0.9em;
+        }
+
+        .versions-list {
+            margin-top: 20px;
+        }
+
+        .version-item {
+            background: #f8f9ff;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 15px 0;
+            border-left: 4px solid #667eea;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: transform 0.2s ease;
+        }
+
+        .version-item:hover {
+            transform: translateX(5px);
+        }
+
+        .version-item.latest {
+            border-left-color: #48bb78;
+            background: #f0fff4;
+        }
+
+        .version-info {
+            flex: 1;
+        }
+
+        .version-number {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+
+        .version-meta {
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        .badge {
+            display: inline-block;
+            background: #48bb78;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+
+        .alert {
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            display: none;
+        }
+
+        .alert.show {
+            display: block;
+        }
+
+        .alert-success {
+            background: #c6f6d5;
+            color: #22543d;
+            border-left: 4px solid #48bb78;
+        }
+
+        .alert-error {
+            background: #fed7d7;
+            color: #742a2a;
+            border-left: 4px solid #f56565;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .help-text {
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2.5em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔐 Firmware Admin Panel</h1>
+            <p class="subtitle">Upload e gestione firmware ESP32</p>
+        </header>
+
+        <div id="alert" class="alert"></div>
+
+        <!-- Upload Section -->
+        <div class="card">
+            <h2>📤 Upload Nuovo Firmware</h2>
+            <form id="uploadForm" class="upload-section">
+                <div class="form-group">
+                    <label for="version">Versione Firmware *</label>
+                    <input
+                        type="text"
+                        id="version"
+                        name="version"
+                        placeholder="es: 1.0.0+1"
+                        pattern="^\d+\.\d+\.\d+\+\d+$"
+                        required
+                    >
+                    <p class="help-text">Formato: MAJOR.MINOR.PATCH+BUILD (es: 1.2.0+5)</p>
+                </div>
+
+                <div class="form-group">
+                    <label for="firmware">File Firmware (.bin) *</label>
+                    <input type="file" id="firmware" name="firmware" accept=".bin" required>
+                    <p class="help-text">Dimensione massima: 10 MB</p>
+                </div>
+
+                <button type="submit" class="btn" id="uploadBtn">
+                    ⬆️ Upload Firmware
+                </button>
+            </form>
+        </div>
+
+        <!-- Statistics -->
+        <div class="card">
+            <h2>📊 Statistiche</h2>
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-value" id="totalVersions">0</div>
+                    <div class="stat-label">Versioni Totali</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="latestVersion">-</div>
+                    <div class="stat-label">Ultima Versione</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="totalSize">0 MB</div>
+                    <div class="stat-label">Spazio Totale</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Versions List -->
+        <div class="card">
+            <h2>📦 Versioni Disponibili</h2>
+            <div id="versionsList" class="versions-list loading">
+                <div class="spinner"></div>
+                Caricamento versioni...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let credentials = null;
+
+        // Show alert
+        function showAlert(message, type = 'success') {
+            const alert = document.getElementById('alert');
+            alert.className = `alert alert-${type} show`;
+            alert.textContent = message;
+            setTimeout(() => alert.classList.remove('show'), 5000);
+        }
+
+        // Format bytes
+        function formatBytes(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+        }
+
+        // Load versions
+        async function loadVersions() {
+            try {
+                // Prompt for credentials if not set
+                if (!credentials) {
+                    const username = prompt('Username:', 'admin');
+                    const password = prompt('Password:', 'changeme');
+                    if (!username || !password) return;
+                    credentials = btoa(`${username}:${password}`);
+                }
+
+                const response = await fetch('/api/versions', {
+                    headers: {
+                        'Authorization': `Basic ${credentials}`
+                    }
+                });
+
+                if (response.status === 401) {
+                    credentials = null;
+                    showAlert('Credenziali non valide', 'error');
+                    return loadVersions();
+                }
+
+                const data = await response.json();
+                const container = document.getElementById('versionsList');
+
+                if (!data.versions || data.versions.length === 0) {
+                    container.innerHTML = '<p style="color: #999; text-align: center;">Nessuna versione disponibile</p>';
+                    return;
+                }
+
+                // Update stats
+                document.getElementById('totalVersions').textContent = data.versions.length;
+                document.getElementById('latestVersion').textContent = data.versions[0].fullVersion;
+                const totalSize = data.versions.reduce((sum, v) => sum + v.size, 0);
+                document.getElementById('totalSize').textContent = formatBytes(totalSize);
+
+                // Render versions
+                container.innerHTML = data.versions.map((v, index) => `
+                    <div class="version-item ${index === 0 ? 'latest' : ''}">
+                        <div class="version-info">
+                            <div class="version-number">
+                                ${v.fullVersion}
+                                ${index === 0 ? '<span class="badge">LATEST</span>' : ''}
+                            </div>
+                            <div class="version-meta">
+                                📦 ${formatBytes(v.size)} •
+                                🔐 MD5: ${v.md5.substring(0, 12)}... •
+                                📅 ${new Date(v.releaseDate).toLocaleString('it-IT')}
+                            </div>
+                        </div>
+                        <button class="btn btn-danger btn-small" onclick="deleteVersion('${v.fullVersion}')">
+                            🗑️ Elimina
+                        </button>
+                    </div>
+                `).join('');
+
+            } catch (err) {
+                document.getElementById('versionsList').innerHTML =
+                    '<p style="color: #f56565; text-align: center;">❌ Errore nel caricamento</p>';
+                console.error('Error loading versions:', err);
+            }
+        }
+
+        // Upload firmware
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const btn = document.getElementById('uploadBtn');
+            const formData = new FormData(e.target);
+
+            btn.disabled = true;
+            btn.textContent = '⏳ Upload in corso...';
+
+            try {
+                const response = await fetch('/api/upload', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Basic ${credentials}`
+                    },
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showAlert(`✅ Firmware ${result.version} caricato con successo!`, 'success');
+                    e.target.reset();
+                    await loadVersions();
+                } else {
+                    showAlert(`❌ ${result.error}`, 'error');
+                }
+            } catch (err) {
+                showAlert(`❌ Errore durante l'upload: ${err.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '⬆️ Upload Firmware';
+            }
+        });
+
+        // Delete version
+        async function deleteVersion(version) {
+            if (!confirm(`Sei sicuro di voler eliminare la versione ${version}?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/versions/${version}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Basic ${credentials}`
+                    }
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showAlert(`✅ Versione ${version} eliminata`, 'success');
+                    await loadVersions();
+                } else {
+                    showAlert(`❌ ${result.error}`, 'error');
+                }
+            } catch (err) {
+                showAlert(`❌ Errore: ${err.message}`, 'error');
+            }
+        }
+
+        // Load versions on page load
+        loadVersions();
+    </script>
+</body>
+</html>

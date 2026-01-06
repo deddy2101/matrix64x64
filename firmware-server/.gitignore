@@ -1,0 +1,23 @@
+# Environment variables
+.env
+
+# Data directory (persisted binaries)
+data/
+
+# Node modules
+node_modules/
+admin/node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

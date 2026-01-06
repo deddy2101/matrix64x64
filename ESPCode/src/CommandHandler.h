@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <vector>
+#include <Update.h>
 #include "TimeManager.h"
 #include "EffectManager.h"
 #include "DisplayManager.h"
@@ -41,10 +42,18 @@ class WebSocketManager;
  *   devicename,NAME                - Nome dispositivo
  *   save                           - Salva impostazioni
  *   restart                        - Riavvia ESP32
- * 
+ *   ota,start,SIZE                 - Inizia OTA update (SIZE in bytes)
+ *   ota,data,BASE64_CHUNK          - Invia chunk dati firmware (base64)
+ *   ota,end,MD5                    - Finalizza OTA con verifica MD5
+ *   ota,abort                      - Annulla OTA in corso
+ *
  * Risposte (ESP32 → App):
  *   OK,comando                     - Comando eseguito
  *   ERR,messaggio                  - Errore
+ *   OTA_READY                      - Pronto per ricevere firmware
+ *   OTA_PROGRESS,bytes,percent     - Progresso upload
+ *   OTA_SUCCESS                    - Update completato (riavvio imminente)
+ *   OTA_ERROR,messaggio            - Errore durante OTA
  *   STATUS,time,date,mode,ds3231,temp,effect,idx,fps,auto,count,bright,night,wifi,ip,ssid,rssi,uptime,heap
  *   EFFECTS,name1,name2,name3,...  - Lista nomi effetti
  *   SETTINGS,ssid,apMode,brightDay,brightNight,nightStart,nightEnd,duration,auto,effect,deviceName
@@ -101,6 +110,13 @@ private:
     String handleDeviceName(const std::vector<String>& parts);
     String handleSave();
     String handleRestart();
+    String handleOTA(const std::vector<String>& parts);
+
+    // OTA state
+    bool _otaInProgress;
+    size_t _otaSize;
+    size_t _otaWritten;
+    String _otaExpectedMD5;
 };
 
 #endif // COMMAND_HANDLER_H

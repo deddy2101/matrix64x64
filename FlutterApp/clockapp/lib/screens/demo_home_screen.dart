@@ -97,6 +97,8 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
                   const SizedBox(height: 16),
                   _buildBrightnessCard(),
                   const SizedBox(height: 16),
+                  _buildOTACard(),
+                  const SizedBox(height: 16),
                   _buildConsoleCard(),
                 ],
               ),
@@ -510,6 +512,94 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
                 style: TextStyle(color: Colors.grey[400]),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOTACard() {
+    return GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.system_update_alt,
+                color: Colors.grey[600],
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Firmware Update (OTA)',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Info - funzione non disponibile in demo
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.orange.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.orange.withOpacity(0.3)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.lock_outline, size: 20, color: Colors.orange[300]),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Questa funzione è disponibile solo con un dispositivo reale connesso.',
+                    style: TextStyle(color: Colors.orange[200], fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Pulsante disabilitato
+          Opacity(
+            opacity: 0.5,
+            child: ActionButton(
+              icon: Icons.upload_file,
+              label: 'Seleziona file .bin',
+              color: Colors.grey[700],
+              onTap: () {
+                // Mostra dialog informativo
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    backgroundColor: const Color(0xFF1a1a2e),
+                    title: Row(
+                      children: [
+                        Icon(Icons.info_outline, color: Colors.blue[400]),
+                        const SizedBox(width: 12),
+                        const Text('Modalità Demo'),
+                      ],
+                    ),
+                    content: const Text(
+                      'La funzione di aggiornamento firmware (OTA) è disponibile solo quando sei connesso a un dispositivo ESP32 reale.\n\n'
+                      'Esci dalla modalità Demo e connettiti a un dispositivo per usare questa funzione.',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('OK'),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
           ),
         ],
       ),

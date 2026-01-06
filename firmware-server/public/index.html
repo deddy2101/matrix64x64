@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LED Matrix Firmware Repository</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            padding: 40px 0;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            background: linear-gradient(45deg, #8B5CF6, #06b6d4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            color: #aaa;
+            font-size: 1.1em;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 30px;
+            margin: 20px 0;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .version-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .version-item {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 15px 0;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: all 0.3s ease;
+        }
+
+        .version-item:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: #8B5CF6;
+        }
+
+        .version-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .version-number {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #06b6d4;
+        }
+
+        .version-badge {
+            background: #10b981;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+
+        .version-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            color: #aaa;
+            font-size: 0.9em;
+            margin: 10px 0;
+        }
+
+        .info-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .download-btn {
+            display: inline-block;
+            background: linear-gradient(45deg, #8B5CF6, #06b6d4);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: bold;
+            margin-top: 15px;
+            transition: transform 0.2s ease;
+        }
+
+        .download-btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #aaa;
+        }
+
+        .api-info {
+            background: rgba(139, 92, 246, 0.1);
+            border-left: 4px solid #8B5CF6;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+
+        code {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔮 LED Matrix Firmware</h1>
+            <p class="subtitle">Repository firmware per dispositivi ESP32</p>
+        </header>
+
+        <div class="card">
+            <h2>📦 Versioni Disponibili</h2>
+            <div id="versions-container" class="loading">
+                Caricamento versioni...
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>🔌 API Endpoints</h2>
+            <div class="api-info">
+                <strong>GET /api/manifest</strong><br>
+                Ritorna JSON con lista versioni disponibili
+            </div>
+            <div class="api-info">
+                <strong>GET /binaries/{version}/firmware.bin</strong><br>
+                Download diretto del firmware
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function loadVersions() {
+            try {
+                const response = await fetch('/api/manifest');
+                const data = await response.json();
+
+                const container = document.getElementById('versions-container');
+
+                if (!data.versions || data.versions.length === 0) {
+                    container.innerHTML = '<p style="color: #aaa;">Nessuna versione disponibile</p>';
+                    return;
+                }
+
+                // Ordina per build number (più recente prima)
+                const versions = data.versions.sort((a, b) => b.buildNumber - a.buildNumber);
+
+                container.innerHTML = '<ul class="version-list">' +
+                    versions.map((v, index) => `
+                        <li class="version-item">
+                            <div class="version-header">
+                                <span class="version-number">${v.fullVersion}</span>
+                                ${index === 0 ? '<span class="version-badge">LATEST</span>' : ''}
+                            </div>
+                            <div class="version-info">
+                                <div class="info-item">
+                                    📦 Dimensione: ${formatBytes(v.size)}
+                                </div>
+                                <div class="info-item">
+                                    🔐 MD5: ${v.md5.substring(0, 8)}...
+                                </div>
+                                <div class="info-item">
+                                    📅 ${new Date(v.releaseDate).toLocaleDateString('it-IT')}
+                                </div>
+                            </div>
+                            <a href="${v.url}" class="download-btn" download>
+                                ⬇️ Download Firmware
+                            </a>
+                        </li>
+                    `).join('') +
+                    '</ul>';
+
+            } catch (error) {
+                document.getElementById('versions-container').innerHTML =
+                    '<p style="color: #f87171;">❌ Errore nel caricamento delle versioni</p>';
+                console.error('Error loading versions:', error);
+            }
+        }
+
+        function formatBytes(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+        }
+
+        // Carica versioni all'avvio
+        loadVersions();
+    </script>
+</body>
+</html>

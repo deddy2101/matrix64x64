@@ -8,6 +8,10 @@ CommandHandler::CommandHandler()
     , _settings(nullptr)
     , _wifiManager(nullptr)
     , _wsManager(nullptr)
+    , _otaInProgress(false)
+    , _otaSize(0)
+    , _otaWritten(0)
+    , _otaExpectedMD5("")
 {}
 
 void CommandHandler::init(TimeManager* time, EffectManager* effects, DisplayManager* display, Settings* settings, WiFiManager* wifi) {
@@ -111,7 +115,10 @@ String CommandHandler::processCommand(const String& command) {
     if (mainCmd == "restart") {
         return handleRestart();
     }
-    
+    if (mainCmd == "ota") {
+        return handleOTA(parts);
+    }
+
     return "ERR,unknown command: " + mainCmd;
 }
 
@@ -637,7 +644,7 @@ void CommandHandler::updateBrightness() {
 
 void CommandHandler::processSerial(const String& cmd) {
     String response;
-    
+
     // Try CSV command first
     if (cmd.indexOf(',') != -1 || cmd.length() > 1) {
         response = processCommand(cmd);
@@ -645,8 +652,157 @@ void CommandHandler::processSerial(const String& cmd) {
         // Try legacy single-char command
         response = processLegacyCommand(cmd);
     }
-    
+
     if (!response.isEmpty()) {
         DEBUG_PRINTLN(response);
     }
+}
+
+// ═══════════════════════════════════════════
+// OTA Update Handler
+// ═══════════════════════════════════════════
+
+String CommandHandler::handleOTA(const std::vector<String>& parts) {
+    if (parts.size() < 2) {
+        return "ERR,OTA requires subcommand";
+    }
+
+    String subCmd = parts[1];
+    subCmd.toLowerCase();
+
+    // ota,start,SIZE
+    if (subCmd == "start") {
+        if (parts.size() < 3) {
+            return "ERR,OTA start requires size parameter";
+        }
+
+        _otaSize = parts[2].toInt();
+        if (_otaSize == 0 || _otaSize > 2000000) { // Max 2MB
+            return "ERR,Invalid firmware size";
+        }
+
+        DEBUG_PRINTF("[OTA] Starting update, size: %d bytes\n", _otaSize);
+
+        // Inizializza Update
+        if (!Update.begin(_otaSize)) {
+            DEBUG_PRINTF("[OTA] Update.begin() failed! Error: %d\n", Update.getError());
+            return "ERR,OTA init failed";
+        }
+
+        _otaInProgress = true;
+        _otaWritten = 0;
+
+        // Mostra "OTA" sul display
+        if (_displayManager) {
+            _displayManager->showOTAProgress(0);
+        }
+
+        return "OTA_READY";
+    }
+
+    // ota,data,BASE64_CHUNK
+    else if (subCmd == "data") {
+        if (!_otaInProgress) {
+            return "ERR,No OTA in progress";
+        }
+
+        if (parts.size() < 3) {
+            return "ERR,OTA data requires chunk";
+        }
+
+        // Decode base64
+        String base64Chunk = parts[2];
+
+        // Semplice decodifica base64 (per produzione usa una libreria dedicata)
+        // Per ora assumiamo dati raw o implementiamo decode manuale
+        size_t chunkSize = base64Chunk.length();
+
+        // Write chunk
+        size_t written = Update.write((uint8_t*)base64Chunk.c_str(), chunkSize);
+
+        if (written != chunkSize) {
+            Update.abort();
+            _otaInProgress = false;
+            DEBUG_PRINTF("[OTA] Write failed! Expected %d, wrote %d\n", chunkSize, written);
+            return "ERR,Write failed";
+        }
+
+        _otaWritten += written;
+        int percent = (_otaWritten * 100) / _otaSize;
+
+        // Aggiorna display
+        if (_displayManager) {
+            _displayManager->showOTAProgress(percent);
+        }
+
+        // Notifica progresso via WebSocket
+        if (_wsManager) {
+            String progress = "OTA_PROGRESS," + String(_otaWritten) + "," + String(percent);
+            _wsManager->broadcast(progress);
+        }
+
+        DEBUG_PRINTF("[OTA] Progress: %d/%d bytes (%d%%)\n", _otaWritten, _otaSize, percent);
+
+        return "OK," + String(percent);
+    }
+
+    // ota,end,MD5
+    else if (subCmd == "end") {
+        if (!_otaInProgress) {
+            return "ERR,No OTA in progress";
+        }
+
+        String expectedMD5 = "";
+        if (parts.size() >= 3) {
+            expectedMD5 = parts[2];
+        }
+
+        DEBUG_PRINTLN("[OTA] Finalizing update...");
+
+        if (!Update.end(true)) {
+            Update.abort();
+            _otaInProgress = false;
+            DEBUG_PRINTF("[OTA] Update.end() failed! Error: %d\n", Update.getError());
+            return "ERR,OTA finalization failed";
+        }
+
+        // Verifica MD5 se fornito
+        if (expectedMD5.length() > 0) {
+            String actualMD5 = Update.md5String();
+            if (!actualMD5.equalsIgnoreCase(expectedMD5)) {
+                DEBUG_PRINTF("[OTA] MD5 mismatch! Expected: %s, Got: %s\n",
+                           expectedMD5.c_str(), actualMD5.c_str());
+                return "ERR,MD5 verification failed";
+            }
+            DEBUG_PRINTLN("[OTA] MD5 verified OK");
+        }
+
+        _otaInProgress = false;
+
+        // Mostra successo sul display
+        if (_displayManager) {
+            _displayManager->showOTASuccess();
+        }
+
+        DEBUG_PRINTLN("[OTA] Update SUCCESS! Rebooting in 3 seconds...");
+
+        // Riavvia dopo 3 secondi
+        delay(3000);
+        ESP.restart();
+
+        return "OTA_SUCCESS";
+    }
+
+    // ota,abort
+    else if (subCmd == "abort") {
+        if (_otaInProgress) {
+            Update.abort();
+            _otaInProgress = false;
+            DEBUG_PRINTLN("[OTA] Update aborted");
+            return "OK,OTA aborted";
+        }
+        return "ERR,No OTA in progress";
+    }
+
+    return "ERR,Unknown OTA subcommand: " + subCmd;
 }

@@ -41,6 +41,10 @@ public:
     // Conversione colori
     static uint16_t color565(uint8_t r, uint8_t g, uint8_t b);
     static void rgb565ToRgb888(uint16_t color565, uint8_t& r, uint8_t& g, uint8_t& b);
+
+    // OTA Progress Display
+    void showOTAProgress(int percent);
+    void showOTASuccess();
 };
 
 #endif
