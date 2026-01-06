@@ -24,6 +24,7 @@ class WebSocketManager;
  *   getStatus                      - Richiedi stato completo
  *   getEffects                     - Lista effetti disponibili
  *   getSettings                    - Impostazioni correnti
+ *   getVersion                     - Versione firmware corrente
  *   setTime,HH,MM,SS               - Imposta ora
  *   setDateTime,YYYY,MM,DD,HH,MM,SS - Imposta data/ora
  *   setMode,rtc|fake               - Modalità tempo
@@ -57,6 +58,7 @@ class WebSocketManager;
  *   STATUS,time,date,mode,ds3231,temp,effect,idx,fps,auto,count,bright,night,wifi,ip,ssid,rssi,uptime,heap
  *   EFFECTS,name1,name2,name3,...  - Lista nomi effetti
  *   SETTINGS,ssid,apMode,brightDay,brightNight,nightStart,nightEnd,duration,auto,effect,deviceName
+ *   VERSION,version,buildNumber,buildDate,buildTime - Versione firmware
  *   EFFECT,index,name              - Notifica cambio effetto
  *   TIME,HH:MM:SS                  - Notifica cambio ora
  */
@@ -77,6 +79,7 @@ public:
     String getStatusResponse();
     String getEffectsResponse();
     String getSettingsResponse();
+    String getVersionResponse();
     
     // Notifiche
     String getEffectChangeNotification();

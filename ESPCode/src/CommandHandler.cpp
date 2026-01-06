@@ -1,5 +1,6 @@
 #include "CommandHandler.h"
 #include "WebSocketManager.h"
+#include "Version.h"
 
 CommandHandler::CommandHandler()
     : _timeManager(nullptr)
@@ -74,6 +75,9 @@ String CommandHandler::processCommand(const String& command) {
     }
     if (mainCmd == "getsettings") {
         return getSettingsResponse();
+    }
+    if (mainCmd == "getversion") {
+        return getVersionResponse();
     }
     
     // ─────────────────────────────────────────
@@ -293,7 +297,7 @@ String CommandHandler::getEffectsResponse() {
 
 String CommandHandler::getSettingsResponse() {
     String response = "SETTINGS";
-    
+
     if (_settings) {
         response += "," + String(_settings->getSSID());
         response += "," + String(_settings->isAPMode() ? "1" : "0");
@@ -306,7 +310,16 @@ String CommandHandler::getSettingsResponse() {
         response += "," + String(_settings->getCurrentEffect());
         response += "," + String(_settings->getDeviceName());
     }
-    
+
+    return response;
+}
+
+String CommandHandler::getVersionResponse() {
+    String response = "VERSION";
+    response += "," + String(FIRMWARE_VERSION);
+    response += "," + String(FIRMWARE_BUILD_NUMBER);
+    response += "," + String(FIRMWARE_BUILD_DATE);
+    response += "," + String(FIRMWARE_BUILD_TIME);
     return response;
 }
 

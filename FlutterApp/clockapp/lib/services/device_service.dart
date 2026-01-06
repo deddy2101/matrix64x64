@@ -473,6 +473,7 @@ class DeviceService {
   void getStatus() => send('getStatus');
   void getSettings() => send('getSettings');
   void getEffects() => send('getEffects');
+  void getVersion() => send('getVersion');
   void saveSettings() => send('save');
   void restart() => send('restart');
 

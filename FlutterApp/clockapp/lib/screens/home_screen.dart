@@ -4,6 +4,8 @@ import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import '../services/device_service.dart';
 import '../services/ota_service.dart';
+import '../services/firmware_update_service.dart';
+import '../models/firmware_version.dart';
 import '../widgets/common/common_widgets.dart';
 import '../widgets/home/home_widgets.dart';
 import '../dialogs/wifi_config_dialog.dart';
@@ -20,12 +22,16 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final DeviceService _device = DeviceService();
   late final OtaService _otaService;
+  final FirmwareUpdateService _firmwareUpdateService = FirmwareUpdateService();
 
   // State
   bool _isConnected = false;
   DeviceStatus? _status;
   List<EffectInfo> _effects = [];
   DeviceSettings? _settings;
+  FirmwareVersion? _currentFirmwareVersion;
+  FirmwareManifest? _firmwareManifest;
+  bool _isLoadingVersions = false;
 
   // UI State
   final List<String> _consoleLog = [];
@@ -81,6 +87,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _device.rawDataStream.listen((data) {
         if (!data.startsWith('{')) {
           _addLog('← $data');
+
+          // Parse VERSION response
+          if (data.startsWith('VERSION,')) {
+            try {
+              final version = FirmwareVersion.fromCsvResponse(data);
+              setState(() => _currentFirmwareVersion = version);
+              _addLog('✓ Versione firmware: ${version.fullVersion}');
+              // Load manifest after getting current version
+              _loadFirmwareManifest();
+            } catch (e) {
+              _addLog('⚠ Errore parsing versione: $e');
+            }
+          }
         }
       }),
     ];
@@ -96,6 +115,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           _device.getStatus();
           _device.getEffects();
           _device.getSettings();
+          _device.getVersion();
         }
       });
     }
@@ -118,6 +138,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _consoleLog.insert(0, '[$time] $message');
       if (_consoleLog.length > 50) _consoleLog.removeLast();
     });
+  }
+
+  Future<void> _loadFirmwareManifest() async {
+    if (_isLoadingVersions) return;
+
+    setState(() => _isLoadingVersions = true);
+
+    try {
+      final manifest = await _firmwareUpdateService.fetchManifest();
+      if (mounted) {
+        setState(() {
+          _firmwareManifest = manifest;
+          _isLoadingVersions = false;
+        });
+        _addLog('✓ Manifest caricato: ${manifest.releases.length} versioni disponibili');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingVersions = false);
+        _addLog('⚠ Errore caricamento manifest: $e');
+      }
+    }
   }
 
   @override
@@ -913,29 +955,87 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ),
           const SizedBox(height: 16),
 
-          // Info
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.blue.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.blue.withOpacity(0.3)),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.info_outline, size: 20, color: Colors.blue[300]),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Aggiorna il firmware dell\'ESP32. Il progresso verrà mostrato sul display LED.',
-                    style: TextStyle(color: Colors.blue[200], fontSize: 12),
-                  ),
-                ),
-              ],
-            ),
-          ),
+          // Current version
+          if (_currentFirmwareVersion != null) ...[
+            _buildVersionInfo('Versione corrente', _currentFirmwareVersion!, Colors.amber),
+            const SizedBox(height: 12),
+          ],
 
-          const SizedBox(height: 16),
+          // Latest version
+          if (_firmwareManifest?.latestRelease != null) ...[
+            _buildVersionInfo(
+              'Ultima versione disponibile',
+              null,
+              Colors.green,
+              release: _firmwareManifest!.latestRelease!,
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // All available versions
+          if (_firmwareManifest != null && _firmwareManifest!.releases.length > 1) ...[
+            ExpansionTile(
+              title: Text(
+                'Tutte le versioni (${_firmwareManifest!.releases.length})',
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+              ),
+              children: _firmwareManifest!.releases.map((release) {
+                final isCurrent = _currentFirmwareVersion != null &&
+                    release.version == _currentFirmwareVersion!.version &&
+                    release.buildNumber == _currentFirmwareVersion!.buildNumber;
+                final isLatest = release.version == _firmwareManifest!.latestVersion;
+                final color = isLatest
+                    ? Colors.green
+                    : isCurrent
+                        ? Colors.amber
+                        : Colors.grey;
+
+                return ListTile(
+                  dense: true,
+                  leading: Icon(Icons.circle, size: 12, color: color),
+                  title: Text(
+                    release.fullVersion,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isCurrent || isLatest ? color : Colors.grey[400],
+                      fontWeight: isCurrent || isLatest ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  ),
+                  subtitle: release.description != null
+                      ? Text(
+                          release.description!,
+                          style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                        )
+                      : null,
+                  trailing: isCurrent
+                      ? const Chip(
+                          label: Text('Installata', style: TextStyle(fontSize: 10)),
+                          padding: EdgeInsets.symmetric(horizontal: 4),
+                        )
+                      : isLatest
+                          ? const Chip(
+                              label: Text('Più recente', style: TextStyle(fontSize: 10)),
+                              padding: EdgeInsets.symmetric(horizontal: 4),
+                            )
+                          : null,
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // Loading indicator
+          if (_isLoadingVersions) ...[
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(12.0),
+                child: CircularProgressIndicator(),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          const SizedBox(height: 4),
 
           // Progress indicator se update in corso
           if (_otaService.isUpdating) ...[
@@ -974,6 +1074,69 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               onTap: () => _selectAndUploadFirmware(),
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVersionInfo(
+    String label,
+    FirmwareVersion? version,
+    Color color, {
+    FirmwareRelease? release,
+  }) {
+    final displayVersion = release != null ? release.fullVersion : version?.fullVersion ?? 'N/A';
+    final buildDate = release != null
+        ? release.releaseDate
+        : version != null
+            ? '${version.buildDate} ${version.buildTime}'
+            : null;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.circle, size: 12, color: color),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: Colors.grey[400],
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  displayVersion,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                if (buildDate != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    buildDate,
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 10,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ],
       ),
     );
