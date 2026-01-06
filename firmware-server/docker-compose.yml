@@ -5,8 +5,7 @@ services:
   public:
     image: nginx:alpine
     container_name: firmware-public
-    ports:
-      - "8080:80"
+    network_mode: host
     volumes:
       - ./data/binaries:/usr/share/nginx/html/binaries:ro
       - ./public/nginx.conf:/etc/nginx/nginx.conf:ro
@@ -17,8 +16,7 @@ services:
   admin:
     build: ./admin
     container_name: firmware-admin
-    ports:
-      - "81:3000"
+    network_mode: host
     volumes:
       - ./data/binaries:/app/binaries
     environment:
