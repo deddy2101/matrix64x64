@@ -53,16 +53,30 @@ class FirmwareManifest {
   });
 
   factory FirmwareManifest.fromJson(Map<String, dynamic> json) {
+    final releasesList = json['releases'] as List? ?? json['versions'] as List? ?? [];
+    final releases = releasesList
+        .map((r) => FirmwareRelease.fromJson(r as Map<String, dynamic>))
+        .toList();
+
+    // Ordina per versione e build number (più recente prima)
+    releases.sort((a, b) {
+      final versionCompare = FirmwareRelease._compareVersions(b.version, a.version);
+      if (versionCompare != 0) return versionCompare;
+      return int.parse(b.buildNumber).compareTo(int.parse(a.buildNumber));
+    });
+
+    // latest_version dal JSON, oppure prendi la prima release (più recente)
+    final latestVersion = json['latest_version']?.toString()
+        ?? (releases.isNotEmpty ? releases.first.version : '0.0.0');
+
     return FirmwareManifest(
-      latestVersion: json['latest_version'] as String,
-      releases: (json['releases'] as List)
-          .map((r) => FirmwareRelease.fromJson(r as Map<String, dynamic>))
-          .toList(),
+      latestVersion: latestVersion,
+      releases: releases,
     );
   }
 
-  FirmwareRelease? get latestRelease =>
-      releases.firstWhere((r) => r.version == latestVersion);
+  /// Restituisce la release più recente (prima nella lista già ordinata)
+  FirmwareRelease? get latestRelease => releases.isNotEmpty ? releases.first : null;
 }
 
 class FirmwareRelease {
@@ -85,14 +99,24 @@ class FirmwareRelease {
   });
 
   factory FirmwareRelease.fromJson(Map<String, dynamic> json) {
+    // Supporta sia build_number che buildNumber
+    final buildNum = json['build_number']?.toString()
+        ?? json['buildNumber']?.toString()
+        ?? '0';
+
+    // Supporta sia release_date che releaseDate
+    final releaseDate = json['release_date']?.toString()
+        ?? json['releaseDate']?.toString()
+        ?? '';
+
     return FirmwareRelease(
-      version: json['version'] as String,
-      buildNumber: json['build_number'] as String,
-      url: json['url'] as String,
-      size: json['size'] as int,
-      md5: json['md5'] as String,
-      releaseDate: json['release_date'] as String,
-      description: json['description'] as String?,
+      version: json['version']?.toString() ?? '0.0.0',
+      buildNumber: buildNum,
+      url: json['url']?.toString() ?? '',
+      size: (json['size'] as num?)?.toInt() ?? 0,
+      md5: json['md5']?.toString() ?? '',
+      releaseDate: releaseDate,
+      description: json['description']?.toString(),
     );
   }
 

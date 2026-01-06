@@ -1066,6 +1066,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ],
             ),
           ] else ...[
+            // Pulsante per installare ultima versione dal server
+            if (_firmwareManifest?.latestRelease != null && _hasNewerVersion()) ...[
+              ActionButton(
+                icon: Icons.cloud_download,
+                label: 'Installa ${_firmwareManifest!.latestRelease!.fullVersion}',
+                color: Colors.green[400],
+                onTap: () => _downloadAndInstallFirmware(_firmwareManifest!.latestRelease!),
+              ),
+              const SizedBox(height: 12),
+            ],
             // Pulsante per selezionare file
             ActionButton(
               icon: Icons.upload_file,
@@ -1140,6 +1150,127 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ],
       ),
     );
+  }
+
+  /// Verifica se c'è una versione più recente disponibile
+  bool _hasNewerVersion() {
+    if (_currentFirmwareVersion == null || _firmwareManifest?.latestRelease == null) {
+      return false;
+    }
+    return _firmwareManifest!.latestRelease!.isNewerThan(_currentFirmwareVersion!);
+  }
+
+  /// Scarica e installa firmware dal server
+  Future<void> _downloadAndInstallFirmware(FirmwareRelease release) async {
+    try {
+      _addLog('→ Download firmware ${release.fullVersion}...');
+      setState(() {});
+
+      // Scarica firmware
+      final bytes = await _firmwareUpdateService.downloadFirmwareBytes(
+        release,
+        onProgress: (received, total) {
+          final percent = (received * 100 / total).round();
+          if (percent % 10 == 0) {
+            _addLog('↓ Download: $percent%');
+          }
+        },
+      );
+
+      _addLog('✓ Download completato (${bytes.length} bytes)');
+      _addLog('→ Inizio OTA update...');
+
+      setState(() {}); // Aggiorna UI per mostrare progress
+
+      // Esegui update
+      final success = await _otaService.updateFirmwareFromBytes(
+        Uint8List.fromList(bytes),
+        expectedMd5: release.md5,
+      );
+
+      if (success) {
+        _addLog('✓ Firmware aggiornato con successo!');
+        _addLog('→ Il dispositivo si riavvierà automaticamente');
+
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              backgroundColor: const Color(0xFF1a1a2e),
+              title: Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.green[400]),
+                  const SizedBox(width: 12),
+                  const Text('Update Completato'),
+                ],
+              ),
+              content: Text(
+                'Firmware ${release.fullVersion} installato con successo.\n\n'
+                'Il dispositivo si riavvierà automaticamente tra pochi secondi.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        }
+      } else {
+        _addLog('✗ Errore durante l\'update: ${_otaService.status}');
+
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              backgroundColor: const Color(0xFF1a1a2e),
+              title: Row(
+                children: [
+                  Icon(Icons.error, color: Colors.red[400]),
+                  const SizedBox(width: 12),
+                  const Text('Errore Update'),
+                ],
+              ),
+              content: Text(_otaService.status),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        }
+      }
+
+      setState(() {}); // Aggiorna UI finale
+
+    } catch (e) {
+      _addLog('✗ Errore: $e');
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            backgroundColor: const Color(0xFF1a1a2e),
+            title: Row(
+              children: [
+                Icon(Icons.error, color: Colors.red[400]),
+                const SizedBox(width: 12),
+                const Text('Errore Download'),
+              ],
+            ),
+            content: Text('$e'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _selectAndUploadFirmware() async {

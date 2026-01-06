@@ -119,7 +119,11 @@ private:
     bool _otaInProgress;
     size_t _otaSize;
     size_t _otaWritten;
+    int _otaExpectedChunk;
     String _otaExpectedMD5;
+
+    // Base64 decode helper
+    size_t base64Decode(const String& input, uint8_t* output, size_t maxLen);
 };
 
 #endif // COMMAND_HANDLER_H

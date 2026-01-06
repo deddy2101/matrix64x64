@@ -12,6 +12,7 @@ CommandHandler::CommandHandler()
     , _otaInProgress(false)
     , _otaSize(0)
     , _otaWritten(0)
+    , _otaExpectedChunk(0)
     , _otaExpectedMD5("")
 {}
 
@@ -672,7 +673,55 @@ void CommandHandler::processSerial(const String& cmd) {
 }
 
 // ═══════════════════════════════════════════
-// OTA Update Handler
+// Base64 Decode Helper
+// ═══════════════════════════════════════════
+
+static const char base64Chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+static int base64CharIndex(char c) {
+    if (c >= 'A' && c <= 'Z') return c - 'A';
+    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+    if (c >= '0' && c <= '9') return c - '0' + 52;
+    if (c == '+') return 62;
+    if (c == '/') return 63;
+    return -1;
+}
+
+size_t CommandHandler::base64Decode(const String& input, uint8_t* output, size_t maxLen) {
+    size_t inputLen = input.length();
+    if (inputLen == 0 || inputLen % 4 != 0) {
+        return 0;
+    }
+
+    size_t outputLen = (inputLen / 4) * 3;
+    if (input[inputLen - 1] == '=') outputLen--;
+    if (input[inputLen - 2] == '=') outputLen--;
+
+    if (outputLen > maxLen) {
+        return 0;
+    }
+
+    size_t j = 0;
+    for (size_t i = 0; i < inputLen; i += 4) {
+        int a = base64CharIndex(input[i]);
+        int b = base64CharIndex(input[i + 1]);
+        int c = (input[i + 2] != '=') ? base64CharIndex(input[i + 2]) : 0;
+        int d = (input[i + 3] != '=') ? base64CharIndex(input[i + 3]) : 0;
+
+        if (a < 0 || b < 0) return 0;
+
+        uint32_t triple = (a << 18) | (b << 12) | (c << 6) | d;
+
+        if (j < outputLen) output[j++] = (triple >> 16) & 0xFF;
+        if (j < outputLen) output[j++] = (triple >> 8) & 0xFF;
+        if (j < outputLen) output[j++] = triple & 0xFF;
+    }
+
+    return outputLen;
+}
+
+// ═══════════════════════════════════════════
+// OTA Update Handler with ACK protocol
 // ═══════════════════════════════════════════
 
 String CommandHandler::handleOTA(const std::vector<String>& parts) {
@@ -704,6 +753,7 @@ String CommandHandler::handleOTA(const std::vector<String>& parts) {
 
         _otaInProgress = true;
         _otaWritten = 0;
+        _otaExpectedChunk = 0;
 
         // Mostra "OTA" sul display
         if (_displayManager) {
@@ -713,50 +763,63 @@ String CommandHandler::handleOTA(const std::vector<String>& parts) {
         return "OTA_READY";
     }
 
-    // ota,data,BASE64_CHUNK
+    // ota,data,CHUNK_NUM,BASE64_CHUNK
     else if (subCmd == "data") {
         if (!_otaInProgress) {
             return "ERR,No OTA in progress";
         }
 
-        if (parts.size() < 3) {
-            return "ERR,OTA data requires chunk";
+        if (parts.size() < 4) {
+            return "ERR,OTA data requires chunk_num and data";
+        }
+
+        // Get chunk number
+        int chunkNum = parts[2].toInt();
+
+        // Check sequence
+        if (chunkNum != _otaExpectedChunk) {
+            DEBUG_PRINTF("[OTA] Wrong chunk! Expected %d, got %d\n", _otaExpectedChunk, chunkNum);
+            return "OTA_NACK," + String(_otaExpectedChunk);
         }
 
         // Decode base64
-        String base64Chunk = parts[2];
+        String base64Chunk = parts[3];
 
-        // Semplice decodifica base64 (per produzione usa una libreria dedicata)
-        // Per ora assumiamo dati raw o implementiamo decode manuale
-        size_t chunkSize = base64Chunk.length();
+        // Buffer per dati decodificati (max 4KB raw = ~5.5KB base64)
+        static uint8_t decodedBuffer[4096];
+        size_t decodedLen = base64Decode(base64Chunk, decodedBuffer, sizeof(decodedBuffer));
 
-        // Write chunk
-        size_t written = Update.write((uint8_t*)base64Chunk.c_str(), chunkSize);
+        if (decodedLen == 0) {
+            DEBUG_PRINTLN("[OTA] Base64 decode failed!");
+            return "OTA_NACK," + String(chunkNum);
+        }
 
-        if (written != chunkSize) {
+        // Write decoded chunk
+        size_t written = Update.write(decodedBuffer, decodedLen);
+
+        if (written != decodedLen) {
             Update.abort();
             _otaInProgress = false;
-            DEBUG_PRINTF("[OTA] Write failed! Expected %d, wrote %d\n", chunkSize, written);
+            DEBUG_PRINTF("[OTA] Write failed! Expected %d, wrote %d\n", decodedLen, written);
             return "ERR,Write failed";
         }
 
         _otaWritten += written;
+        _otaExpectedChunk++;
         int percent = (_otaWritten * 100) / _otaSize;
 
-        // Aggiorna display
-        if (_displayManager) {
+        // Aggiorna display ogni 5%
+        if (_displayManager && percent % 5 == 0) {
             _displayManager->showOTAProgress(percent);
         }
 
-        // Notifica progresso via WebSocket
-        if (_wsManager) {
-            String progress = "OTA_PROGRESS," + String(_otaWritten) + "," + String(percent);
-            _wsManager->broadcast(progress);
+        // Log ogni 10%
+        if (percent % 10 == 0) {
+            DEBUG_PRINTF("[OTA] Progress: %d/%d bytes (%d%%)\n", _otaWritten, _otaSize, percent);
         }
 
-        DEBUG_PRINTF("[OTA] Progress: %d/%d bytes (%d%%)\n", _otaWritten, _otaSize, percent);
-
-        return "OK," + String(percent);
+        // Invia ACK con numero chunk
+        return "OTA_ACK," + String(chunkNum);
     }
 
     // ota,end,MD5
@@ -770,7 +833,7 @@ String CommandHandler::handleOTA(const std::vector<String>& parts) {
             expectedMD5 = parts[2];
         }
 
-        DEBUG_PRINTLN("[OTA] Finalizing update...");
+        DEBUG_PRINTF("[OTA] Finalizing update... Written: %d/%d bytes\n", _otaWritten, _otaSize);
 
         if (!Update.end(true)) {
             Update.abort();
@@ -811,6 +874,7 @@ String CommandHandler::handleOTA(const std::vector<String>& parts) {
         if (_otaInProgress) {
             Update.abort();
             _otaInProgress = false;
+            _otaExpectedChunk = 0;
             DEBUG_PRINTLN("[OTA] Update aborted");
             return "OK,OTA aborted";
         }
