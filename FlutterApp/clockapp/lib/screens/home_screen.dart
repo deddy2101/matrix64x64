@@ -37,6 +37,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   // UI State
   final List<String> _consoleLog = [];
   final ScrollController _consoleScroll = ScrollController();
+  final TextEditingController _scrollTextController = TextEditingController();
 
   // Subscriptions
   late List<StreamSubscription> _subscriptions;
@@ -83,6 +84,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
       _device.settingsStream.listen((settings) {
         setState(() => _settings = settings);
+        // Aggiorna il controller del testo scroll se diverso
+        if (settings.scrollText.isNotEmpty &&
+            _scrollTextController.text != settings.scrollText) {
+          _scrollTextController.text = settings.scrollText;
+        }
       }),
 
       _device.rawDataStream.listen((data) {
@@ -128,6 +134,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       sub.cancel();
     }
     _consoleScroll.dispose();
+    _scrollTextController.dispose();
     super.dispose();
   }
 
@@ -182,6 +189,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     _buildTimeCard(),
                     const SizedBox(height: 16),
                     _buildEffectsCard(),
+                    const SizedBox(height: 16),
+                    _buildScrollTextCard(),
                     const SizedBox(height: 16),
                     _buildPlaybackCard(),
                     const SizedBox(height: 16),
@@ -594,6 +603,86 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         .entries
         .map((e) => EffectInfo(index: e.key, name: e.value, isCurrent: false))
         .toList();
+  }
+
+  Widget _buildScrollTextCard() {
+    return GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.text_fields,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Testo Scorrevole',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _scrollTextController,
+            maxLength: 127,
+            decoration: InputDecoration(
+              hintText: 'Inserisci il testo da scorrere...',
+              filled: true,
+              fillColor: Colors.white.withOpacity(0.1),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+              counterStyle: TextStyle(color: Colors.grey[500]),
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.clear),
+                onPressed: () {
+                  _scrollTextController.clear();
+                },
+              ),
+            ),
+            style: const TextStyle(fontSize: 14),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: ActionButton(
+                  icon: Icons.send,
+                  label: 'Applica',
+                  onTap: () {
+                    final text = _scrollTextController.text.trim();
+                    if (text.isNotEmpty) {
+                      _device.setScrollText(text);
+                      _addLog('→ ScrollText: $text');
+                      HapticFeedback.lightImpact();
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ActionButton(
+                  icon: Icons.save,
+                  label: 'Salva',
+                  onTap: () {
+                    final text = _scrollTextController.text.trim();
+                    if (text.isNotEmpty) {
+                      _device.setScrollText(text);
+                      _device.saveSettings();
+                      _addLog('→ ScrollText salvato: $text');
+                      HapticFeedback.lightImpact();
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildPlaybackCard() {

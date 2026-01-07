@@ -1,6 +1,7 @@
 #include "CommandHandler.h"
 #include "WebSocketManager.h"
 #include "Version.h"
+#include "effects/ScrollTextEffect.h"
 
 CommandHandler::CommandHandler()
     : _timeManager(nullptr)
@@ -10,6 +11,7 @@ CommandHandler::CommandHandler()
     , _wifiManager(nullptr)
     , _wsManager(nullptr)
     , _imageManager(nullptr)
+    , _scrollTextEffect(nullptr)
     , _otaInProgress(false)
     , _otaSize(0)
     , _otaWritten(0)
@@ -28,6 +30,10 @@ void CommandHandler::init(TimeManager* time, EffectManager* effects, DisplayMana
 
 void CommandHandler::setWebSocketManager(WebSocketManager* ws) {
     _wsManager = ws;
+}
+
+void CommandHandler::setScrollTextEffect(ScrollTextEffect* scrollText) {
+    _scrollTextEffect = scrollText;
 }
 
 // ═══════════════════════════════════════════
@@ -115,6 +121,9 @@ String CommandHandler::processCommand(const String& command) {
     }
     if (mainCmd == "devicename") {
         return handleDeviceName(parts);
+    }
+    if (mainCmd == "scrolltext") {
+        return handleScrollText(parts);
     }
     if (mainCmd == "save") {
         return handleSave();
@@ -315,6 +324,7 @@ String CommandHandler::getSettingsResponse() {
         response += "," + String(_settings->isAutoSwitch() ? "1" : "0");
         response += "," + String(_settings->getCurrentEffect());
         response += "," + String(_settings->getDeviceName());
+        response += "," + String(_settings->getScrollText());
     }
 
     return response;
@@ -617,15 +627,40 @@ String CommandHandler::handleDeviceName(const std::vector<String>& parts) {
     if (parts.size() < 2) {
         return "ERR,devicename needs NAME";
     }
-    
+
     String name = parts[1];
-    
+
     if (_settings) {
         _settings->setDeviceName(name.c_str());
         return "OK,devicename " + name + " (restart to apply)";
     }
-    
+
     return "ERR,settings not available";
+}
+
+String CommandHandler::handleScrollText(const std::vector<String>& parts) {
+    if (parts.size() < 2) {
+        return "ERR,scrolltext needs TEXT";
+    }
+
+    // Ricostruisci il testo completo (potrebbe contenere virgole)
+    String text = parts[1];
+    for (int i = 2; i < parts.size(); i++) {
+        text += "," + parts[i];
+    }
+
+    // Salva nelle settings
+    if (_settings) {
+        _settings->setScrollText(text.c_str());
+    }
+
+    // Aggiorna l'effetto in tempo reale se disponibile
+    if (_scrollTextEffect) {
+        _scrollTextEffect->setText(text);
+        DEBUG_PRINTF("[CMD] Scroll text updated: %s\n", text.c_str());
+    }
+
+    return "OK,scrolltext set";
 }
 
 String CommandHandler::handleSave() {

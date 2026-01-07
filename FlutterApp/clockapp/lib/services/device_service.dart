@@ -141,6 +141,7 @@ class DeviceSettings {
   final bool autoSwitch;
   final int currentEffect;
   final String deviceName;
+  final String scrollText;
 
   DeviceSettings({
     this.ssid = '',
@@ -153,10 +154,11 @@ class DeviceSettings {
     this.autoSwitch = true,
     this.currentEffect = -1,
     this.deviceName = 'ledmatrix',
+    this.scrollText = '',
   });
 
   /// Parse SETTINGS response
-  /// SETTINGS,ssid,apMode,brightDay,brightNight,nightStart,nightEnd,duration,auto,effect,deviceName
+  /// SETTINGS,ssid,apMode,brightDay,brightNight,nightStart,nightEnd,duration,auto,effect,deviceName,scrollText
   factory DeviceSettings.fromResponse(String response) {
     final parts = response.split(',');
     if (parts.length < 11 || parts[0] != 'SETTINGS') {
@@ -174,6 +176,7 @@ class DeviceSettings {
       autoSwitch: parts[8] == '1',
       currentEffect: int.tryParse(parts[9]) ?? -1,
       deviceName: parts[10],
+      scrollText: parts.length > 11 ? parts[11] : '',
     );
   }
 }
@@ -530,6 +533,9 @@ class DeviceService {
   }
 
   void setDeviceName(String name) => send('devicename,$name');
+
+  // Scroll Text
+  void setScrollText(String text) => send('scrolltext,$text');
 
   void dispose() {
     disconnect();

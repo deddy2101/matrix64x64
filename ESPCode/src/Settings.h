@@ -26,6 +26,9 @@ struct Config {
     
     // Device
     char deviceName[33];  // per mDNS
+
+    // Scroll Text
+    char scrollText[128];  // Testo scorrevole configurabile
 };
 
 class Settings {
@@ -91,6 +94,12 @@ public:
     // ═══════════════════════════════════════════
     const char* getDeviceName() const { return config.deviceName; }
     void setDeviceName(const char* name);
+
+    // ═══════════════════════════════════════════
+    // Scroll Text
+    // ═══════════════════════════════════════════
+    const char* getScrollText() const { return config.scrollText; }
+    void setScrollText(const char* text);
     
     // ═══════════════════════════════════════════
     // CSV Serialization (simple format)

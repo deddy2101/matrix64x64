@@ -15,6 +15,7 @@
 
 // Forward declaration
 class WebSocketManager;
+class ScrollTextEffect;
 
 /**
  * CommandHandler - Gestione comandi con protocollo CSV
@@ -42,6 +43,7 @@ class WebSocketManager;
  *   autoswitch,0|1                 - Auto-switch on/off
  *   wifi,SSID,PASSWORD,AP_MODE     - Configura WiFi (AP_MODE: 0=STA, 1=AP)
  *   devicename,NAME                - Nome dispositivo
+ *   scrolltext,TEXT                - Imposta testo scorrevole
  *   save                           - Salva impostazioni
  *   restart                        - Riavvia ESP32
  *   ota,start,SIZE                 - Inizia OTA update (SIZE in bytes)
@@ -66,7 +68,7 @@ class WebSocketManager;
  *   OTA_ERROR,messaggio            - Errore durante OTA
  *   STATUS,time,date,mode,ds3231,temp,effect,idx,fps,auto,count,bright,night,wifi,ip,ssid,rssi,uptime,heap
  *   EFFECTS,name1,name2,name3,...  - Lista nomi effetti
- *   SETTINGS,ssid,apMode,brightDay,brightNight,nightStart,nightEnd,duration,auto,effect,deviceName
+ *   SETTINGS,ssid,apMode,brightDay,brightNight,nightStart,nightEnd,duration,auto,effect,deviceName,scrollText
  *   VERSION,version,buildNumber,buildDate,buildTime - Versione firmware
  *   EFFECT,index,name              - Notifica cambio effetto
  *   TIME,HH:MM:SS                  - Notifica cambio ora
@@ -77,6 +79,7 @@ public:
 
     void init(TimeManager* time, EffectManager* effects, DisplayManager* display, Settings* settings, WiFiManager* wifi, ImageManager* imgMgr = nullptr);
     void setWebSocketManager(WebSocketManager* ws);
+    void setScrollTextEffect(ScrollTextEffect* scrollText);
     
     // Processa comando e ritorna risposta
     String processCommand(const String& command);
@@ -106,6 +109,7 @@ private:
     WiFiManager* _wifiManager;
     WebSocketManager* _wsManager;
     ImageManager* _imageManager;
+    ScrollTextEffect* _scrollTextEffect;
     
     // Parser helper
     std::vector<String> splitCommand(const String& cmd, char delimiter = ',');
@@ -121,6 +125,7 @@ private:
     String handleAutoSwitch(const std::vector<String>& parts);
     String handleWiFi(const std::vector<String>& parts);
     String handleDeviceName(const std::vector<String>& parts);
+    String handleScrollText(const std::vector<String>& parts);
     String handleSave();
     String handleRestart();
     String handleOTA(const std::vector<String>& parts);

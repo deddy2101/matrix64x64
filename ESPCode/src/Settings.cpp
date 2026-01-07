@@ -23,6 +23,9 @@ void Settings::setDefaults() {
     
     // Device defaults
     strcpy(config.deviceName, "ledmatrix");
+
+    // Scroll Text defaults
+    strcpy(config.scrollText, "PROSSIMA FERMATA FIRENZE");
 }
 
 void Settings::begin() {
@@ -52,7 +55,11 @@ void Settings::load() {
     // Device
     String deviceName = preferences.getString("deviceName", "ledmatrix");
     strncpy(config.deviceName, deviceName.c_str(), sizeof(config.deviceName) - 1);
-    
+
+    // Scroll Text
+    String scrollText = preferences.getString("scrollText", "PROSSIMA FERMATA FIRENZE");
+    strncpy(config.scrollText, scrollText.c_str(), sizeof(config.scrollText) - 1);
+
     dirty = false;
     
     DEBUG_PRINTLN(F("[Settings] Loaded from NVS"));
@@ -78,7 +85,10 @@ void Settings::save() {
     
     // Device
     preferences.putString("deviceName", config.deviceName);
-    
+
+    // Scroll Text
+    preferences.putString("scrollText", config.scrollText);
+
     dirty = false;
     
     DEBUG_PRINTLN(F("[Settings] Saved to NVS"));
@@ -169,6 +179,16 @@ void Settings::setDeviceName(const char* name) {
 }
 
 // ═══════════════════════════════════════════
+// Scroll Text Setters
+// ═══════════════════════════════════════════
+
+void Settings::setScrollText(const char* text) {
+    strncpy(config.scrollText, text, sizeof(config.scrollText) - 1);
+    config.scrollText[sizeof(config.scrollText) - 1] = '\0';
+    dirty = true;
+}
+
+// ═══════════════════════════════════════════
 // CSV Serialization
 // ═══════════════════════════════════════════
 
@@ -184,6 +204,7 @@ String Settings::toCSV() const {
     csv += "," + String(config.autoSwitch ? "1" : "0");
     csv += "," + String(config.currentEffect);
     csv += "," + String(config.deviceName);
+    csv += "," + String(config.scrollText);
     return csv;
 }
 
@@ -201,5 +222,6 @@ void Settings::print() const {
     DEBUG_PRINTF("║ Current Effect: %-16s║\n", config.currentEffect >= 0 ? String(config.currentEffect).c_str() : "Auto");
     DEBUG_PRINTF("║  Auto Switch: %-22s║\n", config.autoSwitch ? "ON" : "OFF");
     DEBUG_PRINTF("║  Device Name: %-22s║\n", config.deviceName);
+    DEBUG_PRINTF("║  Scroll Text: %-22s║\n", config.scrollText[0] ? config.scrollText : "(not set)");
     DEBUG_PRINTLN(F("╚═════════════════════════════════════╝"));
 }

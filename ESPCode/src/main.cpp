@@ -22,18 +22,12 @@
 #include "effects/MarioClockEffect.h"
 //#include "effects/PlasmaEffect.h"
 #include "effects/ScrollTextEffect.h"
-//#include "effects/MatrixRainEffect.h"
+#include "effects/MatrixRainEffect.h"
 //#include "effects/FireEffect.h"
 //#include "effects/StarFieldEffect.h"
 #include "effects/ImageEffect.h"
 #include "effects/DynamicImageEffect.h"
 
-// Images
-#include "andre.h"
-#include "mario.h"
-#include "pokemon.h"
-#include "luigi.h"
-#include "fox.h"
 
 // ═══════════════════════════════════════════
 // Hardware Configuration
@@ -57,6 +51,7 @@ CommandHandler commandHandler;
 DiscoveryService* discoveryService = nullptr;
 ImageManager* imageManager = nullptr;
 DynamicImageEffect* dynamicImageEffect = nullptr;
+ScrollTextEffect* scrollTextEffect = nullptr;
 
 // ═══════════════════════════════════════════
 // Timers
@@ -124,13 +119,14 @@ void setup() {
     effectManager = new EffectManager(displayManager, settings.getEffectDuration());
     
     // Aggiungi effetti
-    effectManager->addEffect(new ScrollTextEffect(displayManager,
-        "PROSSIMA FERMATA FIRENZE 6 GIARDINI ROSSI"));
+    scrollTextEffect = new ScrollTextEffect(displayManager, settings.getScrollText());
+    effectManager->addEffect(scrollTextEffect);
     //effectManager->addEffect(new PlasmaEffect(displayManager));
     effectManager->addEffect(new PongEffect(displayManager));
-    //effectManager->addEffect(new MatrixRainEffect(displayManager));
+    effectManager->addEffect(new MatrixRainEffect(displayManager));
     //effectManager->addEffect(new FireEffect(displayManager));
     //effectManager->addEffect(new StarfieldEffect(displayManager));
+    /*
     effectManager->addEffect(new ImageEffect(displayManager, 
         (DrawImageFunction)draw_pokemon, "Pokemon"));
     effectManager->addEffect(new MarioClockEffect(displayManager, timeManager));
@@ -142,6 +138,7 @@ void setup() {
         (DrawImageFunction)draw_luigi, "Luigi"));
     effectManager->addEffect(new ImageEffect(displayManager, 
         (DrawImageFunction)draw_fox, "Fox"));
+    */
     
     DEBUG_PRINTF("[Setup] ✓ Loaded %d effects\n", effectManager->getEffectCount());
     
@@ -186,6 +183,7 @@ void setup() {
     // 7. Command Handler
     // ─────────────────────────────────────────
     commandHandler.init(timeManager, effectManager, displayManager, &settings, wifiManager, imageManager);
+    commandHandler.setScrollTextEffect(scrollTextEffect);
     
     // ─────────────────────────────────────────
     // 8. Web Server
