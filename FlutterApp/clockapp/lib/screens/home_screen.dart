@@ -199,6 +199,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     const SizedBox(height: 16),
                     _buildWiFiCard(),
                     const SizedBox(height: 16),
+                    _buildNTPCard(),
+                    const SizedBox(height: 16),
                     _buildOTACard(),
                     const SizedBox(height: 16),
                   ],
@@ -1054,6 +1056,262 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (result == true) {
       _device.restart();
       _addLog('→ Restarting...');
+    }
+  }
+
+  Widget _buildNTPCard() {
+    final ntpEnabled = _settings?.ntpEnabled ?? true;
+    final timezone = _settings?.timezone ?? 'CET-1CEST,M3.5.0,M10.5.0/3';
+    final ntpSynced = _status?.ntpSynced ?? false;
+
+    return GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.access_time_filled,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'NTP / Timezone',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: ntpSynced
+                      ? Colors.green.withOpacity(0.2)
+                      : ntpEnabled
+                          ? Colors.orange.withOpacity(0.2)
+                          : Colors.grey.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      ntpSynced
+                          ? Icons.cloud_done
+                          : ntpEnabled
+                              ? Icons.cloud_sync
+                              : Icons.cloud_off,
+                      size: 14,
+                      color: ntpSynced
+                          ? Colors.green[400]
+                          : ntpEnabled
+                              ? Colors.orange[400]
+                              : Colors.grey[400],
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      ntpSynced
+                          ? 'Sincronizzato'
+                          : ntpEnabled
+                              ? 'In attesa'
+                              : 'Disabilitato',
+                      style: TextStyle(
+                        color: ntpSynced
+                            ? Colors.green[400]
+                            : ntpEnabled
+                                ? Colors.orange[400]
+                                : Colors.grey[400],
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Toggle NTP
+          Row(
+            children: [
+              Icon(Icons.sync, size: 20, color: Colors.grey[400]),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Sincronizzazione automatica',
+                  style: TextStyle(color: Colors.grey[300]),
+                ),
+              ),
+              Switch(
+                value: ntpEnabled,
+                onChanged: (value) {
+                  if (value) {
+                    _device.ntpEnable();
+                    _addLog('→ NTP abilitato');
+                  } else {
+                    _device.ntpDisable();
+                    _addLog('→ NTP disabilitato');
+                  }
+                  HapticFeedback.lightImpact();
+                  // Refresh settings
+                  Future.delayed(const Duration(milliseconds: 200), () {
+                    _device.getSettings();
+                    _device.getStatus();
+                  });
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+
+          // Timezone info
+          StatusRow(
+            label: 'Timezone',
+            value: _getTimezoneDisplayName(timezone),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Pulsanti
+          Row(
+            children: [
+              Expanded(
+                child: ActionButton(
+                  icon: Icons.sync,
+                  label: 'Sync ora',
+                  enabled: ntpEnabled,
+                  onTap: () {
+                    _device.ntpSync();
+                    _addLog('→ NTP sync richiesto');
+                    HapticFeedback.lightImpact();
+                    // Refresh dopo sync
+                    Future.delayed(const Duration(seconds: 2), () {
+                      _device.getStatus();
+                    });
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ActionButton(
+                  icon: Icons.public,
+                  label: 'Timezone',
+                  onTap: () => _showTimezoneDialog(),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: ActionButton(
+                  icon: Icons.save,
+                  label: 'Salva',
+                  onTap: () {
+                    _device.saveSettings();
+                    _addLog('→ Impostazioni NTP salvate');
+                    HapticFeedback.lightImpact();
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getTimezoneDisplayName(String tz) {
+    // Converti timezone POSIX in nome leggibile
+    if (tz.contains('CET')) return 'Europa/Roma (CET)';
+    if (tz.contains('WET')) return 'Europa/Londra (WET)';
+    if (tz.contains('EET')) return 'Europa/Atene (EET)';
+    if (tz.contains('EST')) return 'America/New York (EST)';
+    if (tz.contains('CST')) return 'America/Chicago (CST)';
+    if (tz.contains('MST')) return 'America/Denver (MST)';
+    if (tz.contains('PST')) return 'America/Los Angeles (PST)';
+    if (tz.contains('JST')) return 'Asia/Tokyo (JST)';
+    return tz;
+  }
+
+  Future<void> _showTimezoneDialog() async {
+    final timezones = [
+      {'name': 'Europa/Roma (Italia)', 'tz': 'CET-1CEST,M3.5.0,M10.5.0/3'},
+      {'name': 'Europa/Londra (UK)', 'tz': 'GMT0BST,M3.5.0/1,M10.5.0'},
+      {'name': 'Europa/Berlino (Germania)', 'tz': 'CET-1CEST,M3.5.0,M10.5.0/3'},
+      {'name': 'Europa/Parigi (Francia)', 'tz': 'CET-1CEST,M3.5.0,M10.5.0/3'},
+      {'name': 'Europa/Madrid (Spagna)', 'tz': 'CET-1CEST,M3.5.0,M10.5.0/3'},
+      {'name': 'Europa/Atene (Grecia)', 'tz': 'EET-2EEST,M3.5.0/3,M10.5.0/4'},
+      {'name': 'America/New York (EST)', 'tz': 'EST5EDT,M3.2.0,M11.1.0'},
+      {'name': 'America/Chicago (CST)', 'tz': 'CST6CDT,M3.2.0,M11.1.0'},
+      {'name': 'America/Denver (MST)', 'tz': 'MST7MDT,M3.2.0,M11.1.0'},
+      {'name': 'America/Los Angeles (PST)', 'tz': 'PST8PDT,M3.2.0,M11.1.0'},
+      {'name': 'Asia/Tokyo (Giappone)', 'tz': 'JST-9'},
+      {'name': 'Asia/Shanghai (Cina)', 'tz': 'CST-8'},
+      {'name': 'Australia/Sydney', 'tz': 'AEST-10AEDT,M10.1.0,M4.1.0/3'},
+      {'name': 'UTC (Nessun offset)', 'tz': 'UTC0'},
+    ];
+
+    final currentTz = _settings?.timezone ?? 'CET-1CEST,M3.5.0,M10.5.0/3';
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1a1a2e),
+        title: Row(
+          children: [
+            Icon(Icons.public, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(width: 12),
+            const Text('Seleziona Timezone'),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 400,
+          child: ListView.builder(
+            itemCount: timezones.length,
+            itemBuilder: (context, index) {
+              final tz = timezones[index];
+              final isSelected = tz['tz'] == currentTz;
+              return ListTile(
+                leading: Icon(
+                  isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
+                  color: isSelected
+                      ? Theme.of(context).colorScheme.primary
+                      : Colors.grey,
+                ),
+                title: Text(
+                  tz['name']!,
+                  style: TextStyle(
+                    color: isSelected ? Colors.white : Colors.grey[300],
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
+                onTap: () => Navigator.of(context).pop(tz['tz']),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Annulla'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null) {
+      _device.setTimezone(result);
+      _addLog('→ Timezone: $result');
+      HapticFeedback.lightImpact();
+      // Refresh settings
+      Future.delayed(const Duration(milliseconds: 500), () {
+        _device.getSettings();
+        _device.getStatus();
+      });
     }
   }
 
