@@ -6,6 +6,8 @@ WebSocketManager::WebSocketManager()
     , _messagesReceived(0)
     , _messagesSent(0)
     , _lastCleanup(0)
+    , _fragmentBuffer("")
+    , _fragmentClientId(0)
 {}
 
 void WebSocketManager::init(AsyncWebServer* server, CommandHandler* cmdHandler) {
@@ -76,9 +78,19 @@ void WebSocketManager::onEvent(AsyncWebSocket* server, AsyncWebSocketClient* cli
             DEBUG_PRINTF("[WS] Client #%u disconnected\n", client->id());
             break;
             
-        case WS_EVT_DATA:
-            handleMessage(client, data, len);
+        case WS_EVT_DATA: {
+            AwsFrameInfo* info = (AwsFrameInfo*)arg;
+
+            // Messaggio completo in un singolo frame
+            if (info->final && info->index == 0 && info->len == len) {
+                handleMessage(client, data, len);
+            }
+            // Messaggio frammentato - riassembla
+            else {
+                handleFragmentedMessage(client, info, data, len);
+            }
             break;
+        }
             
         case WS_EVT_PONG:
             // Pong ricevuto
@@ -90,9 +102,64 @@ void WebSocketManager::onEvent(AsyncWebSocket* server, AsyncWebSocketClient* cli
     }
 }
 
+void WebSocketManager::handleFragmentedMessage(AsyncWebSocketClient* client, AwsFrameInfo* info, uint8_t* data, size_t len) {
+    // Primo frame - inizializza buffer
+    if (info->index == 0) {
+        _fragmentBuffer = "";
+        _fragmentBuffer.reserve(info->len);
+        _fragmentClientId = client->id();
+        DEBUG_PRINTF("[WS] Starting fragmented message from #%u: total=%u bytes\n",
+                     client->id(), info->len);
+    }
+
+    // Verifica che sia lo stesso client
+    if (_fragmentClientId != client->id()) {
+        DEBUG_PRINTF("[WS] Fragment from wrong client! Expected #%u, got #%u\n",
+                     _fragmentClientId, client->id());
+        return;
+    }
+
+    // Aggiungi frammento al buffer
+    for (size_t i = 0; i < len; i++) {
+        _fragmentBuffer += (char)data[i];
+    }
+
+    // Ultimo frame - processa messaggio completo
+    if (info->final && (info->index + len) == info->len) {
+        DEBUG_PRINTF("[WS] Fragmented message complete: %u bytes\n", _fragmentBuffer.length());
+
+        String message = _fragmentBuffer;
+        _fragmentBuffer = "";
+        _fragmentClientId = 0;
+
+        // Processa come messaggio normale
+        message.trim();
+        _messagesReceived++;
+
+        // Non stampare i dati OTA completi (troppo grandi)
+        if (message.startsWith("ota,data,")) {
+            int firstComma = message.indexOf(',');
+            int secondComma = message.indexOf(',', firstComma + 1);
+            String preview = message.substring(0, secondComma + 1) + "... [" + String(message.length()) + " bytes]";
+            DEBUG_PRINTF("[WS] Received from #%u: %s\n", client->id(), preview.c_str());
+        } else {
+            DEBUG_PRINTF("[WS] Received from #%u: %s\n", client->id(), message.c_str());
+        }
+
+        if (_cmdHandler && !message.isEmpty()) {
+            String response = _cmdHandler->processCommand(message);
+            if (!response.isEmpty()) {
+                client->text(response);
+                _messagesSent++;
+                DEBUG_PRINTF("[WS] Response: %s\n", response.c_str());
+            }
+        }
+    }
+}
+
 void WebSocketManager::handleMessage(AsyncWebSocketClient* client, uint8_t* data, size_t len) {
     _messagesReceived++;
-    
+
     // Converti in stringa
     String message;
     message.reserve(len + 1);
@@ -100,9 +167,17 @@ void WebSocketManager::handleMessage(AsyncWebSocketClient* client, uint8_t* data
         message += (char)data[i];
     }
     message.trim();
-    
-    DEBUG_PRINTF("[WS] Received from #%u: %s\n", client->id(), message.c_str());
-    
+
+    // Non stampare i dati OTA completi (troppo grandi)
+    if (message.startsWith("ota,data,")) {
+        int firstComma = message.indexOf(',');
+        int secondComma = message.indexOf(',', firstComma + 1);
+        String preview = message.substring(0, secondComma + 1) + "... [" + String(len) + " bytes]";
+        DEBUG_PRINTF("[WS] Received from #%u: %s\n", client->id(), preview.c_str());
+    } else {
+        DEBUG_PRINTF("[WS] Received from #%u: %s\n", client->id(), message.c_str());
+    }
+
     if (_cmdHandler && !message.isEmpty()) {
         String response = _cmdHandler->processCommand(message);
         if (!response.isEmpty()) {

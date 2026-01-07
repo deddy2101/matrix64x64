@@ -31,15 +31,20 @@ public:
 private:
     AsyncWebSocket _ws;
     CommandHandler* _cmdHandler;
-    
+
     uint32_t _messagesReceived;
     uint32_t _messagesSent;
     uint32_t _lastCleanup;
-    
+
+    // Buffer per messaggi frammentati
+    String _fragmentBuffer;
+    uint32_t _fragmentClientId;
+
     void onEvent(AsyncWebSocket* server, AsyncWebSocketClient* client,
                  AwsEventType type, void* arg, uint8_t* data, size_t len);
-    
+
     void handleMessage(AsyncWebSocketClient* client, uint8_t* data, size_t len);
+    void handleFragmentedMessage(AsyncWebSocketClient* client, AwsFrameInfo* info, uint8_t* data, size_t len);
 };
 
 #endif // WEBSOCKET_MANAGER_H

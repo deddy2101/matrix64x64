@@ -19,7 +19,7 @@
 // Effects
 #include "effects/PongEffect.h"
 #include "effects/MarioClockEffect.h"
-#include "effects/PlasmaEffect.h"
+//#include "effects/PlasmaEffect.h"
 #include "effects/ScrollTextEffect.h"
 //#include "effects/MatrixRainEffect.h"
 //#include "effects/FireEffect.h"
@@ -122,7 +122,7 @@ void setup() {
     // Aggiungi effetti
     effectManager->addEffect(new ScrollTextEffect(displayManager,
         "PROSSIMA FERMATA FIRENZE 6 GIARDINI ROSSI"));
-    effectManager->addEffect(new PlasmaEffect(displayManager));
+    //effectManager->addEffect(new PlasmaEffect(displayManager));
     effectManager->addEffect(new PongEffect(displayManager));
     //effectManager->addEffect(new MatrixRainEffect(displayManager));
     //effectManager->addEffect(new FireEffect(displayManager));

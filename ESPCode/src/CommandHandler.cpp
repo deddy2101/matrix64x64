@@ -745,9 +745,17 @@ String CommandHandler::handleOTA(const std::vector<String>& parts) {
 
         DEBUG_PRINTF("[OTA] Starting update, size: %d bytes\n", _otaSize);
 
-        // Inizializza Update
-        if (!Update.begin(_otaSize)) {
+        // Pausa effect manager durante OTA
+        if (_effectManager) {
+            _effectManager->pause();
+        }
+
+        // Inizializza Update con UPDATE_SIZE_UNKNOWN per ESP32
+        if (!Update.begin(_otaSize, U_FLASH)) {
             DEBUG_PRINTF("[OTA] Update.begin() failed! Error: %d\n", Update.getError());
+            if (_effectManager) {
+                _effectManager->resume();
+            }
             return "ERR,OTA init failed";
         }
 
@@ -785,14 +793,19 @@ String CommandHandler::handleOTA(const std::vector<String>& parts) {
         // Decode base64
         String base64Chunk = parts[3];
 
+        DEBUG_PRINTF("[OTA] Chunk %d, base64 length: %d\n", chunkNum, base64Chunk.length());
+
         // Buffer per dati decodificati (max 4KB raw = ~5.5KB base64)
         static uint8_t decodedBuffer[4096];
         size_t decodedLen = base64Decode(base64Chunk, decodedBuffer, sizeof(decodedBuffer));
 
         if (decodedLen == 0) {
-            DEBUG_PRINTLN("[OTA] Base64 decode failed!");
+            DEBUG_PRINTF("[OTA] Base64 decode failed! Chunk %d, input len: %d\n",
+                        chunkNum, base64Chunk.length());
             return "OTA_NACK," + String(chunkNum);
         }
+
+        DEBUG_PRINTF("[OTA] Decoded %d bytes\n", decodedLen);
 
         // Write decoded chunk
         size_t written = Update.write(decodedBuffer, decodedLen);
@@ -800,6 +813,9 @@ String CommandHandler::handleOTA(const std::vector<String>& parts) {
         if (written != decodedLen) {
             Update.abort();
             _otaInProgress = false;
+            if (_effectManager) {
+                _effectManager->resume();
+            }
             DEBUG_PRINTF("[OTA] Write failed! Expected %d, wrote %d\n", decodedLen, written);
             return "ERR,Write failed";
         }
@@ -838,6 +854,9 @@ String CommandHandler::handleOTA(const std::vector<String>& parts) {
         if (!Update.end(true)) {
             Update.abort();
             _otaInProgress = false;
+            if (_effectManager) {
+                _effectManager->resume();
+            }
             DEBUG_PRINTF("[OTA] Update.end() failed! Error: %d\n", Update.getError());
             return "ERR,OTA finalization failed";
         }
@@ -846,6 +865,9 @@ String CommandHandler::handleOTA(const std::vector<String>& parts) {
         if (expectedMD5.length() > 0) {
             String actualMD5 = Update.md5String();
             if (!actualMD5.equalsIgnoreCase(expectedMD5)) {
+                if (_effectManager) {
+                    _effectManager->resume();
+                }
                 DEBUG_PRINTF("[OTA] MD5 mismatch! Expected: %s, Got: %s\n",
                            expectedMD5.c_str(), actualMD5.c_str());
                 return "ERR,MD5 verification failed";
@@ -875,6 +897,9 @@ String CommandHandler::handleOTA(const std::vector<String>& parts) {
             Update.abort();
             _otaInProgress = false;
             _otaExpectedChunk = 0;
+            if (_effectManager) {
+                _effectManager->resume();
+            }
             DEBUG_PRINTLN("[OTA] Update aborted");
             return "OK,OTA aborted";
         }

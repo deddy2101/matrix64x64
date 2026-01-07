@@ -171,7 +171,7 @@ class OtaService {
 
     // 2. Invia dati in chunk
     _status = 'Invio firmware...';
-    const chunkSize = 4096; // 4KB chunks (~5.5KB base64)
+    const chunkSize = 3072; // 3KB chunks (~4KB base64) - ottimizzato con gestione frammentazione
     int offset = 0;
     int chunkNumber = 0;
     int retryCount = 0;
@@ -187,8 +187,8 @@ class OtaService {
       // Invia chunk con numero sequenza
       _device.send('ota,data,$chunkNumber,$base64Chunk');
 
-      // Aspetta ACK per questo chunk
-      final ackResponse = await _waitForResponse('OTA_', timeout: const Duration(seconds: 5));
+      // Aspetta ACK per questo chunk (completamente async, senza delay)
+      final ackResponse = await _waitForResponse('OTA_', timeout: const Duration(seconds: 15));
 
       if (ackResponse == null) {
         // Timeout - riprova
