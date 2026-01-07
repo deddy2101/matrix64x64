@@ -52,6 +52,7 @@ DiscoveryService* discoveryService = nullptr;
 ImageManager* imageManager = nullptr;
 DynamicImageEffect* dynamicImageEffect = nullptr;
 ScrollTextEffect* scrollTextEffect = nullptr;
+PongEffect* pongEffect = nullptr;
 
 // ═══════════════════════════════════════════
 // Timers
@@ -122,7 +123,8 @@ void setup() {
     scrollTextEffect = new ScrollTextEffect(displayManager, settings.getScrollText());
     effectManager->addEffect(scrollTextEffect);
     //effectManager->addEffect(new PlasmaEffect(displayManager));
-    effectManager->addEffect(new PongEffect(displayManager));
+    pongEffect = new PongEffect(displayManager);
+    effectManager->addEffect(pongEffect);
     effectManager->addEffect(new MatrixRainEffect(displayManager));
     //effectManager->addEffect(new FireEffect(displayManager));
     //effectManager->addEffect(new StarfieldEffect(displayManager));
@@ -184,6 +186,7 @@ void setup() {
     // ─────────────────────────────────────────
     commandHandler.init(timeManager, effectManager, displayManager, &settings, wifiManager, imageManager);
     commandHandler.setScrollTextEffect(scrollTextEffect);
+    commandHandler.setPongEffect(pongEffect);
     
     // ─────────────────────────────────────────
     // 8. Web Server

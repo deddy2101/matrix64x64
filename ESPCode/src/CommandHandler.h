@@ -16,6 +16,7 @@
 // Forward declaration
 class WebSocketManager;
 class ScrollTextEffect;
+class PongEffect;
 
 /**
  * CommandHandler - Gestione comandi con protocollo CSV
@@ -44,6 +45,14 @@ class ScrollTextEffect;
  *   wifi,SSID,PASSWORD,AP_MODE     - Configura WiFi (AP_MODE: 0=STA, 1=AP)
  *   devicename,NAME                - Nome dispositivo
  *   scrolltext,TEXT                - Imposta testo scorrevole
+ *   pong,join,1|2                  - Giocatore si unisce (1=sinistra, 2=destra)
+ *   pong,leave,1|2                 - Giocatore esce
+ *   pong,move,1|2,up|down|stop     - Muovi paddle
+ *   pong,start                     - Avvia partita
+ *   pong,pause                     - Pausa partita
+ *   pong,resume                    - Riprendi partita
+ *   pong,reset                     - Reset partita
+ *   pong,state                     - Richiedi stato gioco
  *   save                           - Salva impostazioni
  *   restart                        - Riavvia ESP32
  *   ota,start,SIZE                 - Inizia OTA update (SIZE in bytes)
@@ -72,6 +81,7 @@ class ScrollTextEffect;
  *   VERSION,version,buildNumber,buildDate,buildTime - Versione firmware
  *   EFFECT,index,name              - Notifica cambio effetto
  *   TIME,HH:MM:SS                  - Notifica cambio ora
+ *   PONG_STATE,state,score1,score2,p1Mode,p2Mode,ballX,ballY - Stato gioco Pong
  */
 class CommandHandler {
 public:
@@ -80,6 +90,7 @@ public:
     void init(TimeManager* time, EffectManager* effects, DisplayManager* display, Settings* settings, WiFiManager* wifi, ImageManager* imgMgr = nullptr);
     void setWebSocketManager(WebSocketManager* ws);
     void setScrollTextEffect(ScrollTextEffect* scrollText);
+    void setPongEffect(PongEffect* pong);
     
     // Processa comando e ritorna risposta
     String processCommand(const String& command);
@@ -110,6 +121,7 @@ private:
     WebSocketManager* _wsManager;
     ImageManager* _imageManager;
     ScrollTextEffect* _scrollTextEffect;
+    PongEffect* _pongEffect;
     
     // Parser helper
     std::vector<String> splitCommand(const String& cmd, char delimiter = ',');
@@ -126,6 +138,7 @@ private:
     String handleWiFi(const std::vector<String>& parts);
     String handleDeviceName(const std::vector<String>& parts);
     String handleScrollText(const std::vector<String>& parts);
+    String handlePong(const std::vector<String>& parts);
     String handleSave();
     String handleRestart();
     String handleOTA(const std::vector<String>& parts);

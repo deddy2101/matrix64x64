@@ -12,6 +12,7 @@ import '../dialogs/wifi_config_dialog.dart';
 import '../dialogs/restart_confirm_dialog.dart';
 import 'device_discovery_screen.dart';
 import 'image_management_screen.dart';
+import 'pong_controller_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -250,6 +251,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
           ),
           if (_isConnected) ...[
+            IconButton(
+              icon: const Icon(Icons.sports_esports),
+              tooltip: 'Pong Controller',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => PongControllerScreen(
+                      deviceService: _device,
+                    ),
+                  ),
+                );
+              },
+            ),
             IconButton(
               icon: const Icon(Icons.image),
               tooltip: 'Gestione Immagini',

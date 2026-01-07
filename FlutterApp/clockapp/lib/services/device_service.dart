@@ -129,6 +129,53 @@ class EffectInfo {
   EffectInfo({required this.index, required this.name, this.isCurrent = false});
 }
 
+/// Stato gioco Pong
+class PongState {
+  final String gameState;  // waiting, playing, paused, gameover
+  final int score1;
+  final int score2;
+  final String player1Mode;  // human, ai
+  final String player2Mode;
+  final int ballX;
+  final int ballY;
+
+  PongState({
+    this.gameState = 'waiting',
+    this.score1 = 0,
+    this.score2 = 0,
+    this.player1Mode = 'ai',
+    this.player2Mode = 'ai',
+    this.ballX = 32,
+    this.ballY = 32,
+  });
+
+  bool get isWaiting => gameState == 'waiting';
+  bool get isPlaying => gameState == 'playing';
+  bool get isPaused => gameState == 'paused';
+  bool get isGameOver => gameState == 'gameover';
+  bool get player1IsHuman => player1Mode == 'human';
+  bool get player2IsHuman => player2Mode == 'human';
+
+  /// Parse PONG_STATE response
+  /// PONG_STATE,state,score1,score2,p1Mode,p2Mode,ballX,ballY
+  factory PongState.fromResponse(String response) {
+    final parts = response.split(',');
+    if (parts.length < 8 || parts[0] != 'PONG_STATE') {
+      return PongState();
+    }
+
+    return PongState(
+      gameState: parts[1],
+      score1: int.tryParse(parts[2]) ?? 0,
+      score2: int.tryParse(parts[3]) ?? 0,
+      player1Mode: parts[4],
+      player2Mode: parts[5],
+      ballX: int.tryParse(parts[6]) ?? 32,
+      ballY: int.tryParse(parts[7]) ?? 32,
+    );
+  }
+}
+
 /// Impostazioni dispositivo
 class DeviceSettings {
   final String ssid;
@@ -213,12 +260,14 @@ class DeviceService {
   final _statusController = StreamController<DeviceStatus>.broadcast();
   final _effectsController = StreamController<List<EffectInfo>>.broadcast();
   final _settingsController = StreamController<DeviceSettings>.broadcast();
+  final _pongController = StreamController<PongState>.broadcast();
   final _dataController = StreamController<String>.broadcast();
 
   // Cache
   DeviceStatus? _lastStatus;
   List<EffectInfo>? _lastEffects;
   DeviceSettings? _lastSettings;
+  PongState? _lastPongState;
 
   // Streams
   Stream<DeviceConnectionState> get connectionState =>
@@ -226,6 +275,7 @@ class DeviceService {
   Stream<DeviceStatus> get statusStream => _statusController.stream;
   Stream<List<EffectInfo>> get effectsStream => _effectsController.stream;
   Stream<DeviceSettings> get settingsStream => _settingsController.stream;
+  Stream<PongState> get pongStream => _pongController.stream;
   Stream<String> get rawDataStream => _dataController.stream;
 
   // Getters
@@ -236,6 +286,7 @@ class DeviceService {
   DeviceStatus? get lastStatus => _lastStatus;
   List<EffectInfo>? get lastEffects => _lastEffects;
   DeviceSettings? get lastSettings => _lastSettings;
+  PongState? get lastPongState => _lastPongState;
 
   /// Verifica se la connessione seriale è disponibile (solo desktop)
   bool get isSerialAvailable => isDesktopPlatform;
@@ -430,6 +481,9 @@ class DeviceService {
     } else if (response.startsWith('EFFECT,')) {
       // Notifica cambio effetto: EFFECT,index,name
       getStatus();
+    } else if (response.startsWith('PONG_STATE,')) {
+      _lastPongState = PongState.fromResponse(response);
+      _pongController.add(_lastPongState!);
     } else if (response.startsWith('WELCOME,')) {
       print('Connected: $response');
     }
@@ -537,12 +591,26 @@ class DeviceService {
   // Scroll Text
   void setScrollText(String text) => send('scrolltext,$text');
 
+  // ═══════════════════════════════════════════
+  // Pong Multiplayer
+  // ═══════════════════════════════════════════
+
+  void pongJoin(int player) => send('pong,join,$player');
+  void pongLeave(int player) => send('pong,leave,$player');
+  void pongMove(int player, String direction) => send('pong,move,$player,$direction');
+  void pongStart() => send('pong,start');
+  void pongPause() => send('pong,pause');
+  void pongResume() => send('pong,resume');
+  void pongReset() => send('pong,reset');
+  void pongGetState() => send('pong,state');
+
   void dispose() {
     disconnect();
     _connectionController.close();
     _statusController.close();
     _effectsController.close();
     _settingsController.close();
+    _pongController.close();
     _dataController.close();
   }
 }

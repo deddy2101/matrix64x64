@@ -2,6 +2,7 @@
 #include "WebSocketManager.h"
 #include "Version.h"
 #include "effects/ScrollTextEffect.h"
+#include "effects/PongEffect.h"
 
 CommandHandler::CommandHandler()
     : _timeManager(nullptr)
@@ -12,6 +13,7 @@ CommandHandler::CommandHandler()
     , _wsManager(nullptr)
     , _imageManager(nullptr)
     , _scrollTextEffect(nullptr)
+    , _pongEffect(nullptr)
     , _otaInProgress(false)
     , _otaSize(0)
     , _otaWritten(0)
@@ -34,6 +36,10 @@ void CommandHandler::setWebSocketManager(WebSocketManager* ws) {
 
 void CommandHandler::setScrollTextEffect(ScrollTextEffect* scrollText) {
     _scrollTextEffect = scrollText;
+}
+
+void CommandHandler::setPongEffect(PongEffect* pong) {
+    _pongEffect = pong;
 }
 
 // ═══════════════════════════════════════════
@@ -124,6 +130,9 @@ String CommandHandler::processCommand(const String& command) {
     }
     if (mainCmd == "scrolltext") {
         return handleScrollText(parts);
+    }
+    if (mainCmd == "pong") {
+        return handlePong(parts);
     }
     if (mainCmd == "save") {
         return handleSave();
@@ -661,6 +670,115 @@ String CommandHandler::handleScrollText(const std::vector<String>& parts) {
     }
 
     return "OK,scrolltext set";
+}
+
+String CommandHandler::handlePong(const std::vector<String>& parts) {
+    if (!_pongEffect) {
+        return "ERR,pong effect not available";
+    }
+
+    if (parts.size() < 2) {
+        return "ERR,pong needs subcommand";
+    }
+
+    String subCmd = parts[1];
+    subCmd.toLowerCase();
+
+    // pong,join,1|2
+    if (subCmd == "join") {
+        if (parts.size() < 3) {
+            return "ERR,pong join needs player number (1 or 2)";
+        }
+        int player = parts[2].toInt();
+        if (player < 1 || player > 2) {
+            return "ERR,player must be 1 or 2";
+        }
+        if (_pongEffect->joinPlayer(player)) {
+            // Broadcast stato a tutti
+            if (_wsManager) {
+                _wsManager->broadcast(_pongEffect->getStateString());
+            }
+            return "OK,joined as player " + String(player);
+        }
+        return "ERR,player " + String(player) + " slot already taken";
+    }
+
+    // pong,leave,1|2
+    if (subCmd == "leave") {
+        if (parts.size() < 3) {
+            return "ERR,pong leave needs player number";
+        }
+        int player = parts[2].toInt();
+        if (_pongEffect->leavePlayer(player)) {
+            if (_wsManager) {
+                _wsManager->broadcast(_pongEffect->getStateString());
+            }
+            return "OK,player " + String(player) + " left";
+        }
+        return "ERR,player " + String(player) + " not in game";
+    }
+
+    // pong,move,1|2,up|down|stop
+    if (subCmd == "move") {
+        if (parts.size() < 4) {
+            return "ERR,pong move needs player and direction";
+        }
+        int player = parts[2].toInt();
+        String dir = parts[3];
+        dir.toLowerCase();
+
+        int direction = 0;
+        if (dir == "up") direction = -1;
+        else if (dir == "down") direction = 1;
+        else if (dir == "stop") direction = 0;
+        else return "ERR,direction must be up, down, or stop";
+
+        _pongEffect->movePlayer(player, direction);
+        return "OK";  // Non serve risposta dettagliata per move (troppo frequente)
+    }
+
+    // pong,start
+    if (subCmd == "start") {
+        _pongEffect->startGame();
+        if (_wsManager) {
+            _wsManager->broadcast(_pongEffect->getStateString());
+        }
+        return "OK,game started";
+    }
+
+    // pong,pause
+    if (subCmd == "pause") {
+        _pongEffect->pauseGame();
+        if (_wsManager) {
+            _wsManager->broadcast(_pongEffect->getStateString());
+        }
+        return "OK,game paused";
+    }
+
+    // pong,resume
+    if (subCmd == "resume") {
+        _pongEffect->resumeGame();
+        if (_wsManager) {
+            _wsManager->broadcast(_pongEffect->getStateString());
+        }
+        return "OK,game resumed";
+    }
+
+    // pong,reset
+    if (subCmd == "reset") {
+        _pongEffect->resetGame();
+        if (_wsManager) {
+            _wsManager->broadcast(_pongEffect->getStateString());
+        }
+        return "OK,game reset";
+    }
+
+    // pong,state
+    if (subCmd == "state") {
+        return _pongEffect->getStateString();
+    }
+
+    return "ERR,unknown pong subcommand: " + subCmd;
 }
 
 String CommandHandler::handleSave() {
