@@ -9,6 +9,7 @@
 #include "DisplayManager.h"
 #include "Settings.h"
 #include "WiFiManager.h"
+#include "ImageManager.h"
 #include "Debug.h"
 
 
@@ -47,6 +48,10 @@ class WebSocketManager;
  *   ota,data,BASE64_CHUNK          - Invia chunk dati firmware (base64)
  *   ota,end,MD5                    - Finalizza OTA con verifica MD5
  *   ota,abort                      - Annulla OTA in corso
+ *   image,upload,NAME,BASE64       - Upload immagine (nome + RGB565 base64)
+ *   image,list                     - Lista immagini salvate
+ *   image,delete,NAME              - Elimina immagine
+ *   image,info                     - Info storage immagini
  *
  * Risposte (ESP32 → App):
  *   OK,comando                     - Comando eseguito
@@ -65,8 +70,8 @@ class WebSocketManager;
 class CommandHandler {
 public:
     CommandHandler();
-    
-    void init(TimeManager* time, EffectManager* effects, DisplayManager* display, Settings* settings, WiFiManager* wifi);
+
+    void init(TimeManager* time, EffectManager* effects, DisplayManager* display, Settings* settings, WiFiManager* wifi, ImageManager* imgMgr = nullptr);
     void setWebSocketManager(WebSocketManager* ws);
     
     // Processa comando e ritorna risposta
@@ -96,6 +101,7 @@ private:
     Settings* _settings;
     WiFiManager* _wifiManager;
     WebSocketManager* _wsManager;
+    ImageManager* _imageManager;
     
     // Parser helper
     std::vector<String> splitCommand(const String& cmd, char delimiter = ',');
@@ -114,6 +120,7 @@ private:
     String handleSave();
     String handleRestart();
     String handleOTA(const std::vector<String>& parts);
+    String handleImage(const std::vector<String>& parts);
 
     // OTA state
     bool _otaInProgress;

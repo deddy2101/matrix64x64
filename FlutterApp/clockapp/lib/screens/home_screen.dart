@@ -11,6 +11,7 @@ import '../widgets/home/home_widgets.dart';
 import '../dialogs/wifi_config_dialog.dart';
 import '../dialogs/restart_confirm_dialog.dart';
 import 'device_discovery_screen.dart';
+import 'image_management_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -239,6 +240,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ],
             ),
           ),
+          if (_isConnected) ...[
+            IconButton(
+              icon: const Icon(Icons.image),
+              tooltip: 'Gestione Immagini',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ImageManagementScreen(
+                      deviceService: _device,
+                    ),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(width: 8),
+          ],
           Container(
             width: 12,
             height: 12,

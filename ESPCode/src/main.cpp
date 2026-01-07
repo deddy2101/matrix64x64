@@ -15,6 +15,7 @@
 #include "WebSocketManager.h"
 #include "CommandHandler.h"
 #include "Discovery.h"
+#include "ImageManager.h"
 
 // Effects
 #include "effects/PongEffect.h"
@@ -53,6 +54,7 @@ WebServerManager* webServer = nullptr;
 WebSocketManager* wsManager = nullptr;
 CommandHandler commandHandler;
 DiscoveryService* discoveryService = nullptr;
+ImageManager* imageManager = nullptr;
 
 // ═══════════════════════════════════════════
 // Timers
@@ -160,41 +162,51 @@ void setup() {
     wifiManager = new WiFiManager(&settings);
     wifiManager->begin();
     DEBUG_PRINTLN(F("[Setup] ✓ WiFi OK"));
+
+    // ─────────────────────────────────────────
+    // 6. Image Manager
+    // ─────────────────────────────────────────
+    DEBUG_PRINTLN(F("[Setup] Initializing ImageManager..."));
+    imageManager = new ImageManager();
+    if (!imageManager->begin()) {
+        DEBUG_PRINTLN(F("[Setup] ⚠ ImageManager failed, image commands disabled"));
+    } else {
+        DEBUG_PRINTLN(F("[Setup] ✓ ImageManager OK"));
+    }
+
+    // ─────────────────────────────────────────
+    // 7. Command Handler
+    // ─────────────────────────────────────────
+    commandHandler.init(timeManager, effectManager, displayManager, &settings, wifiManager, imageManager);
     
     // ─────────────────────────────────────────
-    // 6. Command Handler
-    // ─────────────────────────────────────────
-    commandHandler.init(timeManager, effectManager, displayManager, &settings, wifiManager);
-    
-    // ─────────────────────────────────────────
-    // 7. Web Server
+    // 8. Web Server
     // ─────────────────────────────────────────
     DEBUG_PRINTLN(F("[Setup] Initializing WebServer..."));
     webServer = new WebServerManager(80);
     webServer->init(&commandHandler);
     DEBUG_PRINTLN(F("[Setup] ✓ WebServer OK"));
-    
+
     // ─────────────────────────────────────────
-    // 8. WebSocket
+    // 9. WebSocket
     // ─────────────────────────────────────────
     DEBUG_PRINTLN(F("[Setup] Initializing WebSocket..."));
     wsManager = new WebSocketManager();
     wsManager->init(webServer->getServer(), &commandHandler);
     commandHandler.setWebSocketManager(wsManager);
     DEBUG_PRINTLN(F("[Setup] ✓ WebSocket OK"));
-    
+
     // ─────────────────────────────────────────
-    // 9. Callbacks per notifiche
+    // 10. Callbacks per notifiche
     // ─────────────────────────────────────────
     timeManager->addOnMinuteChange([](int h, int m, int s) {
         // Aggiorna luminosità ogni minuto se necessario
         commandHandler.updateBrightness();
     });
-    
-    // -─────────────────────────────────────────
-    // 10. Discovery Service
-    // ─────────────────────────────────────────
 
+    // ─────────────────────────────────────────
+    // 11. Discovery Service
+    // ─────────────────────────────────────────
     DEBUG_PRINTLN(F("[Setup] Initializing Discovery Service..."));
     discoveryService = new DiscoveryService(&settings, 80);
     discoveryService->begin();

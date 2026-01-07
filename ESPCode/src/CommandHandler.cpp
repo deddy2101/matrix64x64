@@ -9,6 +9,7 @@ CommandHandler::CommandHandler()
     , _settings(nullptr)
     , _wifiManager(nullptr)
     , _wsManager(nullptr)
+    , _imageManager(nullptr)
     , _otaInProgress(false)
     , _otaSize(0)
     , _otaWritten(0)
@@ -16,12 +17,13 @@ CommandHandler::CommandHandler()
     , _otaExpectedMD5("")
 {}
 
-void CommandHandler::init(TimeManager* time, EffectManager* effects, DisplayManager* display, Settings* settings, WiFiManager* wifi) {
+void CommandHandler::init(TimeManager* time, EffectManager* effects, DisplayManager* display, Settings* settings, WiFiManager* wifi, ImageManager* imgMgr) {
     _timeManager = time;
     _effectManager = effects;
     _displayManager = display;
     _settings = settings;
     _wifiManager = wifi;
+    _imageManager = imgMgr;
 }
 
 void CommandHandler::setWebSocketManager(WebSocketManager* ws) {
@@ -122,6 +124,9 @@ String CommandHandler::processCommand(const String& command) {
     }
     if (mainCmd == "ota") {
         return handleOTA(parts);
+    }
+    if (mainCmd == "image") {
+        return handleImage(parts);
     }
 
     return "ERR,unknown command: " + mainCmd;
@@ -907,4 +912,79 @@ String CommandHandler::handleOTA(const std::vector<String>& parts) {
     }
 
     return "ERR,Unknown OTA subcommand: " + subCmd;
+}
+
+// ═══════════════════════════════════════════
+// Image Upload/Management Handler
+// ═══════════════════════════════════════════
+
+String CommandHandler::handleImage(const std::vector<String>& parts) {
+    if (!_imageManager) {
+        return "ERR,Image manager not available";
+    }
+
+    if (parts.size() < 2) {
+        return "ERR,Image command requires subcommand";
+    }
+
+    String subCmd = parts[1];
+    subCmd.toLowerCase();
+
+    // image,upload,NAME,BASE64
+    if (subCmd == "upload") {
+        if (parts.size() < 4) {
+            return "ERR,Upload requires: image,upload,NAME,BASE64";
+        }
+
+        String name = parts[2];
+        String base64Data = parts[3];
+
+        if (_imageManager->uploadImage(name, base64Data)) {
+            return "OK,Image uploaded: " + name;
+        } else {
+            return "ERR,Failed to upload image";
+        }
+    }
+
+    // image,list
+    else if (subCmd == "list") {
+        auto images = _imageManager->listImages();
+        String response = "IMAGES," + String(images.size());
+
+        for (const auto& img : images) {
+            response += "," + img.name + "," + String(img.size);
+        }
+
+        return response;
+    }
+
+    // image,delete,NAME
+    else if (subCmd == "delete") {
+        if (parts.size() < 3) {
+            return "ERR,Delete requires: image,delete,NAME";
+        }
+
+        String name = parts[2];
+        if (_imageManager->deleteImage(name)) {
+            return "OK,Image deleted: " + name;
+        } else {
+            return "ERR,Failed to delete image";
+        }
+    }
+
+    // image,info
+    else if (subCmd == "info") {
+        size_t total = _imageManager->getTotalSpace();
+        size_t used = _imageManager->getUsedSpace();
+        size_t free = _imageManager->getFreeSpace();
+
+        String response = "IMAGE_INFO";
+        response += "," + String(total);
+        response += "," + String(used);
+        response += "," + String(free);
+
+        return response;
+    }
+
+    return "ERR,Unknown image subcommand: " + subCmd;
 }
