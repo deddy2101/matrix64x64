@@ -52,6 +52,10 @@ class WebSocketManager;
  *   image,list                     - Lista immagini salvate
  *   image,delete,NAME              - Elimina immagine
  *   image,info                     - Info storage immagini
+ *   image,show,NAME                - Mostra immagine specifica
+ *   image,next                     - Prossima immagine nello slideshow
+ *   image,prev                     - Immagine precedente nello slideshow
+ *   image,slideshow,0|1            - Abilita/disabilita slideshow automatico
  *
  * Risposte (ESP32 → App):
  *   OK,comando                     - Comando eseguito

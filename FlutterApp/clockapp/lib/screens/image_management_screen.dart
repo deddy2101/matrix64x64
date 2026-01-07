@@ -143,6 +143,44 @@ class _ImageManagementScreenState extends State<ImageManagementScreen> {
     }
   }
 
+  Future<void> _showImageOnMatrix(StoredImage image) async {
+    if (!widget.deviceService.isConnected) {
+      _showSnackBar('Dispositivo non connesso');
+      return;
+    }
+
+    // Prima, switcha all'effetto "Images" (DynamicImageEffect)
+    // Cerca l'effetto nella lista
+    final effects = widget.deviceService.lastEffects;
+    if (effects == null) {
+      _showSnackBar('Lista effetti non disponibile');
+      return;
+    }
+
+    // Trova l'indice dell'effetto che contiene "Images"
+    int imageEffectIndex = -1;
+    for (int i = 0; i < effects.length; i++) {
+      if (effects[i].name.toLowerCase().contains('images:')) {
+        imageEffectIndex = i;
+        break;
+      }
+    }
+
+    if (imageEffectIndex == -1) {
+      _showSnackBar('Effetto "Images" non trovato. Ricarica gli effetti.');
+      return;
+    }
+
+    // Switcha all'effetto Images
+    widget.deviceService.send('effect,select,$imageEffectIndex');
+
+    // Mostra feedback
+    _showSnackBar('Mostrando ${image.name} sulla matrice...');
+
+    // Chiudi la schermata e torna alla home
+    Navigator.pop(context);
+  }
+
   Future<String?> _showNameDialog(String defaultName) async {
     final controller = TextEditingController(text: defaultName.split('.').first);
 
@@ -341,10 +379,22 @@ class _ImageManagementScreenState extends State<ImageManagementScreen> {
                               subtitle: Text(
                                 'Dimensione: ${ImageService.formatBytes(image.size)} (64x64 RGB565)',
                               ),
-                              trailing: IconButton(
-                                icon: const Icon(Icons.delete),
-                                color: Colors.red,
-                                onPressed: _loading ? null : () => _deleteImage(image),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.visibility),
+                                    color: Theme.of(context).colorScheme.primary,
+                                    tooltip: 'Mostra sulla matrice',
+                                    onPressed: _loading ? null : () => _showImageOnMatrix(image),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete),
+                                    color: Colors.red,
+                                    tooltip: 'Elimina',
+                                    onPressed: _loading ? null : () => _deleteImage(image),
+                                  ),
+                                ],
                               ),
                             ),
                           );

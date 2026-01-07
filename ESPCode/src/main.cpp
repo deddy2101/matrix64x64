@@ -26,6 +26,7 @@
 //#include "effects/FireEffect.h"
 //#include "effects/StarFieldEffect.h"
 #include "effects/ImageEffect.h"
+#include "effects/DynamicImageEffect.h"
 
 // Images
 #include "andre.h"
@@ -55,6 +56,7 @@ WebSocketManager* wsManager = nullptr;
 CommandHandler commandHandler;
 DiscoveryService* discoveryService = nullptr;
 ImageManager* imageManager = nullptr;
+DynamicImageEffect* dynamicImageEffect = nullptr;
 
 // ═══════════════════════════════════════════
 // Timers
@@ -172,6 +174,12 @@ void setup() {
         DEBUG_PRINTLN(F("[Setup] ⚠ ImageManager failed, image commands disabled"));
     } else {
         DEBUG_PRINTLN(F("[Setup] ✓ ImageManager OK"));
+
+        // Aggiungi DynamicImageEffect se ImageManager è disponibile
+        DEBUG_PRINTLN(F("[Setup] Adding DynamicImageEffect..."));
+        dynamicImageEffect = new DynamicImageEffect(displayManager, imageManager, 5000); // 5 sec per immagine
+        effectManager->addEffect(dynamicImageEffect);
+        DEBUG_PRINTLN(F("[Setup] ✓ DynamicImageEffect added"));
     }
 
     // ─────────────────────────────────────────
