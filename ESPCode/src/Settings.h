@@ -29,6 +29,10 @@ struct Config {
 
     // Scroll Text
     char scrollText[128];  // Testo scorrevole configurabile
+
+    // NTP/Timezone
+    bool ntpEnabled;
+    char timezone[48];  // Es: "CET-1CEST,M3.5.0,M10.5.0/3"
 };
 
 class Settings {
@@ -100,7 +104,15 @@ public:
     // ═══════════════════════════════════════════
     const char* getScrollText() const { return config.scrollText; }
     void setScrollText(const char* text);
-    
+
+    // ═══════════════════════════════════════════
+    // NTP/Timezone
+    // ═══════════════════════════════════════════
+    bool isNTPEnabled() const { return config.ntpEnabled; }
+    const char* getTimezone() const { return config.timezone; }
+    void setNTPEnabled(bool enabled);
+    void setTimezone(const char* tz);
+
     // ═══════════════════════════════════════════
     // CSV Serialization (simple format)
     // ═══════════════════════════════════════════

@@ -67,6 +67,7 @@ class DeviceStatus {
   final int? rssi;
   final int uptime;
   final int freeHeap;
+  final bool ntpSynced;
 
   DeviceStatus({
     this.time = '--:--:--',
@@ -87,10 +88,11 @@ class DeviceStatus {
     this.rssi,
     this.uptime = 0,
     this.freeHeap = 0,
+    this.ntpSynced = false,
   });
 
   /// Parse STATUS response
-  /// STATUS,time,date,mode,ds3231,temp,effect,idx,fps,auto,count,bright,night,wifi,ip,ssid,rssi,uptime,heap
+  /// STATUS,time,date,mode,ds3231,temp,effect,idx,fps,auto,count,bright,night,wifi,ip,ssid,rssi,uptime,heap,ntpSynced
   factory DeviceStatus.fromResponse(String response) {
     final parts = response.split(',');
     if (parts.length < 19 || parts[0] != 'STATUS') {
@@ -116,6 +118,7 @@ class DeviceStatus {
       rssi: int.tryParse(parts[16]),
       uptime: int.tryParse(parts[17]) ?? 0,
       freeHeap: int.tryParse(parts[18]) ?? 0,
+      ntpSynced: parts.length > 19 ? parts[19] == '1' : false,
     );
   }
 }
@@ -189,6 +192,8 @@ class DeviceSettings {
   final int currentEffect;
   final String deviceName;
   final String scrollText;
+  final bool ntpEnabled;
+  final String timezone;
 
   DeviceSettings({
     this.ssid = '',
@@ -202,10 +207,12 @@ class DeviceSettings {
     this.currentEffect = -1,
     this.deviceName = 'ledmatrix',
     this.scrollText = '',
+    this.ntpEnabled = true,
+    this.timezone = 'CET-1CEST,M3.5.0,M10.5.0/3',
   });
 
   /// Parse SETTINGS response
-  /// SETTINGS,ssid,apMode,brightDay,brightNight,nightStart,nightEnd,duration,auto,effect,deviceName,scrollText
+  /// SETTINGS,ssid,apMode,brightDay,brightNight,nightStart,nightEnd,duration,auto,effect,deviceName,scrollText,ntpEnabled,timezone
   factory DeviceSettings.fromResponse(String response) {
     final parts = response.split(',');
     if (parts.length < 11 || parts[0] != 'SETTINGS') {
@@ -224,6 +231,8 @@ class DeviceSettings {
       currentEffect: int.tryParse(parts[9]) ?? -1,
       deviceName: parts[10],
       scrollText: parts.length > 11 ? parts[11] : '',
+      ntpEnabled: parts.length > 12 ? parts[12] == '1' : true,
+      timezone: parts.length > 13 ? parts[13] : 'CET-1CEST,M3.5.0,M10.5.0/3',
     );
   }
 }
@@ -603,6 +612,15 @@ class DeviceService {
   void pongResume() => send('pong,resume');
   void pongReset() => send('pong,reset');
   void pongGetState() => send('pong,state');
+
+  // ═══════════════════════════════════════════
+  // NTP / Timezone
+  // ═══════════════════════════════════════════
+
+  void ntpEnable() => send('ntp,enable');
+  void ntpDisable() => send('ntp,disable');
+  void ntpSync() => send('ntp,sync');
+  void setTimezone(String tz) => send('timezone,$tz');
 
   void dispose() {
     disconnect();

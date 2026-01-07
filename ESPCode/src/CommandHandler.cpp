@@ -134,6 +134,12 @@ String CommandHandler::processCommand(const String& command) {
     if (mainCmd == "pong") {
         return handlePong(parts);
     }
+    if (mainCmd == "ntp") {
+        return handleNTP(parts);
+    }
+    if (mainCmd == "timezone") {
+        return handleTimezone(parts);
+    }
     if (mainCmd == "save") {
         return handleSave();
     }
@@ -302,7 +308,14 @@ String CommandHandler::getStatusResponse() {
     // System
     response += "," + String(millis() / 1000);
     response += "," + String(ESP.getFreeHeap());
-    
+
+    // NTP status
+    if (_timeManager) {
+        response += "," + String(_timeManager->isNTPSynced() ? "1" : "0");
+    } else {
+        response += ",0";
+    }
+
     return response;
 }
 
@@ -334,6 +347,8 @@ String CommandHandler::getSettingsResponse() {
         response += "," + String(_settings->getCurrentEffect());
         response += "," + String(_settings->getDeviceName());
         response += "," + String(_settings->getScrollText());
+        response += "," + String(_settings->isNTPEnabled() ? "1" : "0");
+        response += "," + String(_settings->getTimezone());
     }
 
     return response;
@@ -779,6 +794,72 @@ String CommandHandler::handlePong(const std::vector<String>& parts) {
     }
 
     return "ERR,unknown pong subcommand: " + subCmd;
+}
+
+String CommandHandler::handleNTP(const std::vector<String>& parts) {
+    if (parts.size() < 2) {
+        return "ERR,ntp needs subcommand (enable/disable/sync)";
+    }
+
+    String subCmd = parts[1];
+    subCmd.toLowerCase();
+
+    if (subCmd == "enable") {
+        if (_settings) {
+            _settings->setNTPEnabled(true);
+        }
+        if (_timeManager) {
+            _timeManager->enableNTP(true);
+        }
+        return "OK,ntp enabled";
+    }
+
+    if (subCmd == "disable") {
+        if (_settings) {
+            _settings->setNTPEnabled(false);
+        }
+        if (_timeManager) {
+            _timeManager->enableNTP(false);
+        }
+        return "OK,ntp disabled";
+    }
+
+    if (subCmd == "sync") {
+        if (_timeManager) {
+            _timeManager->forceNTPSync();
+            return "OK,ntp sync requested";
+        }
+        return "ERR,time manager not available";
+    }
+
+    return "ERR,unknown ntp subcommand: " + subCmd;
+}
+
+String CommandHandler::handleTimezone(const std::vector<String>& parts) {
+    if (parts.size() < 2) {
+        return "ERR,timezone needs TZ_STRING";
+    }
+
+    // Ricostruisci il timezone (potrebbe contenere virgole, anche se improbabile)
+    String tz = parts[1];
+    for (size_t i = 2; i < parts.size(); i++) {
+        tz += "," + parts[i];
+    }
+
+    if (_settings) {
+        _settings->setTimezone(tz.c_str());
+    }
+
+    // Applica subito il timezone
+    setenv("TZ", tz.c_str(), 1);
+    tzset();
+
+    // Forza NTP sync con nuovo timezone
+    if (_timeManager) {
+        _timeManager->forceNTPSync();
+    }
+
+    return "OK,timezone set to " + tz;
 }
 
 String CommandHandler::handleSave() {

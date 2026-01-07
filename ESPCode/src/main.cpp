@@ -110,6 +110,8 @@ void setup() {
     // ─────────────────────────────────────────
     DEBUG_PRINTLN(F("[Setup] Initializing TimeManager..."));
     timeManager = new TimeManager(false);  // RTC mode
+    timeManager->setTimezone(settings.getTimezone());
+    timeManager->enableNTP(settings.isNTPEnabled());
     timeManager->begin();
     DEBUG_PRINTLN(F("[Setup] ✓ TimeManager OK"));
     
@@ -120,6 +122,7 @@ void setup() {
     effectManager = new EffectManager(displayManager, settings.getEffectDuration());
     
     // Aggiungi effetti
+    effectManager->addEffect(new MarioClockEffect(displayManager, timeManager));
     scrollTextEffect = new ScrollTextEffect(displayManager, settings.getScrollText());
     effectManager->addEffect(scrollTextEffect);
     //effectManager->addEffect(new PlasmaEffect(displayManager));
@@ -131,7 +134,7 @@ void setup() {
     /*
     effectManager->addEffect(new ImageEffect(displayManager, 
         (DrawImageFunction)draw_pokemon, "Pokemon"));
-    effectManager->addEffect(new MarioClockEffect(displayManager, timeManager));
+    
     effectManager->addEffect(new ImageEffect(displayManager, 
         (DrawImageFunction)draw_andre, "Andre"));
     effectManager->addEffect(new ImageEffect(displayManager, 

@@ -53,6 +53,10 @@ class PongEffect;
  *   pong,resume                    - Riprendi partita
  *   pong,reset                     - Reset partita
  *   pong,state                     - Richiedi stato gioco
+ *   ntp,enable                     - Abilita NTP sync
+ *   ntp,disable                    - Disabilita NTP sync
+ *   ntp,sync                       - Forza sync NTP ora
+ *   timezone,TZ_STRING             - Imposta timezone (es: CET-1CEST,M3.5.0,M10.5.0/3)
  *   save                           - Salva impostazioni
  *   restart                        - Riavvia ESP32
  *   ota,start,SIZE                 - Inizia OTA update (SIZE in bytes)
@@ -75,9 +79,9 @@ class PongEffect;
  *   OTA_PROGRESS,bytes,percent     - Progresso upload
  *   OTA_SUCCESS                    - Update completato (riavvio imminente)
  *   OTA_ERROR,messaggio            - Errore durante OTA
- *   STATUS,time,date,mode,ds3231,temp,effect,idx,fps,auto,count,bright,night,wifi,ip,ssid,rssi,uptime,heap
+ *   STATUS,time,date,mode,ds3231,temp,effect,idx,fps,auto,count,bright,night,wifi,ip,ssid,rssi,uptime,heap,ntpSynced
  *   EFFECTS,name1,name2,name3,...  - Lista nomi effetti
- *   SETTINGS,ssid,apMode,brightDay,brightNight,nightStart,nightEnd,duration,auto,effect,deviceName,scrollText
+ *   SETTINGS,ssid,apMode,brightDay,brightNight,nightStart,nightEnd,duration,auto,effect,deviceName,scrollText,ntpEnabled,timezone
  *   VERSION,version,buildNumber,buildDate,buildTime - Versione firmware
  *   EFFECT,index,name              - Notifica cambio effetto
  *   TIME,HH:MM:SS                  - Notifica cambio ora
@@ -139,6 +143,8 @@ private:
     String handleDeviceName(const std::vector<String>& parts);
     String handleScrollText(const std::vector<String>& parts);
     String handlePong(const std::vector<String>& parts);
+    String handleNTP(const std::vector<String>& parts);
+    String handleTimezone(const std::vector<String>& parts);
     String handleSave();
     String handleRestart();
     String handleOTA(const std::vector<String>& parts);

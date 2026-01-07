@@ -13,6 +13,10 @@ TimeManager::TimeManager(bool fakeTime, unsigned long fakeSpeedMs)
       lastSecond(-1),
       lastUpdate(0),
       updateInterval(fakeSpeedMs),
+      ntpEnabled(true),
+      ntpSynced(false),
+      lastNtpSync(0),
+      ntpSyncInterval(3600000),  // 1 ora in ms
       mode(fakeTime ? TimeMode::FAKE : TimeMode::RTC) {
     // I vettori si inizializzano automaticamente vuoti
 }
@@ -93,14 +97,102 @@ time_t TimeManager::getLocalEpoch(time_t utcEpoch) {
     // Usa le funzioni di sistema che rispettano TZ
     struct tm timeinfo;
     localtime_r(&utcEpoch, &timeinfo);
-    
+
     // Calcola l'offset applicato
     // localtime_r ha già applicato il fuso orario
     return utcEpoch;  // L'epoch è sempre UTC, è la rappresentazione che cambia
 }
 
+// ═══════════════════════════════════════════
+// NTP Sync
+// ═══════════════════════════════════════════
+
+bool TimeManager::syncFromNTP() {
+    if (!ntpEnabled) {
+        DEBUG_PRINTLN(F("[TimeManager] NTP disabled"));
+        return false;
+    }
+
+    // Verifica connessione WiFi
+    if (WiFi.status() != WL_CONNECTED) {
+        DEBUG_PRINTLN(F("[TimeManager] NTP sync failed: WiFi not connected"));
+        return false;
+    }
+
+    DEBUG_PRINTLN(F("[TimeManager] Starting NTP sync..."));
+
+    // Configura NTP con timezone Italia
+    configTzTime("CET-1CEST,M3.5.0,M10.5.0/3", NTP_SERVER1, NTP_SERVER2, NTP_SERVER3);
+
+    // Attendi sincronizzazione (max 10 secondi)
+    struct tm timeinfo;
+    int retries = 0;
+    while (!getLocalTime(&timeinfo, 1000) && retries < 10) {
+        DEBUG_PRINT(F("."));
+        retries++;
+    }
+    DEBUG_PRINTLN();
+
+    if (retries >= 10) {
+        DEBUG_PRINTLN(F("[TimeManager] NTP sync timeout"));
+        return false;
+    }
+
+    // Aggiorna valori correnti
+    currentYear = timeinfo.tm_year + 1900;
+    currentMonth = timeinfo.tm_mon + 1;
+    currentDay = timeinfo.tm_mday;
+    currentHour = timeinfo.tm_hour;
+    currentMinute = timeinfo.tm_min;
+    currentSecond = timeinfo.tm_sec;
+
+    // Aggiorna anche il DS3231 se disponibile
+    syncToDS3231();
+
+    ntpSynced = true;
+    lastNtpSync = millis();
+
+    DEBUG_PRINTF("[TimeManager] NTP sync OK: %04d/%02d/%02d %02d:%02d:%02d\n",
+                 currentYear, currentMonth, currentDay,
+                 currentHour, currentMinute, currentSecond);
+
+    return true;
+}
+
+void TimeManager::checkNtpSync() {
+    if (!ntpEnabled || mode == TimeMode::FAKE) return;
+
+    // Prima sync all'avvio (se WiFi connesso e non ancora sincronizzato)
+    if (!ntpSynced && WiFi.status() == WL_CONNECTED) {
+        syncFromNTP();
+        return;
+    }
+
+    // Sync periodico (ogni ntpSyncInterval ms, default 1 ora)
+    if (ntpSynced && (millis() - lastNtpSync >= ntpSyncInterval)) {
+        if (WiFi.status() == WL_CONNECTED) {
+            DEBUG_PRINTLN(F("[TimeManager] Periodic NTP sync..."));
+            syncFromNTP();
+        }
+    }
+}
+
+void TimeManager::forceNTPSync() {
+    DEBUG_PRINTLN(F("[TimeManager] Forced NTP sync requested"));
+    ntpSynced = false;  // Reset per forzare nuovo sync
+    syncFromNTP();
+}
+
+void TimeManager::setTimezone(const char* tz) {
+    if (tz && strlen(tz) > 0) {
+        setenv("TZ", tz, 1);
+        tzset();
+        DEBUG_PRINTF("[TimeManager] Timezone set to: %s\n", tz);
+    }
+}
+
 void TimeManager::begin(int hour, int minute, int second) {
-    // Configura timezone Italia PRIMA di tutto
+    // Configura timezone Italia PRIMA di tutto (default, verrà sovrascritto se configurato)
     setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
     tzset();
     
@@ -311,11 +403,14 @@ void TimeManager::updateFakeTime() {
 
 // ✅ METODO UPDATE AGGIORNATO PER CHIAMARE TUTTI I CALLBACK
 void TimeManager::update() {
+    // Check NTP sync (all'avvio e ogni ora)
+    checkNtpSync();
+
     switch (mode) {
         case TimeMode::FAKE:
             updateFakeTime();
             break;
-            
+
         case TimeMode::RTC:
             readRtcTime();
             break;
@@ -379,16 +474,30 @@ String TimeManager::getFullStatus() {
     sprintf(buf, "║  Mode: %-28s  ║\n", getModeString().c_str());
     status += buf;
     
-    sprintf(buf, "║  DS3231: %-27s  ║\n", 
+    sprintf(buf, "║  DS3231: %-27s  ║\n",
             ds3231Available ? "✓ Connected" : "✗ Not found");
     status += buf;
-    
+
     if (ds3231Available) {
-        sprintf(buf, "║  DS3231 Temp: %.1f°C                   ║\n", 
+        sprintf(buf, "║  DS3231 Temp: %.1f°C                   ║\n",
                 getDS3231Temperature());
         status += buf;
     }
-    
+
+    // NTP status
+    sprintf(buf, "║  NTP: %-30s  ║\n",
+            !ntpEnabled ? "Disabled" :
+            !ntpSynced ? "Not synced" :
+            "✓ Synced");
+    status += buf;
+
+    if (ntpSynced) {
+        unsigned long sinceSyncSec = (millis() - lastNtpSync) / 1000;
+        unsigned long mins = sinceSyncSec / 60;
+        sprintf(buf, "║  Last NTP sync: %lu min ago            ║\n", mins);
+        status += buf;
+    }
+
     if (mode == TimeMode::FAKE) {
         sprintf(buf, "║  Speed: %lu ms/min                   ║\n", updateInterval);
         status += buf;

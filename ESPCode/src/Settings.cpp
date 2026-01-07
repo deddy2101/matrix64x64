@@ -26,6 +26,10 @@ void Settings::setDefaults() {
 
     // Scroll Text defaults
     strcpy(config.scrollText, "PROSSIMA FERMATA FIRENZE");
+
+    // NTP/Timezone defaults
+    config.ntpEnabled = true;
+    strcpy(config.timezone, "CET-1CEST,M3.5.0,M10.5.0/3");  // Italia
 }
 
 void Settings::begin() {
@@ -60,6 +64,11 @@ void Settings::load() {
     String scrollText = preferences.getString("scrollText", "PROSSIMA FERMATA FIRENZE");
     strncpy(config.scrollText, scrollText.c_str(), sizeof(config.scrollText) - 1);
 
+    // NTP/Timezone
+    config.ntpEnabled = preferences.getBool("ntpEnabled", true);
+    String timezone = preferences.getString("timezone", "CET-1CEST,M3.5.0,M10.5.0/3");
+    strncpy(config.timezone, timezone.c_str(), sizeof(config.timezone) - 1);
+
     dirty = false;
     
     DEBUG_PRINTLN(F("[Settings] Loaded from NVS"));
@@ -89,8 +98,12 @@ void Settings::save() {
     // Scroll Text
     preferences.putString("scrollText", config.scrollText);
 
+    // NTP/Timezone
+    preferences.putBool("ntpEnabled", config.ntpEnabled);
+    preferences.putString("timezone", config.timezone);
+
     dirty = false;
-    
+
     DEBUG_PRINTLN(F("[Settings] Saved to NVS"));
 }
 
@@ -189,6 +202,21 @@ void Settings::setScrollText(const char* text) {
 }
 
 // ═══════════════════════════════════════════
+// NTP/Timezone Setters
+// ═══════════════════════════════════════════
+
+void Settings::setNTPEnabled(bool enabled) {
+    config.ntpEnabled = enabled;
+    dirty = true;
+}
+
+void Settings::setTimezone(const char* tz) {
+    strncpy(config.timezone, tz, sizeof(config.timezone) - 1);
+    config.timezone[sizeof(config.timezone) - 1] = '\0';
+    dirty = true;
+}
+
+// ═══════════════════════════════════════════
 // CSV Serialization
 // ═══════════════════════════════════════════
 
@@ -205,6 +233,8 @@ String Settings::toCSV() const {
     csv += "," + String(config.currentEffect);
     csv += "," + String(config.deviceName);
     csv += "," + String(config.scrollText);
+    csv += "," + String(config.ntpEnabled ? "1" : "0");
+    csv += "," + String(config.timezone);
     return csv;
 }
 
@@ -223,5 +253,7 @@ void Settings::print() const {
     DEBUG_PRINTF("║  Auto Switch: %-22s║\n", config.autoSwitch ? "ON" : "OFF");
     DEBUG_PRINTF("║  Device Name: %-22s║\n", config.deviceName);
     DEBUG_PRINTF("║  Scroll Text: %-22s║\n", config.scrollText[0] ? config.scrollText : "(not set)");
+    DEBUG_PRINTF("║  NTP Enabled: %-22s║\n", config.ntpEnabled ? "ON" : "OFF");
+    DEBUG_PRINTF("║  Timezone: %-25s║\n", config.timezone);
     DEBUG_PRINTLN(F("╚═════════════════════════════════════╝"));
 }
