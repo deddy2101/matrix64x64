@@ -59,14 +59,6 @@ docker-compose up -d
 
 ## Configurazione
 
-### Credenziali WiFi
-
-Modifica il file [ESPCode/src/Settings.cpp](ESPCode/src/Settings.cpp):
-```cpp
-ssid = "TUO_SSID";
-password = "TUA_PASSWORD";
-```
-
 ### Hostname mDNS
 
 Default: `led-matrix.local`
