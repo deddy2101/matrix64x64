@@ -752,6 +752,25 @@ String CommandHandler::handlePong(const std::vector<String>& parts) {
         return "OK";  // Non serve risposta dettagliata per move (troppo frequente)
     }
 
+    // pong,setpos,1|2,0-100
+    if (subCmd == "setpos") {
+        if (parts.size() < 4) {
+            return "ERR,pong setpos needs player and percentage";
+        }
+        int player = parts[2].toInt();
+        int percentage = parts[3].toInt();
+
+        if (player < 1 || player > 2) {
+            return "ERR,player must be 1 or 2";
+        }
+        if (percentage < 0 || percentage > 100) {
+            return "ERR,percentage must be 0-100";
+        }
+
+        _pongEffect->setPaddlePosition(player, percentage);
+        return "OK";  // Non serve risposta dettagliata (troppo frequente)
+    }
+
     // pong,start
     if (subCmd == "start") {
         _pongEffect->startGame();

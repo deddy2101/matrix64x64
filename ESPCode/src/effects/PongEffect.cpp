@@ -380,6 +380,25 @@ void PongEffect::movePlayer(int playerNum, int direction) {
     }
 }
 
+void PongEffect::setPaddlePosition(int playerNum, int percentage) {
+    // percentage: 0-100 (0=bottom, 100=top)
+    percentage = constrain(percentage, 0, 100);
+
+    int height = displayManager->getHeight();
+    // Converti percentuale in posizione Y
+    // 0% = bottom (height - PADDLE_HEIGHT), 100% = top (0)
+    int targetY = map(percentage, 0, 100, height - PADDLE_HEIGHT, 0);
+
+    if (playerNum == 1 && player1Mode == PlayerMode::HUMAN) {
+        paddle1Y = targetY;
+        player1Input = 0;  // Reset input relativo
+    }
+    if (playerNum == 2 && player2Mode == PlayerMode::HUMAN) {
+        paddle2Y = targetY;
+        player2Input = 0;  // Reset input relativo
+    }
+}
+
 void PongEffect::startGame() {
     if (gameState == PongGameState::WAITING || gameState == PongGameState::GAME_OVER) {
         score1 = 0;

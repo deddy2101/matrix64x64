@@ -48,6 +48,7 @@ class PongEffect;
  *   pong,join,1|2                  - Giocatore si unisce (1=sinistra, 2=destra)
  *   pong,leave,1|2                 - Giocatore esce
  *   pong,move,1|2,up|down|stop     - Muovi paddle
+ *   pong,setpos,1|2,0-100          - Imposta posizione paddle (0=fondo, 100=cima)
  *   pong,start                     - Avvia partita
  *   pong,pause                     - Pausa partita
  *   pong,resume                    - Riprendi partita

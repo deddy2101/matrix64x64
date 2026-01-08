@@ -76,6 +76,7 @@ public:
 
     // Controlli
     void movePlayer(int playerNum, int direction);  // direction: -1=su, 0=stop, 1=giù
+    void setPaddlePosition(int playerNum, int percentage);  // percentage: 0-100 (0=bottom, 100=top)
 
     // Gestione partita
     void startGame();
