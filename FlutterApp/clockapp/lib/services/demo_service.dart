@@ -16,6 +16,7 @@ class DemoService {
   final _effectsController = StreamController<List<EffectInfo>>.broadcast();
   final _settingsController = StreamController<DeviceSettings>.broadcast();
   final _connectionController = StreamController<DeviceConnectionState>.broadcast();
+  final _pongController = StreamController<PongState>.broadcast();
 
   // Stato simulato
   int _currentEffectIndex = 0;
@@ -23,12 +24,20 @@ class DemoService {
   bool _isNight = false;
   DateTime _simulatedTime = DateTime.now();
 
+  // Stato Pong simulato
+  String _pongGameState = 'waiting';
+  int _pongScore1 = 0;
+  int _pongScore2 = 0;
+  bool _pongPlayer1IsHuman = false;
+  bool _pongPlayer2IsHuman = false;
+
   // Getters
   bool get isDemoMode => _isDemoMode;
   Stream<DeviceStatus> get statusStream => _statusController.stream;
   Stream<List<EffectInfo>> get effectsStream => _effectsController.stream;
   Stream<DeviceSettings> get settingsStream => _settingsController.stream;
   Stream<DeviceConnectionState> get connectionState => _connectionController.stream;
+  Stream<PongState> get pongStream => _pongController.stream;
 
   /// Lista effetti demo
   static const List<String> demoEffects = [
@@ -156,6 +165,96 @@ class DemoService {
     _effectsController.close();
     _settingsController.close();
     _connectionController.close();
+    _pongController.close();
+  }
+
+  // ═══════════════════════════════════════════
+  // Pong Demo Methods
+  // ═══════════════════════════════════════════
+
+  void _emitPongState() {
+    final pongState = PongState(
+      gameState: _pongGameState,
+      score1: _pongScore1,
+      score2: _pongScore2,
+      player1Mode: _pongPlayer1IsHuman ? 'human' : 'ai',
+      player2Mode: _pongPlayer2IsHuman ? 'human' : 'ai',
+      ballX: 32,
+      ballY: 32,
+    );
+    _pongController.add(pongState);
+  }
+
+  void pongJoin(int player) {
+    if (player == 1 && !_pongPlayer1IsHuman) {
+      _pongPlayer1IsHuman = true;
+    } else if (player == 2 && !_pongPlayer2IsHuman) {
+      _pongPlayer2IsHuman = true;
+    }
+    _emitPongState();
+  }
+
+  void pongLeave(int player) {
+    if (player == 1 && _pongPlayer1IsHuman) {
+      _pongPlayer1IsHuman = false;
+    } else if (player == 2 && _pongPlayer2IsHuman) {
+      _pongPlayer2IsHuman = false;
+    }
+    _emitPongState();
+  }
+
+  void pongMove(int player, String direction) {
+    // In demo, non facciamo nulla di particolare
+    // Il movimento è gestito dall'ESP nel caso reale
+  }
+
+  void pongSetPosition(int player, int percentage) {
+    // In demo, non facciamo nulla di particolare
+    // La posizione è gestita dall'ESP nel caso reale
+  }
+
+  void pongStart() {
+    _pongGameState = 'playing';
+    _pongScore1 = 0;
+    _pongScore2 = 0;
+    _emitPongState();
+
+    // Simula un punto dopo 3 secondi
+    Future.delayed(const Duration(seconds: 3), () {
+      if (_pongGameState == 'playing') {
+        _pongScore1 = 1;
+        _emitPongState();
+      }
+    });
+
+    // Simula un altro punto dopo 6 secondi
+    Future.delayed(const Duration(seconds: 6), () {
+      if (_pongGameState == 'playing') {
+        _pongScore2 = 1;
+        _emitPongState();
+      }
+    });
+  }
+
+  void pongPause() {
+    _pongGameState = 'paused';
+    _emitPongState();
+  }
+
+  void pongResume() {
+    _pongGameState = 'playing';
+    _emitPongState();
+  }
+
+  void pongReset() {
+    _pongGameState = 'waiting';
+    _pongScore1 = 0;
+    _pongScore2 = 0;
+    _emitPongState();
+  }
+
+  void pongGetState() {
+    _emitPongState();
   }
 }
 

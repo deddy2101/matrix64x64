@@ -3,9 +3,11 @@ import 'package:flutter/services.dart';
 import 'dart:async';
 import '../services/demo_service.dart';
 import '../services/device_service.dart';
+import '../services/demo_device_adapter.dart';
 import '../widgets/common/common_widgets.dart';
 import '../widgets/home/home_widgets.dart';
 import 'device_discovery_screen.dart';
+import 'pong_controller_screen.dart';
 
 /// Schermata Home in modalità Demo
 /// Simula il comportamento della HomeScreen ma con dati fittizi
@@ -94,6 +96,8 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
                   _buildEffectsCard(),
                   const SizedBox(height: 16),
                   _buildPlaybackCard(),
+                  const SizedBox(height: 16),
+                  _buildPongCard(),
                   const SizedBox(height: 16),
                   _buildBrightnessCard(),
                   const SizedBox(height: 16),
@@ -426,6 +430,59 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
                 },
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPongCard() {
+    return GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.sports_esports, color: Colors.orange[400]),
+              const SizedBox(width: 12),
+              const Text(
+                'Pong Multiplayer',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Prova il controller Pong con lo slider verticale in modalità demo',
+            style: TextStyle(
+              color: Colors.grey[400],
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                _addLog('→ Apertura Pong Controller (demo)');
+                HapticFeedback.mediumImpact();
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => PongControllerScreen(
+                      deviceService: DemoDeviceAdapter(_demo),
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.gamepad),
+              label: const Text('Apri Controller'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange[600],
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+            ),
           ),
         ],
       ),

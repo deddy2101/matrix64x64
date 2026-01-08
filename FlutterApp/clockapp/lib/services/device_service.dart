@@ -5,6 +5,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 // Serial support (cross-platform, no external dependencies)
 import 'serial_native.dart' as serial;
+import 'pong_device_interface.dart';
 
 /// Tipo di connessione
 enum ConnectionType { none, serial, websocket }
@@ -240,7 +241,7 @@ class DeviceSettings {
 /// Servizio unificato per comunicazione con LED Matrix
 /// Supporta sia connessione Seriale che WebSocket
 /// Protocollo: Stringhe CSV-like (no JSON)
-class DeviceService {
+class DeviceService implements IPongDevice {
   static final DeviceService _instance = DeviceService._internal();
   factory DeviceService() => _instance;
   DeviceService._internal();
@@ -607,6 +608,7 @@ class DeviceService {
   void pongJoin(int player) => send('pong,join,$player');
   void pongLeave(int player) => send('pong,leave,$player');
   void pongMove(int player, String direction) => send('pong,move,$player,$direction');
+  void pongSetPosition(int player, int percentage) => send('pong,setpos,$player,$percentage');
   void pongStart() => send('pong,start');
   void pongPause() => send('pong,pause');
   void pongResume() => send('pong,resume');

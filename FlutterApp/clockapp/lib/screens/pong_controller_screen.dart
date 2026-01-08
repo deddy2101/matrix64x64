@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
 import '../services/device_service.dart';
+import '../services/pong_device_interface.dart';
 import '../widgets/common/common_widgets.dart';
 
 class PongControllerScreen extends StatefulWidget {
-  final DeviceService deviceService;
+  final IPongDevice deviceService;
 
   const PongControllerScreen({
     super.key,
@@ -20,6 +21,7 @@ class _PongControllerScreenState extends State<PongControllerScreen> {
   PongState? _pongState;
   int? _myPlayer; // 1 o 2, null se non unito
   late List<StreamSubscription> _subscriptions;
+  double _sliderValue = 50.0; // 0-100, inizia al centro
 
   @override
   void initState() {
@@ -48,35 +50,29 @@ class _PongControllerScreenState extends State<PongControllerScreen> {
 
   void _joinPlayer(int player) {
     widget.deviceService.pongJoin(player);
-    setState(() => _myPlayer = player);
+    setState(() {
+      _myPlayer = player;
+      _sliderValue = 50.0; // Reset al centro
+    });
     HapticFeedback.mediumImpact();
   }
 
   void _leavePlayer() {
     if (_myPlayer != null) {
       widget.deviceService.pongLeave(_myPlayer!);
-      setState(() => _myPlayer = null);
+      setState(() {
+        _myPlayer = null;
+        _sliderValue = 50.0;
+      });
       HapticFeedback.lightImpact();
     }
   }
 
-  void _moveUp() {
+  void _onSliderChanged(double value) {
     if (_myPlayer != null) {
-      widget.deviceService.pongMove(_myPlayer!, 'up');
-      HapticFeedback.selectionClick();
-    }
-  }
-
-  void _moveDown() {
-    if (_myPlayer != null) {
-      widget.deviceService.pongMove(_myPlayer!, 'down');
-      HapticFeedback.selectionClick();
-    }
-  }
-
-  void _stopMove() {
-    if (_myPlayer != null) {
-      widget.deviceService.pongMove(_myPlayer!, 'stop');
+      setState(() => _sliderValue = value);
+      // Invia posizione all'ESP (0=fondo, 100=cima)
+      widget.deviceService.pongSetPosition(_myPlayer!, value.round());
     }
   }
 
@@ -371,65 +367,86 @@ class _PongControllerScreenState extends State<PongControllerScreen> {
             ],
           ),
           const SizedBox(height: 24),
-          // Controlli paddle
+          // Slider verticale per controllo paddle
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Pulsante SU
-              GestureDetector(
-                onTapDown: (_) => _moveUp(),
-                onTapUp: (_) => _stopMove(),
-                onTapCancel: _stopMove,
-                onLongPressStart: (_) => _moveUp(),
-                onLongPressEnd: (_) => _stopMove(),
-                child: Container(
-                  width: 80,
-                  height: 100,
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(isPlaying ? 0.2 : 0.05),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: color.withOpacity(isPlaying ? 0.5 : 0.1),
-                    ),
+              // Etichetta "TOP"
+              Text(
+                'TOP',
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(width: 16),
+              // Slider verticale
+              Container(
+                height: 300,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(isPlaying ? 0.1 : 0.03),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: color.withOpacity(isPlaying ? 0.4 : 0.1),
+                    width: 2,
                   ),
-                  child: Icon(
-                    Icons.keyboard_arrow_up,
-                    size: 48,
-                    color: isPlaying ? color : Colors.grey,
+                ),
+                child: RotatedBox(
+                  quarterTurns: 3,
+                  child: SliderTheme(
+                    data: SliderThemeData(
+                      activeTrackColor: color,
+                      inactiveTrackColor: color.withOpacity(0.2),
+                      thumbColor: color,
+                      overlayColor: color.withOpacity(0.3),
+                      thumbShape: const RoundSliderThumbShape(
+                        enabledThumbRadius: 12,
+                      ),
+                      trackHeight: 8,
+                    ),
+                    child: Slider(
+                      value: _sliderValue,
+                      min: 0,
+                      max: 100,
+                      onChanged: isPlaying ? _onSliderChanged : null,
+                      onChangeStart: (_) {
+                        if (isPlaying) HapticFeedback.lightImpact();
+                      },
+                      onChangeEnd: (_) {
+                        if (isPlaying) HapticFeedback.mediumImpact();
+                      },
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(width: 40),
-              // Pulsante GIU
-              GestureDetector(
-                onTapDown: (_) => _moveDown(),
-                onTapUp: (_) => _stopMove(),
-                onTapCancel: _stopMove,
-                onLongPressStart: (_) => _moveDown(),
-                onLongPressEnd: (_) => _stopMove(),
-                child: Container(
-                  width: 80,
-                  height: 100,
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(isPlaying ? 0.2 : 0.05),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: color.withOpacity(isPlaying ? 0.5 : 0.1),
-                    ),
-                  ),
-                  child: Icon(
-                    Icons.keyboard_arrow_down,
-                    size: 48,
-                    color: isPlaying ? color : Colors.grey,
-                  ),
+              const SizedBox(width: 16),
+              // Etichetta "BOTTOM"
+              Text(
+                'BOTTOM',
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 16),
+          // Indicatore posizione
+          Text(
+            '${_sliderValue.round()}%',
+            style: TextStyle(
+              color: color,
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
           Text(
             isPlaying
-                ? 'Tieni premuto per muovere'
+                ? 'Muovi lo slider per controllare'
                 : 'Attendi inizio partita',
             style: TextStyle(
               color: Colors.grey[500],
