@@ -3,7 +3,7 @@
 
 #include "../Effect.h"
 #include "../TimeManager.h"
-#include "pacman_assets.h"
+#include "../../include/pacman_assets.h"
 
 // Direzioni di movimento
 enum PacDirection {
