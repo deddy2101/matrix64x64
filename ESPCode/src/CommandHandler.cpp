@@ -749,7 +749,7 @@ String CommandHandler::handlePong(const std::vector<String>& parts) {
         else return "ERR,direction must be up, down, or stop";
 
         _pongEffect->movePlayer(player, direction);
-        return "OK";  // Non serve risposta dettagliata per move (troppo frequente)
+        return "";  // Nessuna risposta per move - evita "Too many messages queued"
     }
 
     // pong,setpos,1|2,0-100
@@ -768,7 +768,7 @@ String CommandHandler::handlePong(const std::vector<String>& parts) {
         }
 
         _pongEffect->setPaddlePosition(player, percentage);
-        return "OK";  // Non serve risposta dettagliata (troppo frequente)
+        return "";  // Nessuna risposta per setpos - evita "Too many messages queued"
     }
 
     // pong,start
