@@ -140,6 +140,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   void _addLog(String message) {
+    if (!mounted) return;
     final now = DateTime.now();
     final time =
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
@@ -1327,9 +1328,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 color: Theme.of(context).colorScheme.primary,
               ),
               const SizedBox(width: 12),
-              const Text(
-                'Firmware Update (OTA)',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              const Expanded(
+                child: Text(
+                  'Firmware Update (OTA)',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                ),
+              ),
+              IconButton(
+                icon: _isLoadingVersions
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh),
+                onPressed: _isLoadingVersions ? null : _loadFirmwareManifest,
+                tooltip: 'Ricarica versioni',
               ),
             ],
           ),

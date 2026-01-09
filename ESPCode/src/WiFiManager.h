@@ -30,7 +30,6 @@ private:
     
     bool startAP();
     bool startSTA();
-    bool startMDNS();
     
 public:
     WiFiManager(Settings* settings);

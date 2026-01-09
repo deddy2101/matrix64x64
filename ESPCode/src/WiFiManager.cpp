@@ -47,7 +47,6 @@ bool WiFiManager::startSTA() {
         DEBUG_PRINTF("[WiFi] IP: %s\n", WiFi.localIP().toString().c_str());
         DEBUG_PRINTF("[WiFi] RSSI: %d dBm\n", WiFi.RSSI());
         
-        startMDNS();
         return true;
     }
     
@@ -77,7 +76,6 @@ bool WiFiManager::startAP() {
         DEBUG_PRINTF("[WiFi] Password: %s\n", AP_PASSWORD);
         DEBUG_PRINTF("[WiFi] IP: %s\n", WiFi.softAPIP().toString().c_str());
         
-        startMDNS();
         return true;
     }
     
@@ -86,21 +84,7 @@ bool WiFiManager::startAP() {
     return false;
 }
 
-bool WiFiManager::startMDNS() {
-    //MDNS.begin(settings->getDeviceName())
-    if (false) {
-        // Registra i servizi
-        //MDNS.addService("http", "tcp", 80);
-       // MDNS.addService("ws", "tcp", 80);
-       // MDNS.addService("ledmatrix", "tcp", 80);
-        
-        DEBUG_PRINTF("[mDNS] ✓ Started: %s.local\n", settings->getDeviceName());
-        return true;
-    }
-    
-    DEBUG_PRINTLN(F("[mDNS] ✗ Failed to start"));
-    return false;
-}
+
 
 void WiFiManager::update() {
     // Controlla disconnessione in modalità STA
