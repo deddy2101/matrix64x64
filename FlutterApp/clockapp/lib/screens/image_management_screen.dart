@@ -1,3 +1,6 @@
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import '../services/device_service.dart';
@@ -74,10 +77,11 @@ class _ImageManagementScreenState extends State<ImageManagementScreen> {
     }
 
     try {
-      // Pick image file
+      // Pick image file - withData per avere bytes su tutte le piattaforme
       final result = await FilePicker.platform.pickFiles(
         type: FileType.image,
         allowMultiple: false,
+        withData: true, // Forza lettura bytes
       );
 
       if (result == null || result.files.isEmpty) {
@@ -85,7 +89,16 @@ class _ImageManagementScreenState extends State<ImageManagementScreen> {
       }
 
       final file = result.files.first;
-      final bytes = file.bytes;
+      Uint8List? bytes = file.bytes;
+
+      // Se bytes è null, prova a leggere dal path (mobile/desktop)
+      if (bytes == null && file.path != null && !kIsWeb) {
+        try {
+          bytes = await File(file.path!).readAsBytes();
+        } catch (e) {
+          print('[ImageUpload] Error reading file from path: $e');
+        }
+      }
 
       if (bytes == null) {
         _showSnackBar('Impossibile leggere il file');
