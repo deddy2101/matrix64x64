@@ -150,6 +150,7 @@ private:
     String handleRestart();
     String handleOTA(const std::vector<String>& parts);
     String handleImage(const std::vector<String>& parts);
+    String handleWiFiScan();
 
     // OTA state
     bool _otaInProgress;

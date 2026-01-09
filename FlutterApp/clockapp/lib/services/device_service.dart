@@ -133,6 +133,27 @@ class EffectInfo {
   EffectInfo({required this.index, required this.name, this.isCurrent = false});
 }
 
+/// Rete WiFi scansionata dall'ESP32
+class ScannedWiFiNetwork {
+  final String ssid;
+  final int rssi;
+  final bool isSecured;
+
+  ScannedWiFiNetwork({
+    required this.ssid,
+    required this.rssi,
+    this.isSecured = true,
+  });
+
+  /// Converte RSSI in percentuale segnale (0-100)
+  int get signalStrength {
+    // RSSI tipicamente va da -100 (debole) a -30 (forte)
+    if (rssi >= -30) return 100;
+    if (rssi <= -100) return 0;
+    return ((rssi + 100) * 100 / 70).round().clamp(0, 100);
+  }
+}
+
 /// Stato gioco Pong
 class PongState {
   final String gameState;  // waiting, playing, paused, gameover
@@ -272,6 +293,8 @@ class DeviceService implements IPongDevice {
   final _settingsController = StreamController<DeviceSettings>.broadcast();
   final _pongController = StreamController<PongState>.broadcast();
   final _dataController = StreamController<String>.broadcast();
+  final _wifiScanController =
+      StreamController<List<ScannedWiFiNetwork>>.broadcast();
 
   // Cache
   DeviceStatus? _lastStatus;
@@ -287,6 +310,8 @@ class DeviceService implements IPongDevice {
   Stream<DeviceSettings> get settingsStream => _settingsController.stream;
   Stream<PongState> get pongStream => _pongController.stream;
   Stream<String> get rawDataStream => _dataController.stream;
+  Stream<List<ScannedWiFiNetwork>> get wifiScanStream =>
+      _wifiScanController.stream;
 
   // Getters
   DeviceConnectionState get state => _state;
@@ -494,9 +519,47 @@ class DeviceService implements IPongDevice {
     } else if (response.startsWith('PONG_STATE,')) {
       _lastPongState = PongState.fromResponse(response);
       _pongController.add(_lastPongState!);
+    } else if (response.startsWith('WIFI_SCAN,')) {
+      final networks = _parseWiFiScan(response);
+      _wifiScanController.add(networks);
     } else if (response.startsWith('WELCOME,')) {
       print('Connected: $response');
     }
+  }
+
+  List<ScannedWiFiNetwork> _parseWiFiScan(String response) {
+    // Formato: WIFI_SCAN,count,ssid1,rssi1,secured1,ssid2,rssi2,secured2,...
+    final parts = response.split(',');
+    if (parts.length < 2 || parts[0] != 'WIFI_SCAN') return [];
+
+    final count = int.tryParse(parts[1]) ?? 0;
+    if (count <= 0) return [];
+
+    final networks = <ScannedWiFiNetwork>[];
+    final seen = <String>{};
+
+    // Ogni rete ha 3 campi: ssid, rssi, secured
+    for (int i = 0; i < count && (2 + i * 3 + 2) < parts.length; i++) {
+      final baseIdx = 2 + i * 3;
+      final ssid = parts[baseIdx];
+      final rssi = int.tryParse(parts[baseIdx + 1]) ?? -100;
+      final secured = parts[baseIdx + 2] == '1';
+
+      // Salta duplicati
+      if (ssid.isEmpty || seen.contains(ssid)) continue;
+      seen.add(ssid);
+
+      networks.add(ScannedWiFiNetwork(
+        ssid: ssid,
+        rssi: rssi,
+        isSecured: secured,
+      ));
+    }
+
+    // Ordina per segnale (più forte prima)
+    networks.sort((a, b) => b.rssi.compareTo(a.rssi));
+
+    return networks;
   }
 
   List<EffectInfo> _parseEffects(String response) {
@@ -596,6 +659,10 @@ class DeviceService implements IPongDevice {
     send('wifi,$ssid,$password,${apMode ? 1 : 0}');
   }
 
+  /// Richiede all'ESP32 di scansionare le reti WiFi disponibili
+  /// Il risultato arriverà via wifiScanStream
+  void requestWiFiScan() => send('wifiScan');
+
   void setDeviceName(String name) => send('devicename,$name');
 
   // Scroll Text
@@ -632,5 +699,6 @@ class DeviceService implements IPongDevice {
     _settingsController.close();
     _pongController.close();
     _dataController.close();
+    _wifiScanController.close();
   }
 }

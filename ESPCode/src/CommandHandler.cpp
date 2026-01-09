@@ -152,6 +152,9 @@ String CommandHandler::processCommand(const String& command) {
     if (mainCmd == "image") {
         return handleImage(parts);
     }
+    if (mainCmd == "wifiscan") {
+        return handleWiFiScan();
+    }
 
     return "ERR,unknown command: " + mainCmd;
 }
@@ -1240,4 +1243,16 @@ String CommandHandler::handleImage(const std::vector<String>& parts) {
     }
 
     return "ERR,Unknown image subcommand: " + subCmd;
+}
+
+// ═══════════════════════════════════════════
+// WiFi Scan Handler
+// ═══════════════════════════════════════════
+
+String CommandHandler::handleWiFiScan() {
+    if (!_wifiManager) {
+        return "ERR,WiFi manager not available";
+    }
+
+    return _wifiManager->scanNetworks();
 }

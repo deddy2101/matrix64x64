@@ -55,6 +55,9 @@ public:
     void reconnect();
     void switchToAP();
     void switchToSTA(const char* ssid, const char* password);
+
+    // WiFi Scan
+    String scanNetworks();
 };
 
 #endif

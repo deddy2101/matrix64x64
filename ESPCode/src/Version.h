@@ -2,8 +2,8 @@
 #define VERSION_H
 
 // Firmware version
-#define FIRMWARE_VERSION "1.3.3"
-#define FIRMWARE_BUILD_NUMBER "16"  // Incrementa manualmente ad ogni build
+#define FIRMWARE_VERSION "1.4.0"
+#define FIRMWARE_BUILD_NUMBER "17"  // Incrementa manualmente ad ogni build
 #define FIRMWARE_BUILD_DATE __DATE__
 #define FIRMWARE_BUILD_TIME __TIME__
 

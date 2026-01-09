@@ -1,5 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import '../utils/wifi_scanner.dart';
+import '../services/device_service.dart';
 import '../widgets/common/signal_indicator.dart';
 
 /// Dialog per configurare WiFi ESP32
@@ -24,8 +25,17 @@ class _WiFiConfigDialogState extends State<WiFiConfigDialog> {
   late TextEditingController passwordController;
   late bool apMode;
 
-  List<WiFiNetwork> _networks = [];
+  List<ScannedWiFiNetwork> _networks = [];
   bool _scanning = false;
+  String _scanStatus = '';
+  int _retryCount = 0;
+  static const int _maxRetries = 5;
+
+  StreamSubscription? _wifiScanSubscription;
+  StreamSubscription? _rawDataSubscription;
+  Timer? _retryTimer;
+
+  final _deviceService = DeviceService();
 
   @override
   void initState() {
@@ -34,22 +44,98 @@ class _WiFiConfigDialogState extends State<WiFiConfigDialog> {
     passwordController = TextEditingController();
     apMode = widget.currentApMode;
 
-    _scanWiFi();
+    // Ascolta i risultati dello scan WiFi
+    _wifiScanSubscription = _deviceService.wifiScanStream.listen((networks) {
+      if (mounted) {
+        _retryTimer?.cancel();
+        setState(() {
+          _networks = networks;
+          _scanning = false;
+          _scanStatus = 'Trovate ${networks.length} reti';
+          _retryCount = 0;
+        });
+      }
+    });
+
+    // Ascolta anche i messaggi raw per gestire WIFI_SCAN_STARTED/RUNNING
+    _rawDataSubscription = _deviceService.rawDataStream.listen((data) {
+      if (!mounted) return;
+
+      if (data == 'WIFI_SCAN_STARTED') {
+        setState(() {
+          _scanStatus = 'Scan avviato...';
+        });
+        _scheduleRetry();
+      } else if (data == 'WIFI_SCAN_RUNNING') {
+        setState(() {
+          _scanStatus = 'Scan in corso...';
+        });
+        _scheduleRetry();
+      }
+    });
+
+    // Avvia scan automatico dopo un piccolo delay
+    Future.delayed(const Duration(milliseconds: 500), _scanWiFi);
   }
 
   @override
   void dispose() {
+    _retryTimer?.cancel();
+    _wifiScanSubscription?.cancel();
+    _rawDataSubscription?.cancel();
     ssidController.dispose();
     passwordController.dispose();
     super.dispose();
   }
 
-  Future<void> _scanWiFi() async {
-    setState(() => _scanning = true);
-    _networks = await WiFiScanner.scan();
-    if (mounted) {
-      setState(() => _scanning = false);
+  void _scheduleRetry() {
+    _retryTimer?.cancel();
+
+    if (_retryCount >= _maxRetries) {
+      if (mounted) {
+        setState(() {
+          _scanning = false;
+          _scanStatus = 'Timeout - riprova';
+        });
+      }
+      return;
     }
+
+    // Prima attesa più lunga (3s) per dare tempo allo scan di completarsi
+    // Attese successive più brevi (1.5s)
+    final delay = _retryCount == 0
+        ? const Duration(seconds: 3)
+        : const Duration(milliseconds: 1500);
+
+    _retryTimer = Timer(delay, () {
+      if (mounted && _scanning && _deviceService.isConnected) {
+        _retryCount++;
+        setState(() {
+          _scanStatus = 'Attendo risultati... (${_retryCount}/$_maxRetries)';
+        });
+        _deviceService.requestWiFiScan();
+      }
+    });
+  }
+
+  void _scanWiFi() {
+    if (!_deviceService.isConnected) {
+      setState(() {
+        _networks = [];
+        _scanning = false;
+        _scanStatus = 'Non connesso al dispositivo';
+      });
+      return;
+    }
+
+    setState(() {
+      _scanning = true;
+      _scanStatus = 'Avvio scansione...';
+      _retryCount = 0;
+    });
+
+    // Richiedi scan all'ESP32
+    _deviceService.requestWiFiScan();
   }
 
   @override
@@ -58,7 +144,7 @@ class _WiFiConfigDialogState extends State<WiFiConfigDialog> {
       backgroundColor: const Color(0xFF1a1a2e),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 500, maxHeight: 600),
+        constraints: const BoxConstraints(maxWidth: 500, maxHeight: 650),
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -105,7 +191,8 @@ class _WiFiConfigDialogState extends State<WiFiConfigDialog> {
                       ),
                     ],
                     selected: {apMode},
-                    onSelectionChanged: (set) => setState(() => apMode = set.first),
+                    onSelectionChanged: (set) =>
+                        setState(() => apMode = set.first),
                   ),
                 ],
               ),
@@ -115,11 +202,28 @@ class _WiFiConfigDialogState extends State<WiFiConfigDialog> {
                 // Scansione reti
                 Row(
                   children: [
-                    const Text(
-                      'Reti disponibili:',
-                      style: TextStyle(fontWeight: FontWeight.w500),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Reti rilevate da ESP32:',
+                            style: TextStyle(fontWeight: FontWeight.w500),
+                          ),
+                          if (_scanStatus.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Text(
+                                _scanStatus,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey[500],
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
-                    const Spacer(),
                     IconButton(
                       icon: _scanning
                           ? const SizedBox(
@@ -142,39 +246,7 @@ class _WiFiConfigDialogState extends State<WiFiConfigDialog> {
                     border: Border.all(color: Colors.grey.withOpacity(0.3)),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: _networks.isEmpty && !_scanning
-                      ? Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Text(
-                              'Nessuna rete trovata',
-                              style: TextStyle(color: Colors.grey[400]),
-                            ),
-                          ),
-                        )
-                      : ListView.builder(
-                          shrinkWrap: true,
-                          itemCount: _networks.length,
-                          itemBuilder: (context, index) {
-                            final network = _networks[index];
-                            return ListTile(
-                              dense: true,
-                              leading: Icon(
-                                network.isSecured
-                                    ? Icons.lock
-                                    : Icons.lock_open,
-                                size: 20,
-                              ),
-                              title: Text(network.ssid),
-                              trailing: SignalIndicator(
-                                strength: network.signalStrength,
-                              ),
-                              onTap: () {
-                                ssidController.text = network.ssid;
-                              },
-                            );
-                          },
-                        ),
+                  child: _buildNetworksList(),
                 ),
                 const SizedBox(height: 16),
 
@@ -187,7 +259,7 @@ class _WiFiConfigDialogState extends State<WiFiConfigDialog> {
                 TextField(
                   controller: ssidController,
                   decoration: InputDecoration(
-                    hintText: 'Nome rete WiFi',
+                    hintText: 'Nome rete WiFi (o seleziona sopra)',
                     filled: true,
                     fillColor: Colors.grey.withOpacity(0.1),
                     border: OutlineInputBorder(
@@ -288,6 +360,88 @@ class _WiFiConfigDialogState extends State<WiFiConfigDialog> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildNetworksList() {
+    if (_scanning && _networks.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(strokeWidth: 2),
+              SizedBox(height: 12),
+              Text('Scansione reti WiFi...'),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_networks.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.wifi_off, color: Colors.grey[400], size: 32),
+              const SizedBox(height: 8),
+              Text(
+                _deviceService.isConnected
+                    ? 'Nessuna rete trovata'
+                    : 'Non connesso',
+                style: TextStyle(color: Colors.grey[400]),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Premi refresh per riprovare',
+                style: TextStyle(color: Colors.grey[600], fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      shrinkWrap: true,
+      itemCount: _networks.length,
+      itemBuilder: (context, index) {
+        final network = _networks[index];
+        final isSelected = ssidController.text == network.ssid;
+
+        return ListTile(
+          dense: true,
+          selected: isSelected,
+          selectedTileColor: const Color(0xFF8B5CF6).withOpacity(0.2),
+          leading: Icon(
+            network.isSecured ? Icons.lock : Icons.lock_open,
+            size: 20,
+            color: isSelected ? const Color(0xFF8B5CF6) : null,
+          ),
+          title: Text(
+            network.ssid,
+            style: TextStyle(
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+          subtitle: Text(
+            '${network.rssi} dBm',
+            style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+          ),
+          trailing: SignalIndicator(
+            strength: network.signalStrength,
+          ),
+          onTap: () {
+            setState(() {
+              ssidController.text = network.ssid;
+            });
+          },
+        );
+      },
     );
   }
 }

@@ -162,3 +162,68 @@ String WiFiManager::getStatusString() const {
         default: return "Unknown";
     }
 }
+
+String WiFiManager::scanNetworks() {
+    DEBUG_PRINTLN(F("[WiFi] Scanning networks (async)..."));
+
+    // Avvia scan asincrono se non già in corso
+    int16_t scanResult = WiFi.scanComplete();
+
+    if (scanResult == WIFI_SCAN_RUNNING) {
+        // Scan già in corso, ritorna stato
+        DEBUG_PRINTLN(F("[WiFi] Scan already running"));
+        return "WIFI_SCAN_RUNNING";
+    }
+
+    if (scanResult == WIFI_SCAN_FAILED) {
+        // Avvia nuovo scan asincrono
+        DEBUG_PRINTLN(F("[WiFi] Starting async scan..."));
+        WiFi.scanNetworks(true);  // true = async
+        return "WIFI_SCAN_STARTED";
+    }
+
+    if (scanResult == 0) {
+        // Nessuna rete trovata, riavvia scan
+        DEBUG_PRINTLN(F("[WiFi] No networks, restarting scan..."));
+        WiFi.scanDelete();
+        WiFi.scanNetworks(true);
+        return "WIFI_SCAN_STARTED";
+    }
+
+    if (scanResult > 0) {
+        // Scan completato, costruisci risposta
+        DEBUG_PRINTF("[WiFi] Found %d networks\n", scanResult);
+
+        String response = "WIFI_SCAN," + String(scanResult);
+
+        for (int i = 0; i < scanResult; i++) {
+            String ssid = WiFi.SSID(i);
+            int32_t rssi = WiFi.RSSI(i);
+            bool secured = (WiFi.encryptionType(i) != WIFI_AUTH_OPEN);
+
+            // Escape virgole nell'SSID
+            ssid.replace(",", "_");
+
+            // Salta reti senza nome
+            if (ssid.length() == 0) {
+                continue;
+            }
+
+            response += "," + ssid;
+            response += "," + String(rssi);
+            response += "," + String(secured ? 1 : 0);
+
+            DEBUG_PRINTF("[WiFi]   %d: %s (%d dBm) %s\n",
+                         i, ssid.c_str(), rssi, secured ? "secured" : "open");
+        }
+
+        // Libera memoria e prepara per prossimo scan
+        WiFi.scanDelete();
+
+        return response;
+    }
+
+    // Stato sconosciuto, avvia scan
+    WiFi.scanNetworks(true);
+    return "WIFI_SCAN_STARTED";
+}
