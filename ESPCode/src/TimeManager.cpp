@@ -457,6 +457,33 @@ String TimeManager::getDateString() const {
     return String(buffer);
 }
 
+int TimeManager::getWeekday() const {
+    // Algoritmo di Zeller per calcolare il giorno della settimana
+    // Restituisce: 0=Domenica, 1=Lunedi, ..., 6=Sabato
+    int y = currentYear;
+    int m = currentMonth;
+    int d = currentDay;
+
+    // Zeller richiede che gennaio e febbraio siano mesi 13 e 14 dell'anno precedente
+    if (m < 3) {
+        m += 12;
+        y--;
+    }
+
+    int k = y % 100;        // Anno del secolo
+    int j = y / 100;        // Secolo
+
+    // Formula di Zeller
+    int h = (d + (13 * (m + 1)) / 5 + k + k / 4 + j / 4 - 2 * j) % 7;
+
+    // Converti da Zeller (0=Sabato) a standard (0=Domenica)
+    // h: 0=Sab, 1=Dom, 2=Lun, 3=Mar, 4=Mer, 5=Gio, 6=Ven
+    // Vogliamo: 0=Dom, 1=Lun, 2=Mar, 3=Mer, 4=Gio, 5=Ven, 6=Sab
+    int weekday = ((h + 6) % 7);
+
+    return weekday;
+}
+
 String TimeManager::getFullStatus() {
     String status = "\n╔══════════════════════════════════════╗\n";
     status += "║       TimeManager Status             ║\n";

@@ -20,6 +20,7 @@
 // Effects
 #include "effects/PongEffect.h"
 #include "effects/MarioClockEffect.h"
+#include "effects/PacManClockEffect.h"
 //#include "effects/PlasmaEffect.h"
 #include "effects/ScrollTextEffect.h"
 #include "effects/MatrixRainEffect.h"
@@ -123,6 +124,7 @@ void setup() {
     
     // Aggiungi effetti
     effectManager->addEffect(new MarioClockEffect(displayManager, timeManager));
+    effectManager->addEffect(new PacManClockEffect(displayManager, timeManager));
     scrollTextEffect = new ScrollTextEffect(displayManager, settings.getScrollText());
     effectManager->addEffect(scrollTextEffect);
     //effectManager->addEffect(new PlasmaEffect(displayManager));

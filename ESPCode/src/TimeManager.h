@@ -109,6 +109,7 @@ public:
     int getYear() const { return currentYear; }
     int getMonth() const { return currentMonth; }
     int getDay() const { return currentDay; }
+    int getWeekday() const;  // 0=Domenica, 1=Lunedi, ..., 6=Sabato
     String getTimeString() const;
     String getDateString() const;
     String getFullStatus();
