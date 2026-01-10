@@ -29,10 +29,11 @@ class _WiFiConfigDialogState extends State<WiFiConfigDialog> {
   bool _scanning = false;
   String _scanStatus = '';
   int _retryCount = 0;
-  static const int _maxRetries = 5;
+  static const int _maxRetries = 8;  // Aumentato per dare più tempo durante riconnessione
 
   StreamSubscription? _wifiScanSubscription;
   StreamSubscription? _rawDataSubscription;
+  StreamSubscription? _connectionSubscription;
   Timer? _retryTimer;
 
   final _deviceService = DeviceService();
@@ -74,6 +75,25 @@ class _WiFiConfigDialogState extends State<WiFiConfigDialog> {
       }
     });
 
+    // Ascolta lo stato della connessione per mostrare riconnessione
+    _connectionSubscription = _deviceService.connectionState.listen((state) {
+      if (!mounted) return;
+
+      if (_scanning && _deviceService.isWifiScanning) {
+        if (state == DeviceConnectionState.connecting) {
+          setState(() {
+            _scanStatus = 'Riconnessione in corso...';
+          });
+        } else if (state == DeviceConnectionState.connected) {
+          setState(() {
+            _scanStatus = 'Riconnesso, attendo risultati...';
+          });
+          // Richiedi di nuovo lo stato dello scan
+          _scheduleRetry();
+        }
+      }
+    });
+
     // Avvia scan automatico dopo un piccolo delay
     Future.delayed(const Duration(milliseconds: 500), _scanWiFi);
   }
@@ -83,6 +103,7 @@ class _WiFiConfigDialogState extends State<WiFiConfigDialog> {
     _retryTimer?.cancel();
     _wifiScanSubscription?.cancel();
     _rawDataSubscription?.cancel();
+    _connectionSubscription?.cancel();
     ssidController.dispose();
     passwordController.dispose();
     super.dispose();
@@ -102,18 +123,35 @@ class _WiFiConfigDialogState extends State<WiFiConfigDialog> {
     }
 
     // Prima attesa più lunga (3s) per dare tempo allo scan di completarsi
-    // Attese successive più brevi (1.5s)
+    // Attese successive più brevi (2s) - aumentato per dare tempo alla riconnessione
     final delay = _retryCount == 0
         ? const Duration(seconds: 3)
-        : const Duration(milliseconds: 1500);
+        : const Duration(seconds: 2);
 
     _retryTimer = Timer(delay, () {
-      if (mounted && _scanning && _deviceService.isConnected) {
+      if (mounted && _scanning) {
         _retryCount++;
-        setState(() {
-          _scanStatus = 'Attendo risultati... (${_retryCount}/$_maxRetries)';
-        });
-        _deviceService.requestWiFiScan();
+
+        // Se siamo in modalità WiFi scan ma non connessi, aspetta la riconnessione
+        if (_deviceService.isWifiScanning && !_deviceService.isConnected) {
+          setState(() {
+            _scanStatus = 'Attendo riconnessione... (${_retryCount}/$_maxRetries)';
+          });
+          _scheduleRetry();  // Riprova
+          return;
+        }
+
+        if (_deviceService.isConnected) {
+          setState(() {
+            _scanStatus = 'Attendo risultati... (${_retryCount}/$_maxRetries)';
+          });
+          _deviceService.requestWiFiScan();
+        } else {
+          setState(() {
+            _scanStatus = 'Connessione persa - riprova';
+            _scanning = false;
+          });
+        }
       }
     });
   }

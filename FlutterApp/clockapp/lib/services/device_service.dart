@@ -201,6 +201,60 @@ class PongState {
   }
 }
 
+/// Stato gioco Snake
+class SnakeState {
+  final String gameState;  // waiting, playing, paused, gameover
+  final int score;
+  final int highScore;
+  final int level;
+  final int length;
+  final int foodX;
+  final int foodY;
+  final int foodType;  // 0=normal, 1=bonus, 2=super
+  final String direction;  // up, down, left, right
+  final bool playerJoined;
+
+  SnakeState({
+    this.gameState = 'waiting',
+    this.score = 0,
+    this.highScore = 0,
+    this.level = 1,
+    this.length = 3,
+    this.foodX = 8,
+    this.foodY = 8,
+    this.foodType = 0,
+    this.direction = 'right',
+    this.playerJoined = false,
+  });
+
+  bool get isWaiting => gameState == 'waiting';
+  bool get isPlaying => gameState == 'playing';
+  bool get isPaused => gameState == 'paused';
+  bool get isGameOver => gameState == 'gameover';
+
+  /// Parse SNAKE_STATE response
+  /// SNAKE_STATE,state,score,highScore,level,length,foodX,foodY,foodType,direction,playerJoined
+  factory SnakeState.fromResponse(String response) {
+    final parts = response.split(',');
+    if (parts.length < 11 || parts[0] != 'SNAKE_STATE') {
+      return SnakeState();
+    }
+
+    return SnakeState(
+      gameState: parts[1],
+      score: int.tryParse(parts[2]) ?? 0,
+      highScore: int.tryParse(parts[3]) ?? 0,
+      level: int.tryParse(parts[4]) ?? 1,
+      length: int.tryParse(parts[5]) ?? 3,
+      foodX: int.tryParse(parts[6]) ?? 8,
+      foodY: int.tryParse(parts[7]) ?? 8,
+      foodType: int.tryParse(parts[8]) ?? 0,
+      direction: parts[9],
+      playerJoined: parts[10] == '1',
+    );
+  }
+}
+
 /// Impostazioni dispositivo
 class DeviceSettings {
   final String ssid;
@@ -284,6 +338,12 @@ class DeviceService implements IPongDevice {
   Timer? _reconnectTimer;
   Timer? _pingTimer;
   String? _wsHost;
+  int? _wsPort;
+
+  // WiFi scan state - durante la scansione la connessione può cadere temporaneamente
+  bool _isWifiScanning = false;
+  Timer? _wifiScanTimeoutTimer;
+  static const Duration _wifiScanTimeout = Duration(seconds: 15);
 
   // Controllers
   final _connectionController =
@@ -292,6 +352,7 @@ class DeviceService implements IPongDevice {
   final _effectsController = StreamController<List<EffectInfo>>.broadcast();
   final _settingsController = StreamController<DeviceSettings>.broadcast();
   final _pongController = StreamController<PongState>.broadcast();
+  final _snakeController = StreamController<SnakeState>.broadcast();
   final _dataController = StreamController<String>.broadcast();
   final _wifiScanController =
       StreamController<List<ScannedWiFiNetwork>>.broadcast();
@@ -301,6 +362,7 @@ class DeviceService implements IPongDevice {
   List<EffectInfo>? _lastEffects;
   DeviceSettings? _lastSettings;
   PongState? _lastPongState;
+  SnakeState? _lastSnakeState;
 
   // Streams
   Stream<DeviceConnectionState> get connectionState =>
@@ -309,6 +371,7 @@ class DeviceService implements IPongDevice {
   Stream<List<EffectInfo>> get effectsStream => _effectsController.stream;
   Stream<DeviceSettings> get settingsStream => _settingsController.stream;
   Stream<PongState> get pongStream => _pongController.stream;
+  Stream<SnakeState> get snakeStream => _snakeController.stream;
   Stream<String> get rawDataStream => _dataController.stream;
   Stream<List<ScannedWiFiNetwork>> get wifiScanStream =>
       _wifiScanController.stream;
@@ -318,10 +381,12 @@ class DeviceService implements IPongDevice {
   ConnectionType get connectionType => _connectionType;
   bool get isConnected => _state == DeviceConnectionState.connected;
   String? get connectedName => _connectedName;
+  bool get isWifiScanning => _isWifiScanning;
   DeviceStatus? get lastStatus => _lastStatus;
   List<EffectInfo>? get lastEffects => _lastEffects;
   DeviceSettings? get lastSettings => _lastSettings;
   PongState? get lastPongState => _lastPongState;
+  SnakeState? get lastSnakeState => _lastSnakeState;
 
   /// Verifica se la connessione seriale è disponibile (solo desktop)
   bool get isSerialAvailable => isDesktopPlatform;
@@ -389,11 +454,20 @@ class DeviceService implements IPongDevice {
 
   /// Connetti via WebSocket
   Future<bool> connectWebSocket(String host, {int port = 80}) async {
-    disconnect();
+    // Non disconnettere se stiamo riconnettendo durante WiFi scan
+    if (!_isWifiScanning) {
+      disconnect();
+    } else {
+      // Pulisci solo WebSocket, mantieni stato
+      _wsSubscription?.cancel();
+      _wsChannel?.sink.close();
+      _wsChannel = null;
+    }
 
     _setState(DeviceConnectionState.connecting);
     _connectionType = ConnectionType.websocket;
     _wsHost = host;
+    _wsPort = port;
 
     try {
       final uri = Uri.parse('ws://$host:$port/ws');
@@ -408,13 +482,11 @@ class DeviceService implements IPongDevice {
         _onWebSocketMessage,
         onError: (e) {
           print('WebSocket error: $e');
-          _setState(DeviceConnectionState.disconnected);
-          _scheduleReconnect();
+          _handleWebSocketDisconnect();
         },
         onDone: () {
           print('WebSocket closed');
-          _setState(DeviceConnectionState.disconnected);
-          _scheduleReconnect();
+          _handleWebSocketDisconnect();
         },
       );
 
@@ -423,8 +495,23 @@ class DeviceService implements IPongDevice {
       return true;
     } catch (e) {
       print('WebSocket connection error: $e');
-      _setState(DeviceConnectionState.disconnected);
+      if (!_isWifiScanning) {
+        _setState(DeviceConnectionState.disconnected);
+      }
+      _scheduleReconnect();
       return false;
+    }
+  }
+
+  /// Gestisce disconnessione WebSocket - tiene conto dello stato WiFi scan
+  void _handleWebSocketDisconnect() {
+    if (_isWifiScanning) {
+      // Durante WiFi scan, non notificare disconnessione, solo riconnetti silenziosamente
+      print('WebSocket disconnected during WiFi scan - reconnecting silently...');
+      _scheduleReconnect(quick: true);
+    } else {
+      _setState(DeviceConnectionState.disconnected);
+      _scheduleReconnect();
     }
   }
 
@@ -458,13 +545,17 @@ class DeviceService implements IPongDevice {
     _connectionController.add(newState);
   }
 
-  void _scheduleReconnect() {
+  void _scheduleReconnect({bool quick = false}) {
     if (_wsHost == null) return;
 
     _reconnectTimer?.cancel();
-    _reconnectTimer = Timer(const Duration(seconds: 3), () {
-      if (_state == DeviceConnectionState.disconnected && _wsHost != null) {
-        connectWebSocket(_wsHost!);
+    final delay = quick ? const Duration(milliseconds: 500) : const Duration(seconds: 3);
+    _reconnectTimer = Timer(delay, () {
+      if (_wsHost != null &&
+          (_state == DeviceConnectionState.disconnected ||
+           _state == DeviceConnectionState.connecting ||
+           _isWifiScanning)) {
+        connectWebSocket(_wsHost!, port: _wsPort ?? 80);
       }
     });
   }
@@ -519,7 +610,11 @@ class DeviceService implements IPongDevice {
     } else if (response.startsWith('PONG_STATE,')) {
       _lastPongState = PongState.fromResponse(response);
       _pongController.add(_lastPongState!);
+    } else if (response.startsWith('SNAKE_STATE,')) {
+      _lastSnakeState = SnakeState.fromResponse(response);
+      _snakeController.add(_lastSnakeState!);
     } else if (response.startsWith('WIFI_SCAN,')) {
+      _endWifiScan();  // Scan completato, termina modalità scan
       final networks = _parseWiFiScan(response);
       _wifiScanController.add(networks);
     } else if (response.startsWith('WELCOME,')) {
@@ -661,7 +756,27 @@ class DeviceService implements IPongDevice {
 
   /// Richiede all'ESP32 di scansionare le reti WiFi disponibili
   /// Il risultato arriverà via wifiScanStream
-  void requestWiFiScan() => send('wifiScan');
+  /// Durante la scansione, la connessione WebSocket può cadere temporaneamente
+  void requestWiFiScan() {
+    _startWifiScan();
+    send('wifiScan');
+  }
+
+  /// Inizia la modalità WiFi scan - previene la disconnessione durante lo scan
+  void _startWifiScan() {
+    _isWifiScanning = true;
+    _wifiScanTimeoutTimer?.cancel();
+    _wifiScanTimeoutTimer = Timer(_wifiScanTimeout, () {
+      _endWifiScan();
+    });
+  }
+
+  /// Termina la modalità WiFi scan
+  void _endWifiScan() {
+    _isWifiScanning = false;
+    _wifiScanTimeoutTimer?.cancel();
+    _wifiScanTimeoutTimer = null;
+  }
 
   void setDeviceName(String name) => send('devicename,$name');
 
@@ -672,15 +787,37 @@ class DeviceService implements IPongDevice {
   // Pong Multiplayer
   // ═══════════════════════════════════════════
 
+  @override
   void pongJoin(int player) => send('pong,join,$player');
+  @override
   void pongLeave(int player) => send('pong,leave,$player');
+  @override
   void pongMove(int player, String direction) => send('pong,move,$player,$direction');
+  @override
   void pongSetPosition(int player, int percentage) => send('pong,setpos,$player,$percentage');
+  @override
   void pongStart() => send('pong,start');
+  @override
   void pongPause() => send('pong,pause');
+  @override
   void pongResume() => send('pong,resume');
+  @override
   void pongReset() => send('pong,reset');
+  @override
   void pongGetState() => send('pong,state');
+
+  // ═══════════════════════════════════════════
+  // Snake Game
+  // ═══════════════════════════════════════════
+
+  void snakeJoin() => send('snake,join');
+  void snakeLeave() => send('snake,leave');
+  void snakeSetDirection(String direction) => send('snake,dir,$direction');
+  void snakeStart() => send('snake,start');
+  void snakePause() => send('snake,pause');
+  void snakeResume() => send('snake,resume');
+  void snakeReset() => send('snake,reset');
+  void snakeGetState() => send('snake,state');
 
   // ═══════════════════════════════════════════
   // NTP / Timezone
@@ -692,12 +829,14 @@ class DeviceService implements IPongDevice {
   void setTimezone(String tz) => send('timezone,$tz');
 
   void dispose() {
+    _wifiScanTimeoutTimer?.cancel();
     disconnect();
     _connectionController.close();
     _statusController.close();
     _effectsController.close();
     _settingsController.close();
     _pongController.close();
+    _snakeController.close();
     _dataController.close();
     _wifiScanController.close();
   }

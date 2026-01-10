@@ -12,7 +12,7 @@ import '../dialogs/wifi_config_dialog.dart';
 import '../dialogs/restart_confirm_dialog.dart';
 import 'device_discovery_screen.dart';
 import 'image_management_screen.dart';
-import 'pong_controller_screen.dart';
+import 'game_controller_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -54,17 +54,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         final wasConnected = _isConnected;
         setState(() => _isConnected = state == DeviceConnectionState.connected);
 
-        _addLog(
-          state == DeviceConnectionState.connected
-              ? '✓ Connesso a ${_device.connectedName} (${_device.connectionType.name})'
-              : '✗ Disconnesso',
-        );
+        // Non loggare durante WiFi scan per evitare spam
+        if (!_device.isWifiScanning) {
+          _addLog(
+            state == DeviceConnectionState.connected
+                ? '✓ Connesso a ${_device.connectedName} (${_device.connectionType.name})'
+                : '✗ Disconnesso',
+          );
+        }
 
         // Se era connesso e ora non lo è più, torna alla discovery
-        if (wasConnected && state == DeviceConnectionState.disconnected) {
+        // MA NON durante WiFi scan (la connessione può cadere temporaneamente)
+        if (wasConnected && state == DeviceConnectionState.disconnected && !_device.isWifiScanning) {
           _addLog('Ritorno alla schermata di ricerca...');
           Future.delayed(const Duration(milliseconds: 500), () {
-            if (mounted) {
+            if (mounted && !_device.isWifiScanning) {
               Navigator.of(context).pushReplacement(
                 MaterialPageRoute(
                   builder: (_) => const DeviceDiscoveryScreen(),
@@ -256,12 +260,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           if (_isConnected) ...[
             IconButton(
               icon: const Icon(Icons.sports_esports),
-              tooltip: 'Pong Controller',
+              tooltip: 'Games (Pong & Snake)',
               onPressed: () {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => PongControllerScreen(
+                    builder: (context) => GameControllerScreen(
                       deviceService: _device,
                     ),
                   ),
