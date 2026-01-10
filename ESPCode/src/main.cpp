@@ -19,6 +19,7 @@
 
 // Effects
 #include "effects/PongEffect.h"
+#include "effects/SnakeEffect.h"
 #include "effects/MarioClockEffect.h"
 #include "effects/PacManClockEffect.h"
 //#include "effects/PlasmaEffect.h"
@@ -54,6 +55,7 @@ ImageManager* imageManager = nullptr;
 DynamicImageEffect* dynamicImageEffect = nullptr;
 ScrollTextEffect* scrollTextEffect = nullptr;
 PongEffect* pongEffect = nullptr;
+SnakeEffect* snakeEffect = nullptr;
 
 // ═══════════════════════════════════════════
 // Timers
@@ -130,6 +132,8 @@ void setup() {
     //effectManager->addEffect(new PlasmaEffect(displayManager));
     pongEffect = new PongEffect(displayManager);
     effectManager->addEffect(pongEffect);
+    snakeEffect = new SnakeEffect(displayManager);
+    effectManager->addEffect(snakeEffect);
     effectManager->addEffect(new MatrixRainEffect(displayManager));
     //effectManager->addEffect(new FireEffect(displayManager));
     //effectManager->addEffect(new StarfieldEffect(displayManager));
@@ -192,6 +196,7 @@ void setup() {
     commandHandler.init(timeManager, effectManager, displayManager, &settings, wifiManager, imageManager);
     commandHandler.setScrollTextEffect(scrollTextEffect);
     commandHandler.setPongEffect(pongEffect);
+    commandHandler.setSnakeEffect(snakeEffect);
     
     // ─────────────────────────────────────────
     // 8. Web Server

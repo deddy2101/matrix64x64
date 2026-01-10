@@ -17,6 +17,7 @@
 class WebSocketManager;
 class ScrollTextEffect;
 class PongEffect;
+class SnakeEffect;
 
 /**
  * CommandHandler - Gestione comandi con protocollo CSV
@@ -54,6 +55,14 @@ class PongEffect;
  *   pong,resume                    - Riprendi partita
  *   pong,reset                     - Reset partita
  *   pong,state                     - Richiedi stato gioco
+ *   snake,join                     - Giocatore si unisce
+ *   snake,leave                    - Giocatore esce
+ *   snake,dir,u|d|l|r              - Cambia direzione (up/down/left/right)
+ *   snake,start                    - Avvia partita
+ *   snake,pause                    - Pausa partita
+ *   snake,resume                   - Riprendi partita
+ *   snake,reset                    - Reset partita
+ *   snake,state                    - Richiedi stato gioco
  *   ntp,enable                     - Abilita NTP sync
  *   ntp,disable                    - Disabilita NTP sync
  *   ntp,sync                       - Forza sync NTP ora
@@ -87,6 +96,7 @@ class PongEffect;
  *   EFFECT,index,name              - Notifica cambio effetto
  *   TIME,HH:MM:SS                  - Notifica cambio ora
  *   PONG_STATE,state,score1,score2,p1Mode,p2Mode,ballX,ballY - Stato gioco Pong
+ *   SNAKE_STATE,state,score,highScore,level,length,foodX,foodY,foodType,direction,playerJoined - Stato gioco Snake
  */
 class CommandHandler {
 public:
@@ -96,6 +106,7 @@ public:
     void setWebSocketManager(WebSocketManager* ws);
     void setScrollTextEffect(ScrollTextEffect* scrollText);
     void setPongEffect(PongEffect* pong);
+    void setSnakeEffect(SnakeEffect* snake);
     
     // Processa comando e ritorna risposta
     String processCommand(const String& command);
@@ -127,6 +138,7 @@ private:
     ImageManager* _imageManager;
     ScrollTextEffect* _scrollTextEffect;
     PongEffect* _pongEffect;
+    SnakeEffect* _snakeEffect;
     
     // Parser helper
     std::vector<String> splitCommand(const String& cmd, char delimiter = ',');
@@ -144,6 +156,7 @@ private:
     String handleDeviceName(const std::vector<String>& parts);
     String handleScrollText(const std::vector<String>& parts);
     String handlePong(const std::vector<String>& parts);
+    String handleSnake(const std::vector<String>& parts);
     String handleNTP(const std::vector<String>& parts);
     String handleTimezone(const std::vector<String>& parts);
     String handleSave();

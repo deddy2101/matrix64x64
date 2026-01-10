@@ -3,6 +3,7 @@
 #include "Version.h"
 #include "effects/ScrollTextEffect.h"
 #include "effects/PongEffect.h"
+#include "effects/SnakeEffect.h"
 
 CommandHandler::CommandHandler()
     : _timeManager(nullptr)
@@ -14,6 +15,7 @@ CommandHandler::CommandHandler()
     , _imageManager(nullptr)
     , _scrollTextEffect(nullptr)
     , _pongEffect(nullptr)
+    , _snakeEffect(nullptr)
     , _otaInProgress(false)
     , _otaSize(0)
     , _otaWritten(0)
@@ -40,6 +42,10 @@ void CommandHandler::setScrollTextEffect(ScrollTextEffect* scrollText) {
 
 void CommandHandler::setPongEffect(PongEffect* pong) {
     _pongEffect = pong;
+}
+
+void CommandHandler::setSnakeEffect(SnakeEffect* snake) {
+    _snakeEffect = snake;
 }
 
 // ═══════════════════════════════════════════
@@ -133,6 +139,9 @@ String CommandHandler::processCommand(const String& command) {
     }
     if (mainCmd == "pong") {
         return handlePong(parts);
+    }
+    if (mainCmd == "snake") {
+        return handleSnake(parts);
     }
     if (mainCmd == "ntp") {
         return handleNTP(parts);
@@ -816,6 +825,93 @@ String CommandHandler::handlePong(const std::vector<String>& parts) {
     }
 
     return "ERR,unknown pong subcommand: " + subCmd;
+}
+
+String CommandHandler::handleSnake(const std::vector<String>& parts) {
+    if (!_snakeEffect) {
+        return "ERR,snake effect not available";
+    }
+
+    if (parts.size() < 2) {
+        return "ERR,snake needs subcommand";
+    }
+
+    String subCmd = parts[1];
+    subCmd.toLowerCase();
+
+    // snake,join
+    if (subCmd == "join") {
+        if (_snakeEffect->joinGame()) {
+            if (_wsManager) {
+                _wsManager->broadcast(_snakeEffect->getStateString());
+            }
+            return "OK,joined snake game";
+        }
+        return "ERR,already joined";
+    }
+
+    // snake,leave
+    if (subCmd == "leave") {
+        if (_snakeEffect->leaveGame()) {
+            if (_wsManager) {
+                _wsManager->broadcast(_snakeEffect->getStateString());
+            }
+            return "OK,left snake game";
+        }
+        return "ERR,not in game";
+    }
+
+    // snake,dir,u|d|l|r
+    if (subCmd == "dir") {
+        if (parts.size() < 3) {
+            return "ERR,snake dir needs direction (u/d/l/r)";
+        }
+        _snakeEffect->setDirectionFromString(parts[2]);
+        return "";  // Nessuna risposta per dir - evita flood
+    }
+
+    // snake,start
+    if (subCmd == "start") {
+        _snakeEffect->startGame();
+        if (_wsManager) {
+            _wsManager->broadcast(_snakeEffect->getStateString());
+        }
+        return "OK,snake game started";
+    }
+
+    // snake,pause
+    if (subCmd == "pause") {
+        _snakeEffect->pauseGame();
+        if (_wsManager) {
+            _wsManager->broadcast(_snakeEffect->getStateString());
+        }
+        return "OK,snake game paused";
+    }
+
+    // snake,resume
+    if (subCmd == "resume") {
+        _snakeEffect->resumeGame();
+        if (_wsManager) {
+            _wsManager->broadcast(_snakeEffect->getStateString());
+        }
+        return "OK,snake game resumed";
+    }
+
+    // snake,reset
+    if (subCmd == "reset") {
+        _snakeEffect->resetToWaiting();
+        if (_wsManager) {
+            _wsManager->broadcast(_snakeEffect->getStateString());
+        }
+        return "OK,snake game reset";
+    }
+
+    // snake,state
+    if (subCmd == "state") {
+        return _snakeEffect->getStateString();
+    }
+
+    return "ERR,unknown snake subcommand: " + subCmd;
 }
 
 String CommandHandler::handleNTP(const std::vector<String>& parts) {
