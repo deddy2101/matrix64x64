@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
-import 'package:file_picker/file_picker.dart';
 import '../services/device_service.dart';
 import '../services/ota_service.dart';
 import '../services/firmware_update_service.dart';
 import '../models/firmware_version.dart';
 import '../widgets/common/common_widgets.dart';
 import '../widgets/home/home_widgets.dart';
+import '../widgets/home_cards/home_cards.dart';
 import '../dialogs/wifi_config_dialog.dart';
 import '../dialogs/restart_confirm_dialog.dart';
 import 'image_management_screen.dart';
@@ -311,70 +311,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildConnectionCard() {
-    return GlassCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                _device.connectionType == ConnectionType.websocket
-                    ? Icons.wifi
-                    : Icons.usb_rounded,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(width: 12),
-              const Text(
-                'Connessione',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-              ),
-              const Spacer(),
-              if (_isConnected &&
-                  _device.connectionType == ConnectionType.websocket)
-                Text(
-                  _status?.ip ?? '',
-                  style: TextStyle(color: Colors.grey[400], fontSize: 12),
-                ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: ActionButton(
-                  icon: _isConnected ? Icons.link_off : Icons.link,
-                  label: _isConnected ? 'Disconnetti' : 'Connetti',
-                  color: _isConnected ? Colors.red[400]! : Colors.green[400]!,
-                  onTap: () {
-                    if (_isConnected) {
-                      _device.disconnect();
-                      // La disconnessione automatica riporterà indietro
-                    } else {
-                      // Torna alla discovery con pop (non pushReplacement)
-                      Navigator.of(context).pop();
-                    }
-                  },
-                ),
-              ),
-              if (_isConnected) ...[
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ActionButton(
-                    icon: Icons.refresh,
-                    label: 'Refresh',
-                    onTap: () {
-                      _device.getStatus();
-                      _device.getEffects();
-                      _addLog('→ Refresh');
-                      HapticFeedback.lightImpact();
-                    },
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ],
-      ),
+    return ConnectionCard(
+      device: _device,
+      isConnected: _isConnected,
+      status: _status,
+      onDisconnect: () {
+        if (_isConnected) {
+          _device.disconnect();
+        } else {
+          Navigator.of(context).pop();
+        }
+      },
+      onRefresh: () {
+        _device.getStatus();
+        _device.getEffects();
+        _addLog('→ Refresh');
+      },
     );
   }
 
@@ -426,83 +378,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildTimeCard() {
-    return GlassCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.access_time,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(width: 12),
-              const Text(
-                'Ora',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: ActionButton(
-                  icon: Icons.sync,
-                  label: 'Sincronizza',
-                  onTap: () {
-                    _device.syncNow();
-                    _addLog('→ Sync ora');
-                    HapticFeedback.lightImpact();
-                  },
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ActionButton(
-                  icon: Icons.schedule,
-                  label: 'Imposta',
-                  onTap: () => _showTimePicker(),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: ActionButton(
-                  icon: Icons.timer,
-                  label: 'RTC Mode',
-                  color: _status?.timeMode.contains('RTC') == true
-                      ? Colors.green[400]
-                      : null,
-                  onTap: () {
-                    _device.setTimeMode('rtc');
-                    _addLog('→ RTC mode');
-                    HapticFeedback.lightImpact();
-                  },
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ActionButton(
-                  icon: Icons.fast_forward,
-                  label: 'Fake Mode',
-                  color: _status?.timeMode.contains('FAKE') == true
-                      ? Colors.orange[400]
-                      : null,
-                  onTap: () {
-                    _device.setTimeMode('fake');
-                    _addLog('→ Fake mode');
-                    HapticFeedback.lightImpact();
-                  },
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+    return TimeCard(
+      device: _device,
+      status: _status,
+      onSync: () {
+        _device.syncNow();
+        _addLog('→ Sync ora');
+      },
+      onShowPicker: _showTimePicker,
+      onSetRTCMode: () {
+        _device.setTimeMode('rtc');
+        _addLog('→ RTC mode');
+      },
+      onSetFakeMode: () {
+        _device.setTimeMode('fake');
+        _addLog('→ Fake mode');
+      },
     );
   }
 
@@ -1318,453 +1209,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildOTACard() {
-    return GlassCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.system_update_alt,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Text(
-                  'Firmware Update (OTA)',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                ),
-              ),
-              IconButton(
-                icon: _isLoadingVersions
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.refresh),
-                onPressed: _isLoadingVersions ? null : _loadFirmwareManifest,
-                tooltip: 'Ricarica versioni',
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          // Current version
-          if (_currentFirmwareVersion != null) ...[
-            _buildVersionInfo('Versione corrente', _currentFirmwareVersion!, Colors.amber),
-            const SizedBox(height: 12),
-          ],
-
-          // Latest version
-          if (_firmwareManifest?.latestRelease != null) ...[
-            _buildVersionInfo(
-              'Ultima versione disponibile',
-              null,
-              Colors.green,
-              release: _firmwareManifest!.latestRelease!,
-            ),
-            const SizedBox(height: 12),
-          ],
-
-          // All available versions
-          if (_firmwareManifest != null && _firmwareManifest!.releases.length > 1) ...[
-            ExpansionTile(
-              title: Text(
-                'Tutte le versioni (${_firmwareManifest!.releases.length})',
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-              ),
-              children: _firmwareManifest!.releases.map((release) {
-                final isCurrent = _currentFirmwareVersion != null &&
-                    release.version == _currentFirmwareVersion!.version &&
-                    release.buildNumber == _currentFirmwareVersion!.buildNumber;
-                final isLatest = release.version == _firmwareManifest!.latestVersion;
-                final color = isLatest
-                    ? Colors.green
-                    : isCurrent
-                        ? Colors.amber
-                        : Colors.grey;
-
-                return ListTile(
-                  dense: true,
-                  leading: Icon(Icons.circle, size: 12, color: color),
-                  title: Text(
-                    release.fullVersion,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: isCurrent || isLatest ? color : Colors.grey[400],
-                      fontWeight: isCurrent || isLatest ? FontWeight.bold : FontWeight.normal,
-                    ),
-                  ),
-                  subtitle: release.description != null
-                      ? Text(
-                          release.description!,
-                          style: TextStyle(fontSize: 11, color: Colors.grey[600]),
-                        )
-                      : null,
-                  trailing: isCurrent
-                      ? const Chip(
-                          label: Text('Installata', style: TextStyle(fontSize: 10)),
-                          padding: EdgeInsets.symmetric(horizontal: 4),
-                        )
-                      : isLatest
-                          ? const Chip(
-                              label: Text('Più recente', style: TextStyle(fontSize: 10)),
-                              padding: EdgeInsets.symmetric(horizontal: 4),
-                            )
-                          : null,
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 12),
-          ],
-
-          // Loading indicator
-          if (_isLoadingVersions) ...[
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.all(12.0),
-                child: CircularProgressIndicator(),
-              ),
-            ),
-            const SizedBox(height: 12),
-          ],
-
-          const SizedBox(height: 4),
-
-          // Progress indicator se update in corso
-          if (_otaService.isUpdating) ...[
-            Column(
-              children: [
-                LinearProgressIndicator(
-                  value: _otaService.progress / 100,
-                  backgroundColor: Colors.grey[800],
-                  color: Colors.green[400],
-                  minHeight: 8,
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  '${_otaService.status} (${_otaService.progress}%)',
-                  style: TextStyle(color: Colors.grey[400], fontSize: 14),
-                ),
-                const SizedBox(height: 16),
-                ActionButton(
-                  icon: Icons.cancel,
-                  label: 'Annulla',
-                  color: Colors.red[400],
-                  onTap: () {
-                    _otaService.abortUpdate();
-                    _addLog('⚠ OTA annullato');
-                    setState(() {});
-                  },
-                ),
-              ],
-            ),
-          ] else ...[
-            // Pulsante per installare ultima versione dal server
-            if (_firmwareManifest?.latestRelease != null && _hasNewerVersion()) ...[
-              ActionButton(
-                icon: Icons.cloud_download,
-                label: 'Installa ${_firmwareManifest!.latestRelease!.fullVersion}',
-                color: Colors.green[400],
-                onTap: () => _downloadAndInstallFirmware(_firmwareManifest!.latestRelease!),
-              ),
-              const SizedBox(height: 12),
-            ],
-            // Pulsante per selezionare file
-            ActionButton(
-              icon: Icons.upload_file,
-              label: 'Seleziona file .bin',
-              color: Colors.purple[400],
-              onTap: () => _selectAndUploadFirmware(),
-            ),
-          ],
-        ],
-      ),
+    return OTACard(
+      otaService: _otaService,
+      firmwareUpdateService: _firmwareUpdateService,
+      currentVersion: _currentFirmwareVersion,
+      manifest: _firmwareManifest,
+      onLog: _addLog,
     );
-  }
-
-  Widget _buildVersionInfo(
-    String label,
-    FirmwareVersion? version,
-    Color color, {
-    FirmwareRelease? release,
-  }) {
-    final displayVersion = release != null ? release.fullVersion : version?.fullVersion ?? 'N/A';
-    final buildDate = release != null
-        ? release.releaseDate
-        : version != null
-            ? '${version.buildDate} ${version.buildTime}'
-            : null;
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.circle, size: 12, color: color),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: Colors.grey[400],
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  displayVersion,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                if (buildDate != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    buildDate,
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: 10,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Verifica se c'è una versione più recente disponibile
-  bool _hasNewerVersion() {
-    if (_currentFirmwareVersion == null || _firmwareManifest?.latestRelease == null) {
-      return false;
-    }
-    return _firmwareManifest!.latestRelease!.isNewerThan(_currentFirmwareVersion!);
-  }
-
-  /// Scarica e installa firmware dal server
-  Future<void> _downloadAndInstallFirmware(FirmwareRelease release) async {
-    try {
-      _addLog('→ Download firmware ${release.fullVersion}...');
-      setState(() {});
-
-      // Scarica firmware
-      final bytes = await _firmwareUpdateService.downloadFirmwareBytes(
-        release,
-        onProgress: (received, total) {
-          final percent = (received * 100 / total).round();
-          if (percent % 10 == 0) {
-            _addLog('↓ Download: $percent%');
-          }
-        },
-      );
-
-      _addLog('✓ Download completato (${bytes.length} bytes)');
-      _addLog('→ Inizio OTA update...');
-
-      setState(() {}); // Aggiorna UI per mostrare progress
-
-      // Esegui update
-      final success = await _otaService.updateFirmwareFromBytes(
-        Uint8List.fromList(bytes),
-        expectedMd5: release.md5,
-      );
-
-      if (success) {
-        // Il messaggio finale viene già mostrato dall'OtaService con la versione
-        _addLog('✓ ${_otaService.status}');
-
-        if (mounted) {
-          // Determina se la versione è cambiata controllando il messaggio di status
-          final statusMsg = _otaService.status;
-          final isVersionChanged = !statusMsg.contains('non cambiata');
-
-          showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
-              backgroundColor: const Color(0xFF1a1a2e),
-              title: Row(
-                children: [
-                  Icon(
-                    isVersionChanged ? Icons.check_circle : Icons.info,
-                    color: isVersionChanged ? Colors.green[400] : Colors.orange[400],
-                  ),
-                  const SizedBox(width: 12),
-                  Text(isVersionChanged ? 'Update Completato' : 'Update Eseguito'),
-                ],
-              ),
-              content: Text(statusMsg),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('OK'),
-                ),
-              ],
-            ),
-          );
-        }
-      } else {
-        _addLog('✗ Errore durante l\'update: ${_otaService.status}');
-
-        if (mounted) {
-          showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
-              backgroundColor: const Color(0xFF1a1a2e),
-              title: Row(
-                children: [
-                  Icon(Icons.error, color: Colors.red[400]),
-                  const SizedBox(width: 12),
-                  const Text('Errore Update'),
-                ],
-              ),
-              content: Text(_otaService.status),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('OK'),
-                ),
-              ],
-            ),
-          );
-        }
-      }
-
-      setState(() {}); // Aggiorna UI finale
-
-    } catch (e) {
-      _addLog('✗ Errore: $e');
-      if (mounted) {
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            backgroundColor: const Color(0xFF1a1a2e),
-            title: Row(
-              children: [
-                Icon(Icons.error, color: Colors.red[400]),
-                const SizedBox(width: 12),
-                const Text('Errore Download'),
-              ],
-            ),
-            content: Text('$e'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('OK'),
-              ),
-            ],
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _selectAndUploadFirmware() async {
-    try {
-      // Seleziona file
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['bin'],
-      );
-
-      if (result == null || result.files.isEmpty) {
-        return;
-      }
-
-      final filePath = result.files.first.path;
-      if (filePath == null) {
-        _addLog('⚠ Impossibile leggere il file');
-        return;
-      }
-
-      _addLog('→ Inizio OTA update...');
-      _addLog('→ File: ${result.files.first.name}');
-
-      setState(() {}); // Aggiorna UI per mostrare progress
-
-      // Esegui update
-      final success = await _otaService.updateFirmware(filePath);
-
-      if (success) {
-        // Il messaggio finale viene già mostrato dall'OtaService con la versione
-        _addLog('✓ ${_otaService.status}');
-
-        // Mostra dialog di successo
-        if (mounted) {
-          // Determina se la versione è cambiata controllando il messaggio di status
-          final statusMsg = _otaService.status;
-          final isVersionChanged = !statusMsg.contains('non cambiata');
-
-          showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
-              backgroundColor: const Color(0xFF1a1a2e),
-              title: Row(
-                children: [
-                  Icon(
-                    isVersionChanged ? Icons.check_circle : Icons.info,
-                    color: isVersionChanged ? Colors.green[400] : Colors.orange[400],
-                  ),
-                  const SizedBox(width: 12),
-                  Text(isVersionChanged ? 'Update Completato' : 'Update Eseguito'),
-                ],
-              ),
-              content: Text(statusMsg),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('OK'),
-                ),
-              ],
-            ),
-          );
-        }
-      } else {
-        _addLog('✗ Errore durante l\'update: ${_otaService.status}');
-
-        // Mostra dialog di errore
-        if (mounted) {
-          showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
-              backgroundColor: const Color(0xFF1a1a2e),
-              title: Row(
-                children: [
-                  Icon(Icons.error, color: Colors.red[400]),
-                  const SizedBox(width: 12),
-                  const Text('Errore Update'),
-                ],
-              ),
-              content: Text(_otaService.status),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('OK'),
-                ),
-              ],
-            ),
-          );
-        }
-      }
-
-      setState(() {}); // Aggiorna UI finale
-
-    } catch (e) {
-      _addLog('✗ Errore: $e');
-    }
   }
 
   Widget _buildConsoleCard() {

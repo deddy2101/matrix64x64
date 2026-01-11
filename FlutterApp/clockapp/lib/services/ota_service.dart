@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'device_service.dart';
 
 /// Servizio per gestire OTA (Over-The-Air) firmware update dell'ESP32
 /// Implementa protocollo con ACK per sincronizzazione chunk
-class OtaService {
+class OtaService extends ChangeNotifier {
   final DeviceService _device;
 
   bool _isUpdating = false;
@@ -23,6 +23,13 @@ class OtaService {
   bool get isUpdating => _isUpdating;
   int get progress => _progress;
   String get status => _status;
+
+  void _updateState({bool? isUpdating, int? progress, String? status}) {
+    if (isUpdating != null) _isUpdating = isUpdating;
+    if (progress != null) _progress = progress;
+    if (status != null) _status = status;
+    notifyListeners();
+  }
 
   /// Aspetta una risposta specifica dal device con timeout
   Future<String?> _waitForResponse(String expectedPrefix, {Duration timeout = const Duration(seconds: 5)}) async {
@@ -75,24 +82,22 @@ class OtaService {
   /// Returns true se l'update è completato con successo
   Future<bool> updateFirmware(String firmwarePath) async {
     if (!_device.isConnected) {
-      _status = 'Dispositivo non connesso';
+      _updateState(status: 'Dispositivo non connesso');
       return false;
     }
 
     if (_isUpdating) {
-      _status = 'Update già in corso';
+      _updateState(status: 'Update già in corso');
       return false;
     }
 
     try {
-      _isUpdating = true;
-      _progress = 0;
-      _status = 'Lettura firmware...';
+      _updateState(isUpdating: true, progress: 0, status: 'Lettura firmware...');
 
       // Leggi file
       final file = File(firmwarePath);
       if (!await file.exists()) {
-        _status = 'File non trovato';
+        _updateState(status: 'File non trovato');
         return false;
       }
 
@@ -100,11 +105,11 @@ class OtaService {
       return await _performOtaUpdate(Uint8List.fromList(bytes), null);
 
     } catch (e) {
-      _status = 'Errore: $e';
+      _updateState(status: 'Errore: $e');
       print('[OTA] Error: $e');
       return false;
     } finally {
-      _isUpdating = false;
+      _updateState(isUpdating: false);
       _dataSubscription?.cancel();
     }
   }
@@ -113,8 +118,7 @@ class OtaService {
   void abortUpdate() {
     if (_isUpdating) {
       _device.send('ota,abort');
-      _isUpdating = false;
-      _status = 'Update annullato';
+      _updateState(isUpdating: false, status: 'Update annullato');
       _dataSubscription?.cancel();
       if (_ackCompleter != null && !_ackCompleter!.isCompleted) {
         _ackCompleter!.completeError('Aborted');
@@ -129,25 +133,24 @@ class OtaService {
   /// Returns true se l'update è completato con successo
   Future<bool> updateFirmwareFromBytes(Uint8List bytes, {String? expectedMd5}) async {
     if (!_device.isConnected) {
-      _status = 'Dispositivo non connesso';
+      _updateState(status: 'Dispositivo non connesso');
       return false;
     }
 
     if (_isUpdating) {
-      _status = 'Update già in corso';
+      _updateState(status: 'Update già in corso');
       return false;
     }
 
     try {
-      _isUpdating = true;
-      _progress = 0;
+      _updateState(isUpdating: true, progress: 0);
       return await _performOtaUpdate(bytes, expectedMd5);
     } catch (e) {
-      _status = 'Errore: $e';
+      _updateState(status: 'Errore: $e');
       print('[OTA] Error: $e');
       return false;
     } finally {
-      _isUpdating = false;
+      _updateState(isUpdating: false);
       _dataSubscription?.cancel();
     }
   }
@@ -156,12 +159,12 @@ class OtaService {
   Future<bool> _performOtaUpdate(Uint8List bytes, String? expectedMd5) async {
     final size = bytes.length;
 
-    _status = 'Calcolo MD5...';
+    _updateState(status: 'Calcolo MD5...');
     final md5Hash = md5.convert(bytes).toString();
 
     // Verifica MD5 se fornito
     if (expectedMd5 != null && md5Hash.toLowerCase() != expectedMd5.toLowerCase()) {
-      _status = 'Errore: MD5 non corrisponde';
+      _updateState(status: 'Errore: MD5 non corrisponde');
       print('[OTA] MD5 mismatch: expected $expectedMd5, got $md5Hash');
       return false;
     }
@@ -173,17 +176,17 @@ class OtaService {
     print('[OTA] Current version: ${oldVersion ?? "unknown"}');
 
     // 1. Invia comando start e aspetta OTA_READY
-    _status = 'Inizializzazione OTA...';
+    _updateState(status: 'Inizializzazione OTA...');
     _device.send('ota,start,$size');
 
     final startResponse = await _waitForResponse('OTA_', timeout: const Duration(seconds: 10));
     if (startResponse == null) {
-      _status = 'Errore: timeout inizializzazione';
+      _updateState(status: 'Errore: timeout inizializzazione');
       return false;
     }
 
     if (!startResponse.startsWith('OTA_READY')) {
-      _status = 'Errore: $startResponse';
+      _updateState(status: 'Errore: $startResponse');
       print('[OTA] Start failed: $startResponse');
       return false;
     }
@@ -191,7 +194,7 @@ class OtaService {
     print('[OTA] Device ready, starting transfer...');
 
     // 2. Invia dati in chunk
-    _status = 'Invio firmware...';
+    _updateState(status: 'Invio firmware...');
     const chunkSize = 3072; // 3KB chunks (~4KB base64) - ottimizzato con gestione frammentazione
     int offset = 0;
     int chunkNumber = 0;
@@ -215,7 +218,7 @@ class OtaService {
         // Timeout - riprova
         retryCount++;
         if (retryCount > maxRetries) {
-          _status = 'Errore: troppi timeout';
+          _updateState(status: 'Errore: troppi timeout');
           _device.send('ota,abort');
           return false;
         }
@@ -228,7 +231,7 @@ class OtaService {
         retryCount = 0;
         offset = end;
         chunkNumber++;
-        _progress = ((offset * 100) / size).round();
+        _updateState(progress: ((offset * 100) / size).round());
 
         // Log ogni 10%
         if (_progress % 10 == 0 || offset == size) {
@@ -238,7 +241,7 @@ class OtaService {
         // NACK o errore - riprova
         retryCount++;
         if (retryCount > maxRetries) {
-          _status = 'Errore: $ackResponse';
+          _updateState(status: 'Errore: $ackResponse');
           _device.send('ota,abort');
           return false;
         }
@@ -254,37 +257,36 @@ class OtaService {
     }
 
     // 3. Finalizza con MD5
-    _status = 'Verifica integrità...';
+    _updateState(status: 'Verifica integrità...');
     _device.send('ota,end,$md5Hash');
 
     final endResponse = await _waitForResponse('OTA_', timeout: const Duration(seconds: 30));
 
     if (endResponse == null) {
-      _status = 'Errore: timeout verifica';
+      _updateState(status: 'Errore: timeout verifica');
       return false;
     }
 
     if (endResponse.startsWith('OTA_SUCCESS') || endResponse.startsWith('OTA_COMPLETE')) {
-      _status = 'Update completato! Riavvio ESP...';
-      _progress = 100;
+      _updateState(status: 'Update completato! Riavvio ESP...', progress: 100);
       print('[OTA] Update successful! ESP will reboot...');
 
       // Attiva la modalità OTA nel DeviceService per gestire la riconnessione
       _device.startOtaUpdate();
 
       // Attendi il riavvio e la riconnessione
-      _status = 'Attendo riavvio...';
+      _updateState(status: 'Attendo riavvio...');
       final reconnected = await _waitForReconnection();
 
       if (!reconnected) {
-        _status = 'Errore: timeout riconnessione';
+        _updateState(status: 'Errore: timeout riconnessione');
         print('[OTA] Reconnection timeout');
         _device.endOtaUpdate();
         return false;
       }
 
       // Verifica la nuova versione
-      _status = 'Verifica nuova versione...';
+      _updateState(status: 'Verifica nuova versione...');
       final newVersion = await _getCurrentVersion();
       print('[OTA] New version: ${newVersion ?? "unknown"}');
 
@@ -292,16 +294,16 @@ class OtaService {
 
       // Confronta le versioni
       if (oldVersion != null && newVersion != null && oldVersion == newVersion) {
-        _status = 'Attenzione: versione non cambiata';
+        _updateState(status: 'Attenzione: versione non cambiata');
         print('[OTA] Warning: version unchanged (${oldVersion} -> ${newVersion})');
         return true; // L'update è tecnicamente riuscito, ma la versione non è cambiata
       } else {
-        _status = 'Aggiornato con successo! ${oldVersion ?? "?"} -> ${newVersion ?? "?"}';
+        _updateState(status: 'Aggiornato con successo! ${oldVersion ?? "?"} -> ${newVersion ?? "?"}');
         print('[OTA] Successfully updated: ${oldVersion ?? "?"} -> ${newVersion ?? "?"}');
         return true;
       }
     } else {
-      _status = 'Errore verifica: $endResponse';
+      _updateState(status: 'Errore verifica: $endResponse');
       print('[OTA] Verification failed: $endResponse');
       return false;
     }
