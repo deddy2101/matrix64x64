@@ -52,6 +52,23 @@ class OtaService {
     }
   }
 
+  /// Ottiene la versione corrente del firmware
+  Future<String?> _getCurrentVersion() async {
+    if (!_device.isConnected) return null;
+
+    _device.getVersion();
+    final response = await _waitForResponse('VERSION,', timeout: const Duration(seconds: 3));
+
+    if (response != null && response.startsWith('VERSION,')) {
+      // Formato: VERSION,v1.2.3
+      final parts = response.split(',');
+      if (parts.length >= 2) {
+        return parts[1].trim();
+      }
+    }
+    return null;
+  }
+
   /// Invia firmware update via WebSocket
   ///
   /// [firmwarePath] - Percorso del file .bin
@@ -151,6 +168,10 @@ class OtaService {
 
     print('[OTA] Size: $size bytes, MD5: $md5Hash');
 
+    // Ottieni la versione attuale prima dell'update
+    final oldVersion = await _getCurrentVersion();
+    print('[OTA] Current version: ${oldVersion ?? "unknown"}');
+
     // 1. Invia comando start e aspetta OTA_READY
     _status = 'Inizializzazione OTA...';
     _device.send('ota,start,$size');
@@ -244,14 +265,68 @@ class OtaService {
     }
 
     if (endResponse.startsWith('OTA_SUCCESS') || endResponse.startsWith('OTA_COMPLETE')) {
-      _status = 'Update completato!';
+      _status = 'Update completato! Riavvio ESP...';
       _progress = 100;
-      print('[OTA] Update successful!');
-      return true;
+      print('[OTA] Update successful! ESP will reboot...');
+
+      // Attiva la modalità OTA nel DeviceService per gestire la riconnessione
+      _device.startOtaUpdate();
+
+      // Attendi il riavvio e la riconnessione
+      _status = 'Attendo riavvio...';
+      final reconnected = await _waitForReconnection();
+
+      if (!reconnected) {
+        _status = 'Errore: timeout riconnessione';
+        print('[OTA] Reconnection timeout');
+        _device.endOtaUpdate();
+        return false;
+      }
+
+      // Verifica la nuova versione
+      _status = 'Verifica nuova versione...';
+      final newVersion = await _getCurrentVersion();
+      print('[OTA] New version: ${newVersion ?? "unknown"}');
+
+      _device.endOtaUpdate();
+
+      // Confronta le versioni
+      if (oldVersion != null && newVersion != null && oldVersion == newVersion) {
+        _status = 'Attenzione: versione non cambiata';
+        print('[OTA] Warning: version unchanged (${oldVersion} -> ${newVersion})');
+        return true; // L'update è tecnicamente riuscito, ma la versione non è cambiata
+      } else {
+        _status = 'Aggiornato con successo! ${oldVersion ?? "?"} -> ${newVersion ?? "?"}';
+        print('[OTA] Successfully updated: ${oldVersion ?? "?"} -> ${newVersion ?? "?"}');
+        return true;
+      }
     } else {
       _status = 'Errore verifica: $endResponse';
       print('[OTA] Verification failed: $endResponse');
       return false;
     }
+  }
+
+  /// Aspetta che il dispositivo si riconnetta dopo il riavvio OTA
+  Future<bool> _waitForReconnection() async {
+    const maxAttempts = 20;
+    const delayBetweenAttempts = Duration(seconds: 2);
+
+    for (int i = 0; i < maxAttempts; i++) {
+      print('[OTA] Reconnection attempt ${i + 1}/$maxAttempts...');
+
+      // Aspetta un po'
+      await Future.delayed(delayBetweenAttempts);
+
+      // Controlla se siamo connessi
+      if (_device.isConnected) {
+        print('[OTA] Reconnected successfully!');
+        // Aspetta ancora un po' per stabilità
+        await Future.delayed(const Duration(seconds: 1));
+        return true;
+      }
+    }
+
+    return false;
   }
 }

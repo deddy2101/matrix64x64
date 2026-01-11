@@ -10,7 +10,6 @@ import '../widgets/common/common_widgets.dart';
 import '../widgets/home/home_widgets.dart';
 import '../dialogs/wifi_config_dialog.dart';
 import '../dialogs/restart_confirm_dialog.dart';
-import 'device_discovery_screen.dart';
 import 'image_management_screen.dart';
 import 'game_controller_screen.dart';
 
@@ -64,16 +63,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         }
 
         // Se era connesso e ora non lo è più, torna alla discovery
-        // MA NON durante WiFi scan (la connessione può cadere temporaneamente)
-        if (wasConnected && state == DeviceConnectionState.disconnected && !_device.isWifiScanning) {
-          _addLog('Ritorno alla schermata di ricerca...');
+        // MA NON durante WiFi scan o OTA update (la connessione può cadere temporaneamente)
+        if (wasConnected &&
+            state == DeviceConnectionState.disconnected &&
+            !_device.isWifiScanning &&
+            !_device.isOtaUpdating) {
+          _addLog('Disconnesso. Ritorno alla schermata di ricerca...');
           Future.delayed(const Duration(milliseconds: 500), () {
-            if (mounted && !_device.isWifiScanning) {
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(
-                  builder: (_) => const DeviceDiscoveryScreen(),
-                ),
-              );
+            if (mounted && !_device.isWifiScanning && !_device.isOtaUpdating) {
+              // Disconnetti e torna alla discovery con pop (non pushReplacement)
+              _device.disconnect();
+              Navigator.of(context).pop();
             }
           });
         }
@@ -348,13 +348,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   onTap: () {
                     if (_isConnected) {
                       _device.disconnect();
+                      // La disconnessione automatica riporterà indietro
                     } else {
-                      // Torna alla discovery
-                      Navigator.of(context).pushReplacement(
-                        MaterialPageRoute(
-                          builder: (_) => const DeviceDiscoveryScreen(),
-                        ),
-                      );
+                      // Torna alla discovery con pop (non pushReplacement)
+                      Navigator.of(context).pop();
                     }
                   },
                 ),
@@ -1587,25 +1584,29 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       );
 
       if (success) {
-        _addLog('✓ Firmware aggiornato con successo!');
-        _addLog('→ Il dispositivo si riavvierà automaticamente');
+        // Il messaggio finale viene già mostrato dall'OtaService con la versione
+        _addLog('✓ ${_otaService.status}');
 
         if (mounted) {
+          // Determina se la versione è cambiata controllando il messaggio di status
+          final statusMsg = _otaService.status;
+          final isVersionChanged = !statusMsg.contains('non cambiata');
+
           showDialog(
             context: context,
             builder: (context) => AlertDialog(
               backgroundColor: const Color(0xFF1a1a2e),
               title: Row(
                 children: [
-                  Icon(Icons.check_circle, color: Colors.green[400]),
+                  Icon(
+                    isVersionChanged ? Icons.check_circle : Icons.info,
+                    color: isVersionChanged ? Colors.green[400] : Colors.orange[400],
+                  ),
                   const SizedBox(width: 12),
-                  const Text('Update Completato'),
+                  Text(isVersionChanged ? 'Update Completato' : 'Update Eseguito'),
                 ],
               ),
-              content: Text(
-                'Firmware ${release.fullVersion} installato con successo.\n\n'
-                'Il dispositivo si riavvierà automaticamente tra pochi secondi.',
-              ),
+              content: Text(statusMsg),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
@@ -1698,26 +1699,30 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       final success = await _otaService.updateFirmware(filePath);
 
       if (success) {
-        _addLog('✓ Firmware aggiornato con successo!');
-        _addLog('→ Il dispositivo si riavvierà automaticamente');
+        // Il messaggio finale viene già mostrato dall'OtaService con la versione
+        _addLog('✓ ${_otaService.status}');
 
         // Mostra dialog di successo
         if (mounted) {
+          // Determina se la versione è cambiata controllando il messaggio di status
+          final statusMsg = _otaService.status;
+          final isVersionChanged = !statusMsg.contains('non cambiata');
+
           showDialog(
             context: context,
             builder: (context) => AlertDialog(
               backgroundColor: const Color(0xFF1a1a2e),
               title: Row(
                 children: [
-                  Icon(Icons.check_circle, color: Colors.green[400]),
+                  Icon(
+                    isVersionChanged ? Icons.check_circle : Icons.info,
+                    color: isVersionChanged ? Colors.green[400] : Colors.orange[400],
+                  ),
                   const SizedBox(width: 12),
-                  const Text('Update Completato'),
+                  Text(isVersionChanged ? 'Update Completato' : 'Update Eseguito'),
                 ],
               ),
-              content: const Text(
-                'Il firmware è stato aggiornato con successo.\n\n'
-                'Il dispositivo si riavvierà automaticamente tra pochi secondi.',
-              ),
+              content: Text(statusMsg),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),

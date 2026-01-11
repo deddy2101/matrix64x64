@@ -205,8 +205,8 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen> {
       Navigator.of(context).pop(); // Chiudi loading dialog
 
       if (success) {
-        // Vai alla home
-        Navigator.of(context).pushReplacement(
+        // Vai alla home con push (non pushReplacement) così può tornare indietro con pop
+        Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => const HomeScreen()),
         );
       } else {
@@ -249,8 +249,8 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen> {
       Navigator.of(context).pop(); // Chiudi loading dialog
 
       if (success) {
-        // Vai alla home
-        Navigator.of(context).pushReplacement(
+        // Vai alla home con push (non pushReplacement) così può tornare indietro con pop
+        Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => const HomeScreen()),
         );
       } else {

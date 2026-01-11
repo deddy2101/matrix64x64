@@ -345,6 +345,12 @@ class DeviceService implements IPongDevice {
   Timer? _wifiScanTimeoutTimer;
   static const Duration _wifiScanTimeout = Duration(seconds: 15);
 
+  // OTA update state - durante l'OTA l'ESP si riavvia e dobbiamo riconnetterci
+  bool _isOtaUpdating = false;
+  Timer? _otaReconnectTimer;
+  String? _otaExpectedVersion;
+  static const Duration _otaRebootTimeout = Duration(seconds: 60);
+
   // Controllers
   final _connectionController =
       StreamController<DeviceConnectionState>.broadcast();
@@ -382,6 +388,7 @@ class DeviceService implements IPongDevice {
   bool get isConnected => _state == DeviceConnectionState.connected;
   String? get connectedName => _connectedName;
   bool get isWifiScanning => _isWifiScanning;
+  bool get isOtaUpdating => _isOtaUpdating;
   DeviceStatus? get lastStatus => _lastStatus;
   List<EffectInfo>? get lastEffects => _lastEffects;
   DeviceSettings? get lastSettings => _lastSettings;
@@ -503,12 +510,16 @@ class DeviceService implements IPongDevice {
     }
   }
 
-  /// Gestisce disconnessione WebSocket - tiene conto dello stato WiFi scan
+  /// Gestisce disconnessione WebSocket - tiene conto dello stato WiFi scan e OTA update
   void _handleWebSocketDisconnect() {
     if (_isWifiScanning) {
       // Durante WiFi scan, non notificare disconnessione, solo riconnetti silenziosamente
       print('WebSocket disconnected during WiFi scan - reconnecting silently...');
       _scheduleReconnect(quick: true);
+    } else if (_isOtaUpdating) {
+      // Durante OTA update, l'ESP si riavvia - aspetta e riconnetti
+      print('WebSocket disconnected during OTA update - device rebooting...');
+      _scheduleReconnect(quick: false, otaMode: true);
     } else {
       _setState(DeviceConnectionState.disconnected);
       _scheduleReconnect();
@@ -545,16 +556,22 @@ class DeviceService implements IPongDevice {
     _connectionController.add(newState);
   }
 
-  void _scheduleReconnect({bool quick = false}) {
+  void _scheduleReconnect({bool quick = false, bool otaMode = false}) {
     if (_wsHost == null) return;
 
     _reconnectTimer?.cancel();
-    final delay = quick ? const Duration(milliseconds: 500) : const Duration(seconds: 3);
+
+    // Durante OTA, dai più tempo all'ESP per riavviarsi (5 secondi iniziali)
+    final delay = otaMode
+        ? const Duration(seconds: 5)
+        : (quick ? const Duration(milliseconds: 500) : const Duration(seconds: 3));
+
     _reconnectTimer = Timer(delay, () {
       if (_wsHost != null &&
           (_state == DeviceConnectionState.disconnected ||
            _state == DeviceConnectionState.connecting ||
-           _isWifiScanning)) {
+           _isWifiScanning ||
+           _isOtaUpdating)) {
         connectWebSocket(_wsHost!, port: _wsPort ?? 80);
       }
     });
@@ -778,6 +795,26 @@ class DeviceService implements IPongDevice {
     _wifiScanTimeoutTimer = null;
   }
 
+  /// Inizia la modalità OTA update - previene la disconnessione durante il reboot
+  void startOtaUpdate({String? expectedVersion}) {
+    _isOtaUpdating = true;
+    _otaExpectedVersion = expectedVersion;
+    _otaReconnectTimer?.cancel();
+    _otaReconnectTimer = Timer(_otaRebootTimeout, () {
+      endOtaUpdate();
+    });
+  }
+
+  /// Termina la modalità OTA update e ritorna la versione attuale
+  String? endOtaUpdate() {
+    _isOtaUpdating = false;
+    _otaReconnectTimer?.cancel();
+    _otaReconnectTimer = null;
+    final version = _otaExpectedVersion;
+    _otaExpectedVersion = null;
+    return version;
+  }
+
   void setDeviceName(String name) => send('devicename,$name');
 
   // Scroll Text
@@ -830,6 +867,7 @@ class DeviceService implements IPongDevice {
 
   void dispose() {
     _wifiScanTimeoutTimer?.cancel();
+    _otaReconnectTimer?.cancel();
     disconnect();
     _connectionController.close();
     _statusController.close();
