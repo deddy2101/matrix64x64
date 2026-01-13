@@ -1,6 +1,6 @@
 #include "TimeManager.h"
 
-TimeManager::TimeManager(bool fakeTime, unsigned long fakeSpeedMs)
+TimeManager::TimeManager()
     : ds3231Available(false),
       currentHour(12),
       currentMinute(0),
@@ -12,12 +12,11 @@ TimeManager::TimeManager(bool fakeTime, unsigned long fakeSpeedMs)
       lastMinute(-1),
       lastSecond(-1),
       lastUpdate(0),
-      updateInterval(fakeSpeedMs),
       ntpEnabled(true),
       ntpSynced(false),
       lastNtpSync(0),
       ntpSyncInterval(3600000),  // 1 ora in ms
-      mode(fakeTime ? TimeMode::FAKE : TimeMode::RTC) {
+      mode(TimeMode::RTC) {
     // I vettori si inizializzano automaticamente vuoti
 }
 
@@ -160,7 +159,7 @@ bool TimeManager::syncFromNTP() {
 }
 
 void TimeManager::checkNtpSync() {
-    if (!ntpEnabled || mode == TimeMode::FAKE) return;
+    if (!ntpEnabled) return;
 
     // Prima sync all'avvio (se WiFi connesso e non ancora sincronizzato)
     if (!ntpSynced && WiFi.status() == WL_CONNECTED) {
@@ -239,8 +238,6 @@ void TimeManager::begin(int hour, int minute, int second) {
     DEBUG_PRINTLN(F("║    T12:30     - Set time (HH:MM)                   ║"));
     DEBUG_PRINTLN(F("║    D2025/01/15 12:30:00 - Set full datetime        ║"));
     DEBUG_PRINTLN(F("║    E1234567890 - Sync from epoch (UTC)             ║"));
-    DEBUG_PRINTLN(F("║    Mfake     - Switch to fake/fast mode            ║"));
-    DEBUG_PRINTLN(F("║    Mrtc      - Switch to RTC real-time mode        ║"));
     DEBUG_PRINTLN(F("║    S         - Show current status                 ║"));
     DEBUG_PRINTLN(F("║    ?         - Show this help                      ║"));
     DEBUG_PRINTLN(F("╚════════════════════════════════════════════════════╝"));
@@ -253,16 +250,10 @@ void TimeManager::printHelp() {
     DEBUG_PRINTLN(F("T12:30     - Set time HH:MM"));
     DEBUG_PRINTLN(F("D2025/01/15 12:30:00 - Set datetime"));
     DEBUG_PRINTLN(F("E<epoch>   - Sync from Unix epoch (UTC)"));
-    DEBUG_PRINTLN(F("Mfake      - Fast time mode"));
-    DEBUG_PRINTLN(F("Mrtc       - Real time mode"));
     DEBUG_PRINTLN(F("S          - Show status"));
     DEBUG_PRINTLN(F("?          - This help\n"));
 }
 
-void TimeManager::setFakeSpeed(unsigned long ms) {
-    updateInterval = ms;
-    DEBUG_PRINTF("[TimeManager] Fake speed: %lu ms/min\n", ms);
-}
 
 void TimeManager::processSerialCommand(const String& cmd) {
     if (cmd.length() == 0) return;
@@ -316,21 +307,6 @@ void TimeManager::processSerialCommand(const String& cmd) {
             break;
         }
         
-        case 'M':
-        case 'm': {
-            // Mode switch: Mfake or Mrtc
-            arg.toLowerCase();
-            if (arg == "fake" || arg == "f") {
-                setMode(TimeMode::FAKE);
-                DEBUG_PRINTLN("[TimeManager] ✓ Switched to FAKE mode");
-            } else if (arg == "rtc" || arg == "r") {
-                setMode(TimeMode::RTC);
-                DEBUG_PRINTLN("[TimeManager] ✓ Switched to RTC mode");
-            } else {
-                DEBUG_PRINTLN("[TimeManager] ✗ Use Mfake or Mrtc");
-            }
-            break;
-        }
         
         case 'S':
         case 's': {
@@ -352,19 +328,18 @@ void TimeManager::processSerialCommand(const String& cmd) {
 
 bool TimeManager::parseCommand(const String& cmd) {
     if (cmd.length() == 0) return false;
-    
+
     char first = cmd.charAt(0);
-    
+
     if (first == 'T' || first == 't' ||
         first == 'D' || first == 'd' ||
         first == 'E' || first == 'e' ||
-        first == 'M' || first == 'm' ||
         first == 'S' || first == 's' ||
         first == '?' || first == 'h' || first == 'H') {
         processSerialCommand(cmd);
         return true;
     }
-    
+
     return false;
 }
 
@@ -384,38 +359,15 @@ void TimeManager::readRtcTime() {
     currentSecond = timeinfo.tm_sec;
 }
 
-void TimeManager::updateFakeTime() {
-    if (millis() - lastUpdate >= updateInterval) {
-        lastUpdate = millis();
-        
-        currentMinute++;
-        
-        if (currentMinute >= 60) {
-            currentMinute = 0;
-            currentHour++;
-            
-            if (currentHour >= 24) {
-                currentHour = 0;
-            }
-        }
-    }
-}
 
 // ✅ METODO UPDATE AGGIORNATO PER CHIAMARE TUTTI I CALLBACK
 void TimeManager::update() {
     // Check NTP sync (all'avvio e ogni ora)
     checkNtpSync();
 
-    switch (mode) {
-        case TimeMode::FAKE:
-            updateFakeTime();
-            break;
+    // Leggi tempo reale da RTC
+    readRtcTime();
 
-        case TimeMode::RTC:
-            readRtcTime();
-            break;
-    }
-    
     // Callback per secondi
     if (currentSecond != lastSecond) {
         lastSecond = currentSecond;
@@ -423,19 +375,19 @@ void TimeManager::update() {
             if (callback) callback(currentHour, currentMinute, currentSecond);
         }
     }
-    
+
     // Callback per minuti
     if (currentMinute != lastMinute) {
         lastMinute = currentMinute;
-        
+
         DEBUG_PRINTF("[TimeManager] ⚡ Minute changed: %02d:%02d -> calling %d callbacks\n",
                      currentHour, currentMinute, onMinuteChangeCallbacks.size());
-        
+
         for (auto& callback : onMinuteChangeCallbacks) {
             if (callback) callback(currentHour, currentMinute, currentSecond);
         }
     }
-    
+
     // Callback per ore
     if (currentHour != lastHour) {
         lastHour = currentHour;
@@ -525,11 +477,6 @@ String TimeManager::getFullStatus() {
         status += buf;
     }
 
-    if (mode == TimeMode::FAKE) {
-        sprintf(buf, "║  Speed: %lu ms/min                   ║\n", updateInterval);
-        status += buf;
-    }
-    
     // Mostra info DST
     struct tm timeinfo;
     time_t now;
@@ -601,26 +548,9 @@ void TimeManager::syncFromEpoch(unsigned long epoch) {
                  currentHour, currentMinute, currentSecond);
 }
 
-void TimeManager::setMode(TimeMode newMode) {
-    mode = newMode;
-    lastUpdate = millis();
-    
-    if (newMode == TimeMode::RTC) {
-        // Quando passi a RTC, sincronizza
-        if (ds3231Available) {
-            syncFromDS3231();
-        } else {
-            setTime(currentHour, currentMinute, currentSecond);
-        }
-    }
-}
 
 String TimeManager::getModeString() const {
-    switch (mode) {
-        case TimeMode::FAKE: return "FAKE (accelerated)";
-        case TimeMode::RTC:  return "RTC (real-time)";
-        default:             return "UNKNOWN";
-    }
+    return "RTC (real-time)";
 }
 
 float TimeManager::getDS3231Temperature() {

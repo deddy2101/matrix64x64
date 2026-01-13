@@ -14,6 +14,7 @@ private:
     unsigned long effectDuration;  // ms
     DisplayManager* displayManager;
     bool autoSwitch;
+    bool paused;  // Blocca esecuzione durante OTA
     
     /**
      * Cambia all'effetto specificato (uso interno)

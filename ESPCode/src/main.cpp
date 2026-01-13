@@ -112,7 +112,7 @@ void setup() {
     // 3. Time Manager
     // ─────────────────────────────────────────
     DEBUG_PRINTLN(F("[Setup] Initializing TimeManager..."));
-    timeManager = new TimeManager(false);  // RTC mode
+    timeManager = new TimeManager;  // RTC mode
     timeManager->setTimezone(settings.getTimezone());
     timeManager->enableNTP(settings.isNTPEnabled());
     timeManager->begin();

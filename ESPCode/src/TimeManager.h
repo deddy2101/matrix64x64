@@ -16,7 +16,6 @@ typedef std::function<void(int hour, int minute, int second)> TimeCallback;
 
 // Modalità di funzionamento
 enum class TimeMode {
-    FAKE,       // Tempo accelerato per test
     RTC         // RTC interno ESP32 (tempo reale)
 };
 
@@ -47,7 +46,6 @@ private:
     
     // Timer per aggiornamento
     unsigned long lastUpdate;
-    unsigned long updateInterval;      // ms tra un minuto e l'altro (in fake mode)
     
     // ✅ Callbacks per notifiche - ORA SUPPORTA MULTIPLI CALLBACKS!
     std::vector<TimeCallback> onSecondChangeCallbacks;
@@ -59,7 +57,6 @@ private:
     
     // Metodi privati
     void readRtcTime();
-    void updateFakeTime();
     void processSerialCommand(const String& cmd);
 
     // DS3231
@@ -84,14 +81,11 @@ private:
     time_t getLocalEpoch(time_t utcEpoch);
     
 public:
-    TimeManager(bool fakeTime = true, unsigned long fakeSpeedMs = 5000);
+    TimeManager();
 
     // Setup
     void begin(int hour = 12, int minute = 0, int second = 0);
     void setTimezone(const char* tz);
-    
-    // Configurazione fake mode
-    void setFakeSpeed(unsigned long ms);
     
     // Update (chiamare nel loop)
     void update();
@@ -181,11 +175,8 @@ public:
     }
     
     // Modalità
-    void setMode(TimeMode newMode);
-    void setFakeTimeMode(bool fake) { setMode(fake ? TimeMode::FAKE : TimeMode::RTC); }
     TimeMode getMode() const { return mode; }
     String getModeString() const;
-    bool isFakeTime() const { return mode == TimeMode::FAKE; }
 };
 
 #endif

@@ -146,7 +146,7 @@ private:
     // Handler specifici
     String handleSetTime(const std::vector<String>& parts);
     String handleSetDateTime(const std::vector<String>& parts);
-    String handleSetMode(const std::vector<String>& parts);
+    // String handleSetMode(const std::vector<String>& parts);
     String handleEffect(const std::vector<String>& parts);
     String handleBrightness(const std::vector<String>& parts);
     String handleNightTime(const std::vector<String>& parts);

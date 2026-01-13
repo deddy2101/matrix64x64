@@ -110,9 +110,9 @@ String CommandHandler::processCommand(const String& command) {
     if (mainCmd == "setdatetime") {
         return handleSetDateTime(parts);
     }
-    if (mainCmd == "setmode") {
-        return handleSetMode(parts);
-    }
+    // if (mainCmd == "setmode") {
+    //     return handleSetMode(parts);
+    // }
     if (mainCmd == "effect") {
         return handleEffect(parts);
     }
@@ -196,12 +196,12 @@ String CommandHandler::processLegacyCommand(const String& command) {
             }
             return "OK,next effect";
             
-        case 'M':
-        case 'm':
-            if (_timeManager) {
-                _timeManager->setMode(_timeManager->getMode() == TimeMode::FAKE ? TimeMode::RTC : TimeMode::FAKE);
-            }
-            return "OK,mode toggled";
+        // case 'M':
+        // case 'm':
+        //     if (_timeManager) {
+        //         _timeManager->setMode(_timeManager->getMode() == TimeMode::FAKE ? TimeMode::RTC : TimeMode::FAKE);
+        //     }
+        //     return "OK,mode toggled";
             
         case 'S':
         case 's':
@@ -443,26 +443,26 @@ String CommandHandler::handleSetDateTime(const std::vector<String>& parts) {
     return "ERR,time manager not available";
 }
 
-String CommandHandler::handleSetMode(const std::vector<String>& parts) {
-    if (parts.size() < 2) {
-        return "ERR,setmode needs rtc|fake";
-    }
+// String CommandHandler::handleSetMode(const std::vector<String>& parts) {
+//     if (parts.size() < 2) {
+//         return "ERR,setmode needs rtc|fake";
+//     }
     
-    String mode = parts[1];
-    mode.toLowerCase();
+//     String mode = parts[1];
+//     mode.toLowerCase();
     
-    if (_timeManager) {
-        if (mode == "rtc") {
-            _timeManager->setMode(TimeMode::RTC);
-            return "OK,mode rtc";
-        } else if (mode == "fake") {
-            _timeManager->setMode(TimeMode::FAKE);
-            return "OK,mode fake";
-        }
-    }
+//     if (_timeManager) {
+//         if (mode == "rtc") {
+//             _timeManager->setMode(TimeMode::RTC);
+//             return "OK,mode rtc";
+//         } else if (mode == "fake") {
+//             _timeManager->setMode(TimeMode::FAKE);
+//             return "OK,mode fake";
+//         }
+//     }
     
-    return "ERR,invalid mode (use rtc or fake)";
-}
+//     return "ERR,invalid mode (use rtc or fake)";
+// }
 
 String CommandHandler::handleEffect(const std::vector<String>& parts) {
     if (parts.size() < 2) {
