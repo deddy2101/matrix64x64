@@ -115,6 +115,7 @@ private:
     void reconstructPath(PacPoint start, PacPoint end, PacDirection& nextMove);
     void directionDecision();
     void turnRandom();
+    int _callbackID;
 
 public:
     PacManClockEffect(DisplayManager* dm, TimeManager* tm);

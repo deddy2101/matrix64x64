@@ -1,187 +1,189 @@
 # ESP32 LED Matrix Firmware
 
-Firmware per ESP32 che gestisce una matrice LED HUB75 64x64 con effetti visivi, controllo WiFi e aggiornamenti OTA.
+ESP32 firmware for HUB75 64x64 LED matrix with visual effects, WiFi control, and OTA updates.
 
-## Caratteristiche
+## Features
 
-- **Display HUB75**: Gestione matrice LED 64x64 tramite libreria DMA
-- **Effetti Visivi Multipli**:
+- **HUB75 Display**: 64x64 LED matrix control via DMA library
+- **Visual Effects**:
   - Pong Game
-  - Mario Clock (orologio animato)
+  - Mario Clock
+  - PacMan Clock
   - Plasma Effect
   - Scroll Text
-  - Image Display (Andre, Mario, Pokemon, Luigi, Fox)
-- **Connettività WiFi**: Access Point e Station mode
-- **WebSocket Server**: Controllo real-time tramite comandi CSV
-- **REST API**: Endpoint per configurazione e OTA
-- **mDNS**: Discovery automatico come `led-matrix.local`
-- **RTC Support**: Orologio in tempo reale con modulo DS3231
-- **OTA Updates**: Aggiornamenti firmware over-the-air
-- **Persistent Settings**: Configurazioni salvate in memoria flash
+  - Dynamic Image Display (images uploaded from app)
+  - Snake Game
+  - Fire Effect
+  - Matrix Rain
+  - Star Field
+- **WiFi**: Station mode with automatic AP fallback
+- **WebSocket Server**: Real-time control via CSV commands
+- **REST API**: Configuration and OTA endpoints
+- **UDP Discovery**: Automatic device discovery (port 7890)
+- **RTC Support**: DS3231 real-time clock module
+- **OTA Updates**: Over-the-air firmware updates
+- **Persistent Settings**: Flash storage for configurations
 
-## Hardware Requirements
+## Hardware
 
-### Componenti Principali
+### Components
 
-- **ESP32 DOIT DevKit v1** (o compatibile con ESP32)
-- **Matrice LED HUB75 64x64** (P3 o P4)
-- **Alimentatore 5V** (capacità dipendente dalla matrice, tipicamente 10-20A)
-- **Modulo RTC DS3231** (opzionale, per orologio accurato)
+- **ESP32 DOIT DevKit v1** or compatible
+- **HUB75 64x64 LED Matrix** (P3 or P4)
+- **5V Power Supply** (10-20A depending on matrix)
+- **DS3231 RTC Module** (optional)
 
-### Pinout HUB75
-
-Configurazione standard per ESP32:
+### HUB75 Pinout
 
 ```cpp
 R1:  25    G1:  26    B1:  27
 R2:  14    G2:  12    B2:  13
 A:   23    B:   19    C:   5
-D:   17    E:   32    (pin E per matrice 64 righe)
+D:   17    E:   32    (E pin for 64-row matrix)
 LAT: 4     OE:  15    CLK: 16
 ```
 
 ## Setup
 
-### 1. Installazione PlatformIO
-
-```bash
-# Installa PlatformIO Core
-pip install platformio
-
-# Oppure usa l'estensione VSCode
-```
-
-### 2. Clone e Build
+### Installation
 
 ```bash
 cd ESPCode
-
-# Installa dipendenze
 pio lib install
-
-# Compila
 pio run
-
-# Upload
 pio run -t upload
-
-# Monitor seriale
 pio device monitor
 ```
 
-### 3. Configurazione WiFi
+### WiFi Configuration
 
-Modifica [src/Settings.cpp](src/Settings.cpp):
+Edit [src/Settings.cpp](src/Settings.cpp):
 
 ```cpp
 void Settings::loadDefaults() {
-    ssid = "TUO_SSID";
-    password = "TUA_PASSWORD";
+    ssid = "YOUR_SSID";
+    password = "YOUR_PASSWORD";
     hostname = "led-matrix";
     // ...
 }
 ```
 
-## Librerie Utilizzate
+## Libraries
 
-Definite in [platformio.ini](platformio.ini):
+Defined in [platformio.ini](platformio.ini):
 
-- `FastLED`: Gestione colori e effetti LED
-- `ESP32 HUB75 LED MATRIX PANEL DMA Display` (^3.0.14): Driver matrice HUB75 con DMA
-- `Adafruit GFX Library` (^1.12.4): Libreria grafica per testo e forme
-- `RTClib` (^2.1.4): Gestione modulo RTC DS3231
-- `ESPAsyncWebServer` (^1.2.4): Web server asincrono
-- `AsyncTCP` (^1.1.1): Stack TCP asincrono
+- `FastLED`: LED color and effects
+- `ESP32 HUB75 LED MATRIX PANEL DMA Display` (^3.0.14): HUB75 driver with DMA
+- `Adafruit GFX Library` (^1.12.4): Graphics library
+- `RTClib` (^2.1.4): DS3231 RTC management
+- `ESPAsyncWebServer` (^1.2.4): Async web server
+- `AsyncTCP` (^1.1.1): Async TCP stack
 
-## Struttura del Progetto
+## Project Structure
 
 ```
 ESPCode/
 ├── src/
-│   ├── main.cpp                    # Entry point principale
-│   ├── DisplayManager.cpp/h        # Gestione hardware matrice LED
-│   ├── EffectManager.cpp/h         # Sistema gestione effetti
-│   ├── TimeManager.cpp/h           # Gestione RTC e orologio
-│   ├── Settings.cpp/h              # Configurazioni persistenti
-│   ├── WiFiManager.cpp/h           # Gestione connessione WiFi
-│   ├── WebServerManager.cpp/h      # Server HTTP/REST API
-│   ├── WebSocketManager.cpp/h      # Server WebSocket
-│   ├── CommandHandler.cpp/h        # Parser comandi CSV
-│   ├── Discovery.cpp/h             # mDNS service
-│   ├── Debug.h                     # Macro di debug
-│   ├── effects/                    # Effetti visivi
-│   │   ├── Effect.h                # Classe base effetti
-│   │   ├── PongEffect.cpp/h
-│   │   ├── MarioClockEffect.cpp/h
-│   │   ├── PlasmaEffect.cpp/h
-│   │   ├── ScrollTextEffect.cpp/h
-│   │   └── ImageEffect.cpp/h
-│   └── images/                     # Header immagini
-│       ├── andre.h
-│       ├── mario.h
-│       ├── pokemon.h
-│       ├── luigi.h
-│       └── fox.h
-├── platformio.ini                  # Configurazione PlatformIO
+│   ├── main.cpp                    # Main entry point
+│   ├── DisplayManager.cpp/h        # LED matrix hardware management
+│   ├── EffectManager.cpp/h         # Effect system
+│   ├── TimeManager.cpp/h           # RTC and clock management
+│   ├── ImageManager.cpp/h          # LittleFS image storage management
+│   ├── Settings.cpp/h              # Persistent configurations
+│   ├── WiFiManager.cpp/h           # WiFi connection management
+│   ├── WebServerManager.cpp/h      # HTTP/REST API server
+│   ├── WebSocketManager.cpp/h      # WebSocket server
+│   ├── CommandHandler.cpp/h        # CSV command parser
+│   ├── Discovery.cpp/h             # UDP Discovery service
+│   ├── Debug.h                     # Debug macros
+│   └── effects/                    # Visual effects
+│       ├── Effect.h                # Base effect class
+│       ├── PongEffect.cpp/h
+│       ├── MarioClockEffect.cpp/h
+│       ├── PacManClockEffect.cpp/h
+│       ├── PlasmaEffect.cpp/h
+│       ├── ScrollTextEffect.cpp/h
+│       ├── DynamicImageEffect.cpp/h # Images from app
+│       ├── SnakeEffect.cpp/h
+│       ├── FireEffect.cpp/h
+│       ├── MatrixRainEffect.cpp/h
+│       └── StarFieldEffect.cpp/h
+├── platformio.ini                  # PlatformIO configuration
 └── README.md
 ```
 
-## Protocollo Comandi
+## Command Protocol
 
-Il firmware accetta comandi CSV via WebSocket sulla porta 80.
+WebSocket CSV commands on port 80.
 
-### Formato Generale
-
-```
-COMANDO[,parametro1,parametro2,...]
-```
-
-### Comandi Disponibili
-
-#### Controllo Effetti
+### Format
 
 ```
-EFFECT,nome_effetto
+COMMAND[,param1,param2,...]
 ```
 
-Effetti disponibili:
-- `pong` - Gioco Pong animato
-- `mario_clock` - Orologio con animazione Mario
-- `plasma` - Effetto plasma colorato
-- `text` - Testo scrolling
-- `image` - Visualizzazione immagine statica
+### Available Commands
 
-#### Controllo Display
+#### Effect Control
 
 ```
-BRIGHTNESS,valore        # Luminosità 0-255
-TEXT,messaggio          # Imposta testo per scroll effect
-COLOR,r,g,b            # Colore RGB 0-255
-CLEAR                  # Cancella display
+EFFECT,effect_name
 ```
 
-#### Gestione Sistema
+Available effects:
+- `pong` - Animated Pong game
+- `mario_clock` - Mario animated clock
+- `pacman_clock` - PacMan animated clock
+- `plasma` - Colorful plasma effect
+- `text` - Scrolling text
+- `dynamic_image` - Display images uploaded from app
+- `snake` - Snake game
+- `fire` - Fire simulation effect
+- `matrix_rain` - Matrix rain effect
+- `starfield` - Star field animation
+
+#### Display Control
 
 ```
-STATUS                 # Ottieni stato sistema (JSON)
-RESTART                # Riavvia ESP32
-TIME,HH,MM,SS         # Imposta orario RTC
-DATE,YYYY,MM,DD       # Imposta data RTC
+BRIGHTNESS,value        # 0-255
+TEXT,message           # Set text for scroll effect
+COLOR,r,g,b           # RGB color 0-255
+CLEAR                 # Clear display
 ```
 
-#### Configurazione WiFi
+#### System Management
 
 ```
-WIFI_SCAN              # Scansiona reti WiFi
-WIFI_CONNECT,ssid,pass # Connetti a rete
-WIFI_AP                # Modalità Access Point
-WIFI_STATUS            # Stato connessione
+STATUS                 # Get system status (JSON)
+RESTART               # Restart ESP32
+TIME,HH,MM,SS         # Set RTC time
+DATE,YYYY,MM,DD       # Set RTC date
 ```
 
-### Esempio Sessione
+#### WiFi Configuration
+
+```
+WIFI_SCAN              # Scan WiFi networks
+WIFI_CONNECT,ssid,pass # Connect to network
+WIFI_AP                # Access Point mode
+WIFI_STATUS            # Connection status
+```
+
+#### Image Management
+
+```
+IMAGE_LIST             # List available images
+IMAGE_SHOW,name       # Display specific image
+IMAGE_NEXT            # Next image in slideshow
+IMAGE_PREV            # Previous image in slideshow
+IMAGE_SLIDESHOW,1     # Enable slideshow (0=disable)
+IMAGE_DURATION,5000   # Set slideshow duration (ms)
+```
+
+### Example Session
 
 ```bash
-# Connetti via WebSocket a ws://led-matrix.local
+# Connect via WebSocket to ws://device-ip
 
 > EFFECT,pong
 < OK
@@ -199,13 +201,49 @@ WIFI_STATUS            # Stato connessione
 < {"effect":"text","brightness":150,"wifi":"connected","ip":"192.168.1.100"}
 ```
 
+## Device Discovery
+
+UDP broadcast for automatic device discovery by Flutter app.
+
+### Discovery Protocol
+
+**UDP Port**: 7890
+
+**Request** (from app):
+```
+LEDMATRIX_DISCOVER
+```
+
+**Response** (from device):
+```
+LEDMATRIX_HERE,device_name,192.168.1.100,80
+```
+
+Format: `LEDMATRIX_HERE,<name>,<ip>,<service_port>`
+
+## WiFi Modes
+
+### Station Mode (Primary)
+Connects to configured WiFi network. Automatic fallback to AP mode on failure.
+
+### Access Point Mode (Fallback)
+- **SSID**: Configured device name (default: unique name)
+- **Password**: `ledmatrix123`
+- **IP**: `192.168.4.1`
+- **Gateway/Subnet**: 192.168.4.1 / 255.255.255.0
+
+Manual connection:
+1. Connect mobile device to ESP32 AP
+2. Use IP `192.168.4.1` in app
+3. Connect to WebSocket on port 80
+
 ## REST API Endpoints
 
-Server HTTP su porta 80 (`http://led-matrix.local`).
+HTTP server on port 80.
 
 ### GET /
 
-Pagina web di controllo (HTML)
+Web control page (HTML)
 
 ### GET /status
 
@@ -246,49 +284,102 @@ Pagina web di controllo (HTML)
 
 ### POST /update (OTA)
 
-Upload file firmware `.bin` come multipart/form-data.
+Upload firmware `.bin` file as multipart/form-data.
 
 ```bash
-curl -X POST -F "firmware=@firmware.bin" http://led-matrix.local/update
+curl -X POST -F "firmware=@firmware.bin" http://device-ip/update
 ```
 
-## Configurazioni Avanzate
+### POST /image/upload
 
-### Modifica Dimensioni Matrice
+Upload image to LittleFS storage.
+
+**Body (multipart/form-data):**
+- `image`: RGB565 raw binary file (8192 bytes)
+- `name`: Image filename
+
+```bash
+curl -X POST -F "image=@image.rgb565" -F "name=myimage.rgb565" http://device-ip/image/upload
+```
+
+### GET /image/list
+
+List all stored images.
+
+```json
+{
+  "images": [
+    {
+      "name": "image1.rgb565",
+      "size": 8192
+    }
+  ]
+}
+```
+
+### DELETE /image/{name}
+
+Delete stored image.
+
+## Advanced Configuration
+
+### Matrix Dimensions
 
 In [src/main.cpp](src/main.cpp):
 
 ```cpp
-#define PANEL_WIDTH 64      // Larghezza pannello
-#define PANEL_HEIGHT 64     // Altezza pannello
-#define PANELS_NUMBER 1     # Numero pannelli concatenati
-#define PIN_E 32            // Pin E per matrici >32 righe
+#define PANEL_WIDTH 64      // Panel width
+#define PANEL_HEIGHT 64     // Panel height
+#define PANELS_NUMBER 1     # Number of chained panels
+#define PIN_E 32            // E pin for >32 row matrices
 ```
 
-### Ottimizzazione Performance
+### Performance Optimization
 
 In [platformio.ini](platformio.ini):
 
 ```ini
 build_flags =
-    -DCORE_DEBUG_LEVEL=0    # Disabilita debug log
-    -Os                     # Ottimizza per dimensione
+    -DCORE_DEBUG_LEVEL=0    # Disable debug logs
+    -Os                     # Optimize for size
 ```
 
-Per più debug cambiare `CORE_DEBUG_LEVEL` a 3-5.
+Change `CORE_DEBUG_LEVEL` to 3-5 for more debug output.
 
 ### Persistent Settings
 
-Le impostazioni sono salvate in flash EEPROM:
+Settings saved in flash EEPROM:
 - WiFi credentials
 - Hostname
-- Brightness predefinita
-- Effetto all'avvio
-- Testo personalizzato
+- Default brightness
+- Startup effect
+- Custom text
 
-## Aggiungere Nuovi Effetti
+### Image Management
 
-### 1. Crea classe effetto
+Images are stored in LittleFS filesystem and managed via the app:
+
+**Image Storage:**
+- Images uploaded from Flutter app
+- Stored in `/images/` directory on LittleFS
+- Format: RGB565 raw binary (64x64 pixels = 8192 bytes)
+- Automatic management via ImageManager class
+
+**Image Upload:**
+- Upload images directly from Flutter app
+- Supports PNG/JPG conversion in app
+- Automatic resizing to 64x64 pixels
+- Images persist across reboots
+
+**Dynamic Image Effect:**
+- Displays images from LittleFS storage
+- Slideshow mode with configurable duration
+- Manual navigation between images
+- Automatic image list refresh
+
+## Adding New Effects
+
+### 1. Create Effect Class
 
 ```cpp
 // src/effects/MyEffect.h
@@ -308,7 +399,7 @@ public:
 #endif
 ```
 
-### 2. Implementa update
+### 2. Implement Update
 
 ```cpp
 // src/effects/MyEffect.cpp
@@ -317,42 +408,44 @@ public:
 MyEffect::MyEffect(DisplayManager* dm) : Effect(dm) {}
 
 void MyEffect::init() {
-    // Inizializzazione
+    // Initialization
 }
 
 void MyEffect::update() {
-    // Logica rendering frame
+    // Frame rendering logic
     display->clearScreen();
-    // ... disegna su display
+    // ... draw on display
 }
 ```
 
-### 3. Registra in EffectManager
+### 3. Register in EffectManager
 
 In [src/main.cpp](src/main.cpp):
 
 ```cpp
 #include "effects/MyEffect.h"
 
-// Nel setup()
+// In setup()
 effectManager->registerEffect(new MyEffect(displayManager));
 ```
 
-## mDNS Configuration
+## UDP Discovery Configuration
 
-Il dispositivo è raggiungibile come `led-matrix.local`:
+Discovery service on port 7890:
 
 ```cpp
 // src/Discovery.cpp
-Discovery::begin("led-matrix");
+#define DISCOVERY_PORT 7890
+#define DISCOVERY_MAGIC "LEDMATRIX_DISCOVER"
+#define DISCOVERY_RESPONSE "LEDMATRIX_HERE"
 ```
 
-Servizi pubblicati:
-- `_http._tcp`: Web server (porta 80)
-- `_ws._tcp`: WebSocket server (porta 80)
-- `_arduino._tcp`: Identificazione Arduino/ESP32
+Device responds to UDP broadcast with:
+- Configured device name
+- Current IP address (STA or AP)
+- WebSocket service port (default 80)
 
-## Debug e Monitoring
+## Debug and Monitoring
 
 ### Serial Monitor
 
@@ -360,85 +453,40 @@ Servizi pubblicati:
 pio device monitor -b 115200
 ```
 
-Output include:
-- Connessione WiFi
-- Comandi ricevuti
-- Errori/warning
-- Statistiche performance
+Output includes:
+- WiFi connection
+- Received commands
+- Errors/warnings
+- Performance statistics
 
-### Debug Macro
+### Debug Macros
 
-Usa le macro in [src/Debug.h](src/Debug.h):
+Use macros in [src/Debug.h](src/Debug.h):
 
 ```cpp
-DEBUG_PRINT("Messaggio");
-DEBUG_PRINTLN(variabile);
-DEBUG_PRINTF("Valore: %d\n", val);
+DEBUG_PRINT("Message");
+DEBUG_PRINTLN(variable);
+DEBUG_PRINTF("Value: %d\n", val);
 ```
-
-## Troubleshooting
-
-### Display non si accende
-
-1. Verifica alimentazione 5V adeguata
-2. Controlla collegamenti HUB75
-3. Verifica pin E se matrice è 64 righe
-4. Testa con esempio base della libreria
-
-### WiFi non si connette
-
-1. Controlla SSID e password in Settings.cpp
-2. Verifica che il router supporti 2.4GHz (ESP32 non supporta 5GHz)
-3. Controlla serial monitor per errori
-4. Prova modalità AP: connetti a `LED-Matrix-AP`
-
-### Crash/Riavvii random
-
-1. Verifica alimentazione stabile (condensatori consigliati)
-2. Riduci luminosità se alimentatore insufficiente
-3. Aumenta `CORE_DEBUG_LEVEL` per stack trace
-4. Controlla free heap: `ESP.getFreeHeap()`
-
-### OTA non funziona
-
-1. Verifica che ci sia spazio sufficiente (partition scheme)
-2. Assicurati che il firmware .bin sia valido
-3. Controlla connessione stabile durante upload
-4. Verifica dimensione firmware < spazio disponibile
-
-### Effetti lenti/jerky
-
-1. Riduci complessità effetto
-2. Aumenta frequenza CPU (160MHz -> 240MHz)
-3. Ottimizza codice in update()
-4. Usa `-O2` o `-O3` invece di `-Os`
-
-## Performance Tips
-
-- Usa DMA per I/O matrice (già configurato)
-- Evita `delay()`, usa timer o task scheduler
-- Minimizza allocazioni dinamiche in update()
-- Pre-calcola valori costanti
-- Usa `IRAM_ATTR` per funzioni critiche
 
 ## OTA Updates
 
-### Da Browser
+### From Browser
 
-1. Vai a `http://led-matrix.local`
-2. Click su sezione OTA/Update
-3. Seleziona file `.bin`
-4. Attendi completamento
+1. Go to `http://device-ip`
+2. Click OTA/Update section
+3. Select `.bin` file
+4. Wait for completion
 
-### Da App Flutter
+### From Flutter App
 
-1. Apri ClockApp
-2. Vai in Settings
-3. Seleziona "Update Firmware"
-4. Scegli file firmware
-5. Conferma upload
+1. Open ClockApp
+2. Go to Settings
+3. Select "Update Firmware"
+4. Choose firmware file
+5. Confirm upload
 
-### Da Command Line
+### From Command Line
 
 ```bash
 # Build firmware
@@ -446,43 +494,25 @@ pio run
 
 # Upload via OTA
 curl -F "firmware=@.pio/build/esp32doit-devkit-v1/firmware.bin" \
-     http://led-matrix.local/update
+     http://device-ip/update
 ```
-
-## Sicurezza
-
-### Raccomandazioni
-
-- Cambia password WiFi di default
-- Non esporre il dispositivo su internet pubblico
-- Usa rete WiFi protetta (WPA2/WPA3)
-- Considera autenticazione per endpoint OTA
-- Aggiorna regolarmente le librerie
 
 ## Versioning
 
-Per gestire versioni firmware:
+Version management:
 
 ```cpp
 // In main.cpp
 const char* FIRMWARE_VERSION = "1.0.0";
 ```
 
-Includi versione nella risposta `/status`.
+Include version in `/status` response.
 
-## Contribuire
+## License
 
-Per aggiungere funzionalità:
-1. Crea branch da main
-2. Implementa e testa
-3. Documenta codice
-4. Submit pull request
+Part of Matrix 64x64 LED Display System project.
 
-## Licenza
-
-Parte del progetto Matrix 64x64 LED Display System.
-
-## Riferimenti
+## References
 
 - [ESP32 HUB75 DMA Library](https://github.com/mrfaptastic/ESP32-HUB75-MatrixPanel-DMA)
 - [FastLED Documentation](http://fastled.io/)

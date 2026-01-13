@@ -97,16 +97,19 @@ void DisplayManager::showOTAProgress(int percent) {
 
     display->clearScreen();
 
+    // ✅ Reset font al default (importante se un effetto ha impostato font custom)
+    display->setFont(nullptr);
+
     // Titolo "OTA"
     display->setTextSize(2);
     display->setTextColor(color565(255, 165, 0)); // Arancione
-    display->setCursor(8, 10);
+    display->setCursor(14, 12);
     display->print("OTA");
 
     // Percentuale
-    display->setTextSize(3);
+    display->setTextSize(2);
     display->setTextColor(color565(0, 255, 255)); // Cyan
-    display->setCursor(4, 30);
+    display->setCursor(8, 30);
     display->print(String(percent) + "%");
 
     // Barra di progresso (48x8 pixel, centrata)
@@ -143,22 +146,41 @@ void DisplayManager::showOTASuccess() {
 
     display->clearScreen();
 
-    // Messaggio "SUCCESS!"
+    // ✅ Reset font al default
+    display->setFont(nullptr);
+
+    // Checkmark grande e centrato (16x16 circa)
+    // Centro: x=32, y=20
+    uint8_t green = 255;
+
+    // Parte corta del checkmark (sinistra-basso)
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            display->drawPixelRGB888(24 + i, 28 + j, 0, green, 0);
+            display->drawPixelRGB888(25 + i, 29 + j, 0, green, 0);
+            display->drawPixelRGB888(26 + i, 30 + j, 0, green, 0);
+        }
+    }
+
+    // Parte lunga del checkmark (centro-alto destra)
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            display->drawPixelRGB888(27 + i, 29 - j, 0, green, 0);
+            display->drawPixelRGB888(28 + i, 28 - j, 0, green, 0);
+            display->drawPixelRGB888(29 + i, 27 - j, 0, green, 0);
+            display->drawPixelRGB888(30 + i, 26 - j, 0, green, 0);
+            display->drawPixelRGB888(31 + i, 25 - j, 0, green, 0);
+            display->drawPixelRGB888(32 + i, 24 - j, 0, green, 0);
+            display->drawPixelRGB888(33 + i, 23 - j, 0, green, 0);
+            display->drawPixelRGB888(34 + i, 22 - j, 0, green, 0);
+            display->drawPixelRGB888(35 + i, 21 - j, 0, green, 0);
+            display->drawPixelRGB888(36 + i, 20 - j, 0, green, 0);
+        }
+    }
+
+    // Testo "OK!" sotto il checkmark
     display->setTextSize(2);
     display->setTextColor(color565(0, 255, 0)); // Verde
-    display->setCursor(2, 20);
-    display->print("UPDATE");
-    display->setCursor(0, 40);
-    display->print("SUCCESS");
-
-    // Checkmark semplice (disegno manuale)
-    for (int i = 0; i < 3; i++) {
-        display->drawPixelRGB888(50 + i, 25, 0, 255, 0);
-        display->drawPixelRGB888(51 + i, 26, 0, 255, 0);
-        display->drawPixelRGB888(52 + i, 27, 0, 255, 0);
-        display->drawPixelRGB888(53 + i, 26, 0, 255, 0);
-        display->drawPixelRGB888(54 + i, 25, 0, 255, 0);
-        display->drawPixelRGB888(55 + i, 24, 0, 255, 0);
-        display->drawPixelRGB888(56 + i, 23, 0, 255, 0);
-    }
+    display->setCursor(20, 45);
+    display->print("OK!");
 }

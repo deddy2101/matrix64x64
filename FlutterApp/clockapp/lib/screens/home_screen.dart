@@ -386,14 +386,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _addLog('→ Sync ora');
       },
       onShowPicker: _showTimePicker,
-      onSetRTCMode: () {
-        _device.setTimeMode('rtc');
-        _addLog('→ RTC mode');
-      },
-      onSetFakeMode: () {
-        _device.setTimeMode('fake');
-        _addLog('→ Fake mode');
-      },
     );
   }
 
@@ -1215,6 +1207,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       currentVersion: _currentFirmwareVersion,
       manifest: _firmwareManifest,
       onLog: _addLog,
+      onRefreshManifest: _loadFirmwareManifest,
     );
   }
 

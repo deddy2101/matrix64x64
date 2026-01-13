@@ -1,5 +1,5 @@
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../services/ota_service.dart';
 import '../../services/firmware_update_service.dart';
@@ -12,6 +12,7 @@ class OTACard extends StatefulWidget {
   final FirmwareVersion? currentVersion;
   final FirmwareManifest? manifest;
   final Function(String) onLog;
+  final VoidCallback onRefreshManifest;
 
   const OTACard({
     super.key,
@@ -20,6 +21,7 @@ class OTACard extends StatefulWidget {
     required this.currentVersion,
     required this.manifest,
     required this.onLog,
+    required this.onRefreshManifest,
   });
 
   @override
@@ -62,6 +64,19 @@ class _OTACardState extends State<OTACard> {
               Icon(Icons.system_update, color: Theme.of(context).colorScheme.primary),
               const SizedBox(width: 12),
               const Text('Aggiornamenti OTA', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+              const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.refresh, size: 20),
+                tooltip: 'Aggiorna Manifest',
+                onPressed: () {
+                  widget.onRefreshManifest();
+                  widget.onLog('→ Ricarico manifest...');
+                  HapticFeedback.lightImpact();
+                },
+                color: Colors.grey[400],
+                padding: const EdgeInsets.all(8),
+                constraints: const BoxConstraints(),
+              ),
             ],
           ),
           const SizedBox(height: 16),

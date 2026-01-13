@@ -21,7 +21,9 @@ MarioClockEffect::MarioClockEffect(DisplayManager* dm, TimeManager* tm)
       needsRedraw(true),
       lastHour(-1),
       lastMinute(-1),
-      lastMarioUpdate(0)
+      lastMarioUpdate(0),
+      minuteCallbackId(-1),
+      hourCallbackId(-1)
 #if ENABLE_PIPE_ANIMATION
       ,pipe(new MarioPipe()),
       lastPipeUpdate(0),
@@ -60,7 +62,7 @@ void MarioClockEffect::init() {
     sprintf(minStr, "%02d", lastMinute);
     minuteBlock->text = String(minStr);
     
-    timeManager->addOnMinuteChange([this](int h, int m, int s) {
+    minuteCallbackId = timeManager->addOnMinuteChange([this](int h, int m, int s) {
         DEBUG_PRINTF("[MarioClockEffect] Minute changed callback: %02d:%02d\n", h, m);
         
         bool hourChanged = (h != lastHour);
@@ -93,6 +95,7 @@ void MarioClockEffect::init() {
 }
 
 void MarioClockEffect::cleanup() {
+    timeManager->removeCallback(minuteCallbackId);
     DEBUG_PRINTLN("[MarioClockEffect] Cleanup - removing TimeManager callback");
 }
 

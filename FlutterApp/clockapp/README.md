@@ -1,52 +1,44 @@
 # ClockApp - LED Matrix Controller
 
-App Flutter per il controllo remoto della matrice LED 64x64 tramite WiFi.
+Flutter mobile app for controlling 64x64 LED matrix via WiFi.
 
-## Caratteristiche
+## Features
 
-- **Discovery Automatico**: Trova automaticamente la matrice LED sulla rete locale tramite mDNS
-- **Controllo Real-time**: WebSocket per controllo immediato degli effetti
-- **Gestione Effetti**: Selezione e configurazione di vari effetti visivi
-- **Aggiornamenti OTA**: Upload e installazione firmware direttamente dall'app
-- **Impostazioni Persistenti**: Luminosità, testo personalizzato, configurazioni salvate
-- **Multi-piattaforma**: Supporto Android, iOS e macOS
+- **Automatic Discovery**: UDP broadcast device discovery
+- **Real-time Control**: WebSocket-based effect control
+- **Effect Management**: Visual effect selection and configuration
+- **OTA Updates**: Direct firmware upload from app
+- **Manual Connection**: IP-based connection for AP mode
+- **Persistent Settings**: Brightness, custom text, configurations
+- **Multi-platform**: Android, iOS, and macOS support
 
-## Screenshot
+## Requirements
 
-L'app fornisce un'interfaccia intuitiva per:
-- Selezionare effetti visivi (Pong, Mario Clock, Plasma, etc.)
-- Regolare la luminosità in tempo reale
-- Inserire testo personalizzato per lo scroll
-- Gestire le impostazioni WiFi del dispositivo
-- Aggiornare il firmware via OTA
+- Flutter SDK 3.10.0+
+- Mobile device on same network as LED matrix
+- LED matrix configured and connected to network
 
-## Requisiti
+## Installation
 
-- Flutter SDK 3.10.0 o superiore
-- Dispositivo mobile/desktop sulla stessa rete della matrice LED
-- Matrice LED configurata e connessa alla rete
-
-## Installazione
-
-### 1. Clona il repository
+### Clone Repository
 
 ```bash
 cd FlutterApp/clockapp
 ```
 
-### 2. Installa le dipendenze
+### Install Dependencies
 
 ```bash
 flutter pub get
 ```
 
-### 3. Genera le icone (opzionale)
+### Generate Icons (Optional)
 
 ```bash
 flutter pub run flutter_launcher_icons
 ```
 
-## Esecuzione
+## Running
 
 ### Development
 
@@ -71,218 +63,199 @@ flutter build ios --release
 flutter build macos --release
 ```
 
-## Dipendenze Principali
+## Dependencies
 
 ### Networking
-- `web_socket_channel` (^2.4.0): Comunicazione WebSocket real-time
-- `http` (^1.2.0): Chiamate REST API per configurazioni e OTA
-- `connectivity_plus` (^5.0.2): Monitoraggio stato connessione
+- `web_socket_channel` (^2.4.0): WebSocket real-time communication
+- `http` (^1.2.0): REST API calls for configuration and OTA
+- `connectivity_plus` (^5.0.2): Connection state monitoring
 
-### Funzionalità
-- `google_fonts` (^6.1.0): Font personalizzati per UI
-- `file_picker` (^8.0.0): Selezione file firmware per OTA
-- `crypto` (^3.0.3): Hash MD5 per verifica firmware
-- `permission_handler` (^11.0.1): Gestione permessi di sistema
-- `device_info_plus` (^9.1.1): Informazioni sul dispositivo
-- `package_info_plus` (^8.0.0): Informazioni sulla versione dell'app
-- `path_provider` (^2.1.0): Accesso alle directory di sistema
+### Functionality
+- `google_fonts` (^6.1.0): Custom UI fonts
+- `file_picker` (^8.0.0): Firmware file selection for OTA
+- `crypto` (^3.0.3): MD5 hash for firmware verification
+- `permission_handler` (^11.0.1): System permission management
+- `device_info_plus` (^9.1.1): Device information
+- `package_info_plus` (^8.0.0): App version info
+- `path_provider` (^2.1.0): System directory access
 
-## Struttura del Progetto
+## Project Structure
 
 ```
 lib/
-├── main.dart              # Entry point dell'app
-├── screens/               # Schermate principali
-│   ├── home_screen.dart   # Schermata principale controllo
+├── main.dart              # App entry point
+├── screens/               # Main screens
+│   ├── home_screen.dart   # Main control screen
 │   └── settings_screen.dart
-├── widgets/               # Widget riutilizzabili
-│   ├── effect_card.dart   # Card per selezione effetti
+├── widgets/               # Reusable widgets
+│   ├── effect_card.dart   # Effect selection cards
 │   └── connection_status.dart
-├── services/              # Servizi di comunicazione
+├── services/              # Communication services
 │   ├── websocket_service.dart
 │   ├── api_service.dart
 │   └── discovery_service.dart
-├── models/                # Modelli dati
+├── models/                # Data models
 │   └── device_info.dart
-├── dialogs/               # Dialog personalizzati
+├── dialogs/               # Custom dialogs
 │   └── ota_dialog.dart
-└── utils/                 # Utility e helpers
+└── utils/                 # Utilities and helpers
 ```
 
-## Configurazione
+## Configuration
 
-### Connessione alla Matrice LED
+### LED Matrix Connection
 
-L'app utilizza mDNS per trovare automaticamente il dispositivo con hostname `led-matrix.local`. Se il discovery automatico non funziona, è possibile inserire manualmente l'indirizzo IP.
+UDP broadcast on port 7890 for automatic device discovery.
 
-### Protocollo Comandi
+**Automatic Discovery:**
+1. App sends UDP broadcast `LEDMATRIX_DISCOVER`
+2. Device responds with `LEDMATRIX_HERE,name,ip,port`
+3. App connects automatically to WebSocket
 
-L'app comunica con l'ESP32 tramite WebSocket usando comandi CSV:
+**Manual Connection:**
+For AP mode or discovery failure:
+1. Connect mobile device to ESP32 AP
+2. Manually enter IP `192.168.4.1` in app
+3. AP password: `ledmatrix123`
+
+### Command Protocol
+
+WebSocket communication using CSV commands:
 
 ```
-# Cambia effetto
+# Change effect
 EFFECT,pong
 
-# Imposta luminosità (0-255)
+# Set brightness (0-255)
 BRIGHTNESS,128
 
-# Mostra testo scrolling
+# Display scrolling text
 TEXT,Hello World
 
-# Ottieni stato
+# Get status
 STATUS
 ```
 
-## Funzionalità Principali
+## Main Features
 
-### Discovery e Connessione
+### Discovery and Connection
 
 ```dart
-// Discovery automatico tramite mDNS
+// Automatic discovery via UDP broadcast
 final service = DiscoveryService();
-final device = await service.findDevice();
+await service.startDiscovery();
 
-// Connessione WebSocket
-await service.connect(device.address);
+// Response: LEDMATRIX_HERE,name,192.168.1.100,80
+final device = service.discoveredDevice;
+
+// WebSocket connection
+await websocketService.connect(device.ip, device.port);
 ```
 
-### Controllo Effetti
+### Effect Control
 
 ```dart
-// Cambia effetto
+// Change effect
 await websocketService.sendCommand('EFFECT,mario_clock');
 
-// Regola luminosità
+// Adjust brightness
 await websocketService.sendCommand('BRIGHTNESS,200');
 
-// Testo personalizzato
+// Custom text
 await websocketService.sendCommand('TEXT,Custom Message');
 ```
 
-### Aggiornamento OTA
+### OTA Update
 
 ```dart
 // Upload firmware
 final file = await FilePicker.platform.pickFiles();
 await apiService.uploadFirmware(file, deviceAddress);
 
-// Verifica aggiornamento
+// Check update status
 await apiService.checkOTAStatus(deviceAddress);
 ```
 
-## Gestione Permessi
+## Permissions
 
-L'app richiede i seguenti permessi:
+Required permissions:
 
 **Android:**
-- Internet (per comunicazione rete)
-- Storage (per selezione file firmware)
-- Network State (per controllo connessione)
+- Internet (network communication)
+- Storage (firmware file selection)
+- Network State (connection monitoring)
 
 **iOS:**
-- Local Network (per mDNS discovery)
-- Storage (per selezione file)
+- Local Network (UDP discovery)
+- Storage (file selection)
 
-## Icone e Branding
+## Icons and Branding
 
-L'app utilizza icone personalizzate configurate in [pubspec.yaml](pubspec.yaml):
-- Icona principale: `assets/icon.png`
+Custom icons configured in [pubspec.yaml](pubspec.yaml):
+- Main icon: `assets/icon.png`
 - Adaptive icon background: `#1a1a2e`
 
-Per rigenerare le icone:
+Regenerate icons:
 ```bash
 flutter pub run flutter_launcher_icons
 ```
 
-## Troubleshooting
-
-### Device non trovato
-1. Verifica che il dispositivo mobile e la matrice LED siano sulla stessa rete WiFi
-2. Controlla che mDNS sia supportato dal router
-3. Prova a connetterti manualmente inserendo l'IP della matrice LED
-
-### WebSocket non si connette
-1. Verifica che la matrice LED sia accesa e connessa
-2. Controlla i log dell'ESP32 per errori
-3. Assicurati che la porta WebSocket (80) non sia bloccata
-
-### OTA fallisce
-1. Verifica che il file firmware sia valido (.bin)
-2. Assicurati che ci sia spazio sufficiente sull'ESP32
-3. Controlla che la connessione sia stabile durante l'upload
-
-### Permessi negati
-1. Vai nelle impostazioni del dispositivo
-2. Trova l'app ClockApp
-3. Abilita i permessi necessari (Storage, Network)
-
-## Build Configurazioni
+## Build Configurations
 
 ### Android
-Configurato per:
 - Min SDK: 21 (Android 5.0)
 - Target SDK: 34 (Android 14)
-- Adaptive icons per diverse versioni Android
+- Adaptive icons for various Android versions
 
 ### iOS
-Configurato per:
 - iOS 12.0+
-- Info.plist con permessi Local Network e Bonjour services
+- Info.plist with Local Network permissions for UDP broadcast
 
 ### macOS
-Configurato per:
 - macOS 10.14+
-- Network entitlements abilitati
+- Network entitlements enabled
 
-## Sviluppo
+## Development
 
 ### Debug
 
 ```bash
-# Run con hot reload
+# Run with hot reload
 flutter run
 
-# Run con logging verboso
+# Run with verbose logging
 flutter run -v
 
-# Profiling performance
+# Performance profiling
 flutter run --profile
 ```
 
 ### Testing
 
 ```bash
-# Run tutti i test
+# Run all tests
 flutter test
 
 # Test coverage
 flutter test --coverage
 ```
 
-## Versioning
+## Version
 
-Versione corrente: **1.1.0+5**
+Current version: **1.1.0+5**
 
-- Major: 1 (versione principale)
-- Minor: 1 (nuove funzionalità)
-- Patch: 0 (bug fix)
-- Build: 5 (numero build interno)
+- Major: 1 (main version)
+- Minor: 1 (new features)
+- Patch: 0 (bug fixes)
+- Build: 5 (internal build number)
 
-## Contribuire
+## License
 
-Per contribuire al progetto:
-1. Fork il repository
-2. Crea un branch per la feature
-3. Commit le modifiche
-4. Push e crea una Pull Request
+Part of Matrix 64x64 LED Display System.
 
-## Licenza
+## Support
 
-Questo progetto è parte del sistema Matrix 64x64 LED Display.
-
-## Supporto
-
-Per problemi o domande, controlla:
-- [README principale del progetto](../../README.md)
-- [README ESP32 Firmware](../../ESPCode/README.md)
-- Issue tracker su GitHub
+For issues or questions, check:
+- [Main project README](../../README.md)
+- [ESP32 Firmware README](../../ESPCode/README.md)
+- GitHub issue tracker

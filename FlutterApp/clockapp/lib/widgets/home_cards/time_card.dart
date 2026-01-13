@@ -8,8 +8,6 @@ class TimeCard extends StatelessWidget {
   final DeviceStatus? status;
   final VoidCallback onSync;
   final VoidCallback onShowPicker;
-  final VoidCallback onSetRTCMode;
-  final VoidCallback onSetFakeMode;
 
   const TimeCard({
     super.key,
@@ -17,8 +15,6 @@ class TimeCard extends StatelessWidget {
     required this.status,
     required this.onSync,
     required this.onShowPicker,
-    required this.onSetRTCMode,
-    required this.onSetFakeMode,
   });
 
   @override
@@ -53,34 +49,6 @@ class TimeCard extends StatelessWidget {
                   icon: Icons.schedule,
                   label: 'Imposta',
                   onTap: onShowPicker,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: ActionButton(
-                  icon: Icons.timer,
-                  label: 'RTC Mode',
-                  color: status?.timeMode.contains('RTC') == true ? Colors.green[400] : null,
-                  onTap: () {
-                    onSetRTCMode();
-                    HapticFeedback.lightImpact();
-                  },
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ActionButton(
-                  icon: Icons.fast_forward,
-                  label: 'Fake Mode',
-                  color: status?.timeMode.contains('FAKE') == true ? Colors.orange[400] : null,
-                  onTap: () {
-                    onSetFakeMode();
-                    HapticFeedback.lightImpact();
-                  },
                 ),
               ),
             ],

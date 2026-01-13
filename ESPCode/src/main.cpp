@@ -79,14 +79,20 @@ String serialBuffer = "";
 void setup() {
     DEBUG_INIT(115200);
     delay(500);
-    
+
     DEBUG_PRINTLN(F(""));
     DEBUG_PRINTLN(F("╔══════════════════════════════════════════════════════╗"));
     DEBUG_PRINTLN(F("║     ESP32 LED Matrix - CSV Protocol Version         ║"));
     DEBUG_PRINTLN(F("║     WiFi + WebSocket + mDNS + Persistent Settings    ║"));
     DEBUG_PRINTLN(F("╚══════════════════════════════════════════════════════╝"));
     DEBUG_PRINTLN(F(""));
-    
+
+    // ─────────────────────────────────────────
+    // 0. OTA Boot Validation (FIRST!)
+    // ─────────────────────────────────────────
+    DEBUG_PRINTLN(F("[Setup] Checking OTA boot status..."));
+    CommandHandler::checkOTABootStatus();
+
     // ─────────────────────────────────────────
     // 1. Settings
     // ─────────────────────────────────────────
@@ -112,10 +118,10 @@ void setup() {
     // 3. Time Manager
     // ─────────────────────────────────────────
     DEBUG_PRINTLN(F("[Setup] Initializing TimeManager..."));
-    timeManager = new TimeManager(false);  // RTC mode
-    timeManager->setTimezone(settings.getTimezone());
+    timeManager = new TimeManager;  // RTC mode
     timeManager->enableNTP(settings.isNTPEnabled());
     timeManager->begin();
+    timeManager->setTimezone(settings.getTimezone());
     DEBUG_PRINTLN(F("[Setup] ✓ TimeManager OK"));
     
     // ─────────────────────────────────────────
@@ -135,29 +141,13 @@ void setup() {
     snakeEffect = new SnakeEffect(displayManager);
     effectManager->addEffect(snakeEffect);
     effectManager->addEffect(new MatrixRainEffect(displayManager));
-    //effectManager->addEffect(new FireEffect(displayManager));
-    //effectManager->addEffect(new StarfieldEffect(displayManager));
-    /*
-    effectManager->addEffect(new ImageEffect(displayManager, 
-        (DrawImageFunction)draw_pokemon, "Pokemon"));
-    
-    effectManager->addEffect(new ImageEffect(displayManager, 
-        (DrawImageFunction)draw_andre, "Andre"));
-    effectManager->addEffect(new ImageEffect(displayManager, 
-        (DrawImageFunction)draw_mario, "Mario"));
-    effectManager->addEffect(new ImageEffect(displayManager, 
-        (DrawImageFunction)draw_luigi, "Luigi"));
-    effectManager->addEffect(new ImageEffect(displayManager, 
-        (DrawImageFunction)draw_fox, "Fox"));
-    */
     
     DEBUG_PRINTF("[Setup] ✓ Loaded %d effects\n", effectManager->getEffectCount());
     
     // Applica impostazioni salvate
-    if (settings.isAutoSwitch()) {
-        effectManager->resume();
-    } else {
-        effectManager->pause();
+    effectManager->setAutoSwitch(settings.isAutoSwitch());
+
+    if (!settings.isAutoSwitch()) {
         DEBUG_PRINTLN(F("[Setup] Setting current effect from settings..."));
         if (settings.getCurrentEffect() >= 0) {
             effectManager->switchToEffect(settings.getCurrentEffect());
@@ -267,17 +257,22 @@ void setup() {
 // ═══════════════════════════════════════════
 void loop() {
     unsigned long now = millis();
-    
+
+    // ─────────────────────────────────────────
+    // OTA Watchdog (controlla timeout durante OTA)
+    // ─────────────────────────────────────────
+    commandHandler.checkOTAWatchdog();
+
     // ─────────────────────────────────────────
     // Time Manager update
     // ─────────────────────────────────────────
     timeManager->update();
-    
+
     // ─────────────────────────────────────────
     // Effect Manager update
     // ─────────────────────────────────────────
     effectManager->update();
-    
+
     // ─────────────────────────────────────────
     // WiFi check
     // ─────────────────────────────────────────

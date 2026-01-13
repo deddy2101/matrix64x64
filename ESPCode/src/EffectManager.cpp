@@ -1,8 +1,10 @@
 #include "EffectManager.h"
 
 EffectManager::EffectManager(DisplayManager* dm, unsigned long duration)
-    : displayManager(dm), effectDuration(duration), 
-      currentEffectIndex(-1), effectStartTime(0), autoSwitch(true) {
+    : displayManager(dm), effectDuration(duration),
+      currentEffectIndex(-1), effectStartTime(0), autoSwitch(true), paused(false) {
+    // Pre-alloca spazio per gli effetti per evitare riallocazioni
+    effects.reserve(10);
 }
 
 EffectManager::~EffectManager() {
@@ -60,10 +62,13 @@ void EffectManager::start() {
 
 void EffectManager::update() {
     if (effects.empty() || currentEffectIndex < 0) return;
-    
+
+    // Se in pausa per OTA, blocca completamente l'esecuzione
+    if (paused) return;
+
     Effect* current = effects[currentEffectIndex];
     if (!current) return;
-    
+
     // Esegui l'effetto corrente
     current->execute();
     
@@ -120,11 +125,15 @@ void EffectManager::setAutoSwitch(bool enabled) {
 }
 
 void EffectManager::pause() {
-    setAutoSwitch(false);
+    // SOLO per OTA: blocca completamente l'esecuzione
+    paused = true;
+    DEBUG_PRINTLN("[EffectManager] PAUSED for OTA - effects stopped");
 }
 
 void EffectManager::resume() {
-    setAutoSwitch(true);
+    // Riprende dopo OTA
+    paused = false;
+    DEBUG_PRINTLN("[EffectManager] RESUMED after OTA - effects restarted");
 }
 
 void EffectManager::switchToEffect(int index) {

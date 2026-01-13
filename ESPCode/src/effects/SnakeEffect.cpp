@@ -20,6 +20,8 @@ SnakeEffect::SnakeEffect(DisplayManager* dm)
       showGrid(true),
       playerJoined(false),
       foodType(FoodType::NORMAL) {
+    // Pre-alloca spazio per snake (lunghezza massima ragionevole)
+    snake.reserve(100);
 }
 
 void SnakeEffect::init() {

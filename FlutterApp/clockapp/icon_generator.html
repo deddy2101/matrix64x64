@@ -66,10 +66,10 @@
         const bgColor = '#000814';
         const ledOnColor = '#00ff41';
         const ledDimColor = '#003311';
-        const marioRed = '#ff0000';
+        const marioRed = '#ff6600';
         const marioSkin = '#ffb380';
         const marioBrown = '#8b4513';
-        const marioBlue = '#0066ff';
+        const marioBlue = '#8b00ff';
 
         // Riempimento sfondo
         ctx.fillStyle = bgColor;
@@ -182,6 +182,14 @@
                 [0,0,0,1],
                 [0,0,0,1]
             ],
+            '6': [
+                [1,1,1,1],
+                [1,1,0,0],
+                [1,1,1,1],
+                [1,1,0,1],
+                [1,1,0,1],
+                [1,1,1,1]
+            ],
             ':': [
                 [0],
                 [1],
@@ -192,10 +200,10 @@
             ]
         };
 
-        // Disegna "12:34" nella parte bassa
+        // Disegna "16:21" nella parte bassa
         const timeY = 40;
         let timeX = 12;
-        const timeString = '12:34';
+        const timeString = '16:21';
         const digitSpacing = 1;
 
         for (let char of timeString) {
