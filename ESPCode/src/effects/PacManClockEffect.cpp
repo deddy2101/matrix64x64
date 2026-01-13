@@ -217,6 +217,7 @@ void PacManClockEffect::drawClock() {
 
     // Data in piccolo (Picopixel font)
     displayManager->setFont(&Picopixel);
+    displayManager->setTextSize(1);
 
     uint8_t tr = (PACMAN_TEXT_COLOR >> 11) << 3;
     uint8_t tg = ((PACMAN_TEXT_COLOR >> 5) & 0x3F) << 2;
@@ -228,21 +229,35 @@ void PacManClockEffect::drawClock() {
     const char* months[] = {"GEN", "FEB", "MAR", "APR", "MAG", "GIU",
                             "LUG", "AGO", "SET", "OTT", "NOV", "DIC"};
 
-    displayManager->setCursor(15, 41);
     int month = timeManager->getMonth();
     int day = timeManager->getDay();
     int weekday = timeManager->getWeekday();
 
+    int16_t cursorX = 14;
+    int16_t cursorY = 41;
+
+    // Stampa mese
+    displayManager->setCursor(cursorX, cursorY);
     if (month >= 1 && month <= 12) {
         displayManager->print(months[month - 1]);
+        int16_t x1, y1;
+        uint16_t w, h;
+        displayManager->getDisplay()->getTextBounds(months[month - 1], cursorX, cursorY, &x1, &y1, &w, &h);
+        cursorX += w + 2;  // 2px di spazio
     }
-    displayManager->print(" ");
 
+    // Stampa giorno
+    displayManager->setCursor(cursorX, cursorY);
     char dayStr[3];
     sprintf(dayStr, "%d", day);
     displayManager->print(dayStr);
+    int16_t x1, y1;
+    uint16_t w, h;
+    displayManager->getDisplay()->getTextBounds(dayStr, cursorX, cursorY, &x1, &y1, &w, &h);
+    cursorX += w + 2;  // 2px di spazio
 
-    displayManager->print(" ");
+    // Stampa giorno settimana
+    displayManager->setCursor(cursorX, cursorY);
     if (weekday >= 0 && weekday <= 6) {
         displayManager->print(weekDays[weekday]);
     }

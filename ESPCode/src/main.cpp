@@ -154,10 +154,9 @@ void setup() {
     DEBUG_PRINTF("[Setup] ✓ Loaded %d effects\n", effectManager->getEffectCount());
     
     // Applica impostazioni salvate
-    if (settings.isAutoSwitch()) {
-        effectManager->resume();
-    } else {
-        effectManager->pause();
+    effectManager->setAutoSwitch(settings.isAutoSwitch());
+
+    if (!settings.isAutoSwitch()) {
         DEBUG_PRINTLN(F("[Setup] Setting current effect from settings..."));
         if (settings.getCurrentEffect() >= 0) {
             effectManager->switchToEffect(settings.getCurrentEffect());

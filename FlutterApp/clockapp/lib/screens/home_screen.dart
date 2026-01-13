@@ -1215,6 +1215,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       currentVersion: _currentFirmwareVersion,
       manifest: _firmwareManifest,
       onLog: _addLog,
+      onRefreshManifest: _loadFirmwareManifest,
     );
   }
 

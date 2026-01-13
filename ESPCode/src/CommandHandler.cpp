@@ -506,6 +506,7 @@ String CommandHandler::handleEffect(const std::vector<String>& parts) {
             _effectManager->switchToEffect(index);
             if (_settings) {
                 _settings->setCurrentEffect(index);
+                _settings->save();  // Salva immediatamente per renderlo permanente
             }
             if (_wsManager) {
                 _wsManager->notifyEffectChange();

@@ -1,7 +1,7 @@
 #include "EffectManager.h"
 
 EffectManager::EffectManager(DisplayManager* dm, unsigned long duration)
-    : displayManager(dm), effectDuration(duration), 
+    : displayManager(dm), effectDuration(duration),
       currentEffectIndex(-1), effectStartTime(0), autoSwitch(true) {
 }
 
@@ -60,10 +60,10 @@ void EffectManager::start() {
 
 void EffectManager::update() {
     if (effects.empty() || currentEffectIndex < 0) return;
-    
+
     Effect* current = effects[currentEffectIndex];
     if (!current) return;
-    
+
     // Esegui l'effetto corrente
     current->execute();
     
