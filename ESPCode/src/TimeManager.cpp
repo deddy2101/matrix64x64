@@ -17,7 +17,13 @@ TimeManager::TimeManager()
       lastNtpSync(0),
       ntpSyncInterval(3600000),  // 1 ora in ms
       mode(TimeMode::RTC) {
-    // I vettori si inizializzano automaticamente vuoti
+    // Pre-alloca spazio per i callback per evitare riallocazioni
+    onSecondChangeCallbacks.reserve(5);
+    onMinuteChangeCallbacks.reserve(5);
+    onHourChangeCallbacks.reserve(5);
+
+    // Timezone di default (Italia)
+    strcpy(currentTimezone, "CET-1CEST,M3.5.0,M10.5.0/3");
 }
 
 bool TimeManager::initDS3231() {
@@ -119,9 +125,10 @@ bool TimeManager::syncFromNTP() {
     }
 
     DEBUG_PRINTLN(F("[TimeManager] Starting NTP sync..."));
+    DEBUG_PRINTF("[TimeManager] Using timezone: %s\n", currentTimezone);
 
-    // Configura NTP con timezone Italia
-    configTzTime("CET-1CEST,M3.5.0,M10.5.0/3", NTP_SERVER1, NTP_SERVER2, NTP_SERVER3);
+    // ✅ Configura NTP con timezone corrente (non più hardcoded!)
+    configTzTime(currentTimezone, NTP_SERVER1, NTP_SERVER2, NTP_SERVER3);
 
     // Attendi sincronizzazione (max 10 secondi)
     struct tm timeinfo;
@@ -184,17 +191,23 @@ void TimeManager::forceNTPSync() {
 
 void TimeManager::setTimezone(const char* tz) {
     if (tz && strlen(tz) > 0) {
-        setenv("TZ", tz, 1);
+        // ✅ Salva il timezone nel membro per uso futuro (NTP sync)
+        strncpy(currentTimezone, tz, sizeof(currentTimezone) - 1);
+        currentTimezone[sizeof(currentTimezone) - 1] = '\0';
+
+        // Imposta il timezone nel sistema
+        setenv("TZ", currentTimezone, 1);
         tzset();
-        DEBUG_PRINTF("[TimeManager] Timezone set to: %s\n", tz);
+        DEBUG_PRINTF("[TimeManager] Timezone set to: %s\n", currentTimezone);
     }
 }
 
 void TimeManager::begin(int hour, int minute, int second) {
-    // Configura timezone Italia PRIMA di tutto (default, verrà sovrascritto se configurato)
-    setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
+    // ✅ Configura timezone dal membro (impostato nel costruttore o via setTimezone)
+    setenv("TZ", currentTimezone, 1);
     tzset();
-    
+    DEBUG_PRINTF("[TimeManager] Initialized with timezone: %s\n", currentTimezone);
+
     // Prova a inizializzare il DS3231
     ds3231Available = initDS3231();
     
@@ -360,6 +373,47 @@ void TimeManager::readRtcTime() {
 }
 
 
+int TimeManager::addOnSecondChange(TimeCallback callback) {
+    int id = nextCallbackId++;
+    onSecondChangeCallbacks.emplace_back(id, std::move(callback));
+    return id;
+}
+
+int TimeManager::addOnMinuteChange(TimeCallback callback) {
+    int id = nextCallbackId++;
+    onMinuteChangeCallbacks.emplace_back(id, std::move(callback));
+    return id;
+}
+
+int TimeManager::addOnHourChange(TimeCallback callback) {
+    int id = nextCallbackId++;
+    onHourChangeCallbacks.emplace_back(id, std::move(callback));
+    return id;
+}
+
+void TimeManager::removeCallback(int id) {
+    // rimuovi da onSecondChangeCallbacks
+    onSecondChangeCallbacks.erase(
+        std::remove_if(onSecondChangeCallbacks.begin(), onSecondChangeCallbacks.end(),
+            [id](const std::pair<int, TimeCallback>& p){ return p.first == id; }),
+        onSecondChangeCallbacks.end()
+    );
+
+    // rimuovi da onMinuteChangeCallbacks
+    onMinuteChangeCallbacks.erase(
+        std::remove_if(onMinuteChangeCallbacks.begin(), onMinuteChangeCallbacks.end(),
+            [id](const std::pair<int, TimeCallback>& p){ return p.first == id; }),
+        onMinuteChangeCallbacks.end()
+    );
+
+    // rimuovi da onHourChangeCallbacks
+    onHourChangeCallbacks.erase(
+        std::remove_if(onHourChangeCallbacks.begin(), onHourChangeCallbacks.end(),
+            [id](const std::pair<int, TimeCallback>& p){ return p.first == id; }),
+        onHourChangeCallbacks.end()
+    );
+}
+
 // ✅ METODO UPDATE AGGIORNATO PER CHIAMARE TUTTI I CALLBACK
 void TimeManager::update() {
     // Check NTP sync (all'avvio e ogni ora)
@@ -371,8 +425,8 @@ void TimeManager::update() {
     // Callback per secondi
     if (currentSecond != lastSecond) {
         lastSecond = currentSecond;
-        for (auto& callback : onSecondChangeCallbacks) {
-            if (callback) callback(currentHour, currentMinute, currentSecond);
+        for (auto& p : onSecondChangeCallbacks) {
+            if (p.second) p.second(currentHour, currentMinute, currentSecond);
         }
     }
 
@@ -381,18 +435,18 @@ void TimeManager::update() {
         lastMinute = currentMinute;
 
         DEBUG_PRINTF("[TimeManager] ⚡ Minute changed: %02d:%02d -> calling %d callbacks\n",
-                     currentHour, currentMinute, onMinuteChangeCallbacks.size());
+                     currentHour, currentMinute, (int)onMinuteChangeCallbacks.size());
 
-        for (auto& callback : onMinuteChangeCallbacks) {
-            if (callback) callback(currentHour, currentMinute, currentSecond);
+        for (auto& p : onMinuteChangeCallbacks) {
+            if (p.second) p.second(currentHour, currentMinute, currentSecond);
         }
     }
 
     // Callback per ore
     if (currentHour != lastHour) {
         lastHour = currentHour;
-        for (auto& callback : onHourChangeCallbacks) {
-            if (callback) callback(currentHour, currentMinute, currentSecond);
+        for (auto& p : onHourChangeCallbacks) {
+            if (p.second) p.second(currentHour, currentMinute, currentSecond);
         }
     }
 }

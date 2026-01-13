@@ -3,6 +3,8 @@
 EffectManager::EffectManager(DisplayManager* dm, unsigned long duration)
     : displayManager(dm), effectDuration(duration),
       currentEffectIndex(-1), effectStartTime(0), autoSwitch(true), paused(false) {
+    // Pre-alloca spazio per gli effetti per evitare riallocazioni
+    effects.reserve(10);
 }
 
 EffectManager::~EffectManager() {

@@ -61,6 +61,8 @@ private:
     // Ora corrente (cache locale)
     int lastHour;
     int lastMinute;
+    int minuteCallbackId;
+    int hourCallbackId;
     
     // Timer
     unsigned long lastMarioUpdate;

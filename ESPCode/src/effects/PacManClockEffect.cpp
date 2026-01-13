@@ -13,7 +13,8 @@ PacManClockEffect::PacManClockEffect(DisplayManager* dm, TimeManager* tm)
       lastClockUpdate(0),
       lastSecondBlink(0),
       showSeconds(true),
-      needsRedraw(true)
+      needsRedraw(true),
+      _callbackID(-1)
 {
 }
 
@@ -54,8 +55,11 @@ void PacManClockEffect::init() {
     randomSeed(millis() + timeManager->getSecond());
 
     lastPacmanUpdate = millis();
-    lastClockUpdate = millis();
-    lastSecondBlink = millis();
+    //lastClockUpdate = millis();
+    //lastSecondBlink = millis();
+    _callbackID = timeManager->addOnMinuteChange([this](int /*hour*/, int /*minute*/, int /*second*/){
+        this->drawClock();
+    });
     showSeconds = true;
     needsRedraw = true;
 
@@ -63,6 +67,7 @@ void PacManClockEffect::init() {
 }
 
 void PacManClockEffect::cleanup() {
+    timeManager->removeCallback(_callbackID);
     DEBUG_PRINTLN("[PacManClockEffect] Cleanup");
 }
 
@@ -98,11 +103,11 @@ void PacManClockEffect::update() {
         lastSecondBlink = now;
     }
 
-    // Aggiorna orologio ogni minuto
-    if (now - lastClockUpdate >= 60000) {
-        drawClock();
-        lastClockUpdate = now;
-    }
+    // // Aggiorna orologio ogni minuto
+    // if (now - lastClockUpdate >= 60000) {
+    //     drawClock();
+    //     lastClockUpdate = now;
+    // }
 
     // Aggiorna Pacman ogni 75ms
     if (now - lastPacmanUpdate >= 75) {

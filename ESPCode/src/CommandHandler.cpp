@@ -4,6 +4,8 @@
 #include "effects/ScrollTextEffect.h"
 #include "effects/PongEffect.h"
 #include "effects/SnakeEffect.h"
+#include <esp_ota_ops.h>
+#include <Preferences.h>
 
 CommandHandler::CommandHandler()
     : _timeManager(nullptr)
@@ -21,6 +23,8 @@ CommandHandler::CommandHandler()
     , _otaWritten(0)
     , _otaExpectedChunk(0)
     , _otaExpectedMD5("")
+    , _otaStartTime(0)
+    , _otaLastActivity(0)
 {}
 
 void CommandHandler::init(TimeManager* time, EffectManager* effects, DisplayManager* display, Settings* settings, WiFiManager* wifi, ImageManager* imgMgr) {
@@ -49,22 +53,137 @@ void CommandHandler::setSnakeEffect(SnakeEffect* snake) {
 }
 
 // ═══════════════════════════════════════════
+// OTA Watchdog - Boot Status Check
+// ═══════════════════════════════════════════
+
+void CommandHandler::checkOTABootStatus() {
+    Preferences prefs;
+    prefs.begin("ota", false);
+
+    bool otaPending = prefs.getBool("pending", false);
+    unsigned long otaTimestamp = prefs.getULong("timestamp", 0);
+
+    if (otaPending) {
+        DEBUG_PRINTLN(F(""));
+        DEBUG_PRINTLN(F("╔════════════════════════════════════════════════════╗"));
+        DEBUG_PRINTLN(F("║       OTA UPDATE DETECTED - Boot Validation        ║"));
+        DEBUG_PRINTLN(F("╚════════════════════════════════════════════════════╝"));
+
+        // Verifica che il boot sia riuscito entro timeout ragionevole
+        const esp_partition_t* running = esp_ota_get_running_partition();
+        esp_ota_img_states_t ota_state;
+
+        if (esp_ota_get_state_partition(running, &ota_state) == ESP_OK) {
+            DEBUG_PRINTF("[OTA] Current partition state: %d\n", ota_state);
+
+            if (ota_state == ESP_OTA_IMG_PENDING_VERIFY) {
+                // Nuova immagine caricata ma non ancora validata
+                DEBUG_PRINTLN(F("[OTA] ✓ New firmware booted successfully!"));
+                DEBUG_PRINTLN(F("[OTA] Validating new firmware..."));
+
+                // Marca questa versione come valida (impedisce rollback)
+                esp_err_t err = esp_ota_mark_app_valid_cancel_rollback();
+                if (err == ESP_OK) {
+                    DEBUG_PRINTLN(F("[OTA] ✓ Firmware validated - rollback disabled"));
+                    prefs.putBool("pending", false);
+                    prefs.putBool("validated", true);
+                    prefs.putULong("validatedAt", millis());
+                } else {
+                    DEBUG_PRINTF("[OTA] ✗ Failed to validate firmware: %d\n", err);
+                }
+            } else if (ota_state == ESP_OTA_IMG_VALID) {
+                DEBUG_PRINTLN(F("[OTA] Firmware already validated"));
+                prefs.putBool("pending", false);
+            } else if (ota_state == ESP_OTA_IMG_INVALID) {
+                DEBUG_PRINTLN(F("[OTA] ✗ WARNING: Firmware marked as invalid!"));
+            }
+        }
+
+        DEBUG_PRINTF("[OTA] Boot time: %lu ms\n", millis());
+        DEBUG_PRINTLN(F(""));
+    } else {
+        // Boot normale, verifica comunque lo stato
+        const esp_partition_t* running = esp_ota_get_running_partition();
+        DEBUG_PRINTF("[OTA] Running partition: %s (offset: 0x%lx)\n",
+                    running->label, running->address);
+    }
+
+    prefs.end();
+}
+
+// ═══════════════════════════════════════════
+// OTA Watchdog - Timeout Monitor
+// ═══════════════════════════════════════════
+
+void CommandHandler::checkOTAWatchdog() {
+    if (!_otaInProgress) return;
+
+    unsigned long now = millis();
+
+    // Check timeout totale OTA
+    if (now - _otaStartTime > OTA_TIMEOUT_MS) {
+        DEBUG_PRINTLN(F("[OTA] ✗ TIMEOUT: OTA exceeded maximum time (5 minutes)"));
+        DEBUG_PRINTLN(F("[OTA] Aborting update..."));
+
+        Update.abort();
+        _otaInProgress = false;
+
+        if (_effectManager) {
+            _effectManager->resume();
+        }
+
+        if (_displayManager) {
+            _displayManager->fillScreen(255, 0, 0);  // Schermo rosso
+            delay(2000);
+        }
+
+        DEBUG_PRINTLN(F("[OTA] System will reboot in 3 seconds..."));
+        delay(3000);
+        ESP.restart();
+    }
+
+    // Check timeout tra chunk
+    if (now - _otaLastActivity > OTA_CHUNK_TIMEOUT_MS) {
+        DEBUG_PRINTLN(F("[OTA] ✗ TIMEOUT: No activity for 30 seconds"));
+        DEBUG_PRINTF("[OTA] Last chunk: %d, written: %d/%d bytes\n",
+                     _otaExpectedChunk, _otaWritten, _otaSize);
+
+        Update.abort();
+        _otaInProgress = false;
+
+        if (_effectManager) {
+            _effectManager->resume();
+        }
+
+        if (_displayManager) {
+            _displayManager->fillScreen(255, 128, 0);  // Schermo arancione
+            delay(2000);
+        }
+
+        DEBUG_PRINTLN(F("[OTA] Resuming normal operation"));
+    }
+}
+
+// ═══════════════════════════════════════════
 // Parser Helper
 // ═══════════════════════════════════════════
 
-std::vector<String> CommandHandler::splitCommand(const String& cmd, char delimiter) {
-    std::vector<String> parts;
+ParsedCommand CommandHandler::splitCommand(const String& cmd, char delimiter) {
+    ParsedCommand result;
     int start = 0;
     int end = cmd.indexOf(delimiter);
-    
-    while (end != -1) {
-        parts.push_back(cmd.substring(start, end));
+
+    while (end != -1 && result.count < MAX_CMD_PARTS) {
+        result.parts[result.count++] = cmd.substring(start, end);
         start = end + 1;
         end = cmd.indexOf(delimiter, start);
     }
-    parts.push_back(cmd.substring(start));
-    
-    return parts;
+
+    if (result.count < MAX_CMD_PARTS) {
+        result.parts[result.count++] = cmd.substring(start);
+    }
+
+    return result;
 }
 
 // ═══════════════════════════════════════════
@@ -74,14 +193,14 @@ std::vector<String> CommandHandler::splitCommand(const String& cmd, char delimit
 String CommandHandler::processCommand(const String& command) {
     String cmd = command;
     cmd.trim();
-    
+
     if (cmd.isEmpty()) {
         return "ERR,empty command";
     }
-    
+
     DEBUG_PRINTF("[CMD] Processing: %s\n", cmd.c_str());
-    
-    std::vector<String> parts = splitCommand(cmd, ',');
+
+    ParsedCommand parts = splitCommand(cmd, ',');
     String mainCmd = parts[0];
     mainCmd.toLowerCase();
     
@@ -396,7 +515,7 @@ String CommandHandler::getTimeChangeNotification() {
 // Command Handlers
 // ═══════════════════════════════════════════
 
-String CommandHandler::handleSetTime(const std::vector<String>& parts) {
+String CommandHandler::handleSetTime(const ParsedCommand& parts) {
     if (parts.size() < 4) {
         return "ERR,settime needs HH,MM,SS";
     }
@@ -420,7 +539,7 @@ String CommandHandler::handleSetTime(const std::vector<String>& parts) {
     return "ERR,time manager not available";
 }
 
-String CommandHandler::handleSetDateTime(const std::vector<String>& parts) {
+String CommandHandler::handleSetDateTime(const ParsedCommand& parts) {
     if (parts.size() < 7) {
         return "ERR,setdatetime needs YYYY,MM,DD,HH,MM,SS";
     }
@@ -464,7 +583,7 @@ String CommandHandler::handleSetDateTime(const std::vector<String>& parts) {
 //     return "ERR,invalid mode (use rtc or fake)";
 // }
 
-String CommandHandler::handleEffect(const std::vector<String>& parts) {
+String CommandHandler::handleEffect(const ParsedCommand& parts) {
     if (parts.size() < 2) {
         return "ERR,effect needs parameter";
     }
@@ -531,7 +650,7 @@ String CommandHandler::handleEffect(const std::vector<String>& parts) {
     return "ERR,invalid effect action";
 }
 
-String CommandHandler::handleBrightness(const std::vector<String>& parts) {
+String CommandHandler::handleBrightness(const ParsedCommand& parts) {
     if (parts.size() < 2) {
         return "ERR,brightness needs value";
     }
@@ -575,7 +694,7 @@ String CommandHandler::handleBrightness(const std::vector<String>& parts) {
     return "ERR,invalid brightness command";
 }
 
-String CommandHandler::handleNightTime(const std::vector<String>& parts) {
+String CommandHandler::handleNightTime(const ParsedCommand& parts) {
     if (parts.size() < 3) {
         return "ERR,nighttime needs START,END";
     }
@@ -596,7 +715,7 @@ String CommandHandler::handleNightTime(const std::vector<String>& parts) {
     return "ERR,settings not available";
 }
 
-String CommandHandler::handleDuration(const std::vector<String>& parts) {
+String CommandHandler::handleDuration(const ParsedCommand& parts) {
     if (parts.size() < 2) {
         return "ERR,duration needs MS";
     }
@@ -617,7 +736,7 @@ String CommandHandler::handleDuration(const std::vector<String>& parts) {
     return "OK,duration " + String(ms);
 }
 
-String CommandHandler::handleAutoSwitch(const std::vector<String>& parts) {
+String CommandHandler::handleAutoSwitch(const ParsedCommand& parts) {
     if (parts.size() < 2) {
         return "ERR,autoswitch needs 0|1";
     }
@@ -634,7 +753,7 @@ String CommandHandler::handleAutoSwitch(const std::vector<String>& parts) {
     return enabled ? "OK,autoswitch on" : "OK,autoswitch off";
 }
 
-String CommandHandler::handleWiFi(const std::vector<String>& parts) {
+String CommandHandler::handleWiFi(const ParsedCommand& parts) {
     if (parts.size() < 4) {
         return "ERR,wifi needs SSID,PASSWORD,AP_MODE";
     }
@@ -660,7 +779,7 @@ String CommandHandler::handleWiFi(const std::vector<String>& parts) {
     return "OK,wifi configured (restart to apply)";
 }
 
-String CommandHandler::handleDeviceName(const std::vector<String>& parts) {
+String CommandHandler::handleDeviceName(const ParsedCommand& parts) {
     if (parts.size() < 2) {
         return "ERR,devicename needs NAME";
     }
@@ -675,7 +794,7 @@ String CommandHandler::handleDeviceName(const std::vector<String>& parts) {
     return "ERR,settings not available";
 }
 
-String CommandHandler::handleScrollText(const std::vector<String>& parts) {
+String CommandHandler::handleScrollText(const ParsedCommand& parts) {
     if (parts.size() < 2) {
         return "ERR,scrolltext needs TEXT";
     }
@@ -700,7 +819,7 @@ String CommandHandler::handleScrollText(const std::vector<String>& parts) {
     return "OK,scrolltext set";
 }
 
-String CommandHandler::handlePong(const std::vector<String>& parts) {
+String CommandHandler::handlePong(const ParsedCommand& parts) {
     if (!_pongEffect) {
         return "ERR,pong effect not available";
     }
@@ -828,7 +947,7 @@ String CommandHandler::handlePong(const std::vector<String>& parts) {
     return "ERR,unknown pong subcommand: " + subCmd;
 }
 
-String CommandHandler::handleSnake(const std::vector<String>& parts) {
+String CommandHandler::handleSnake(const ParsedCommand& parts) {
     if (!_snakeEffect) {
         return "ERR,snake effect not available";
     }
@@ -915,7 +1034,7 @@ String CommandHandler::handleSnake(const std::vector<String>& parts) {
     return "ERR,unknown snake subcommand: " + subCmd;
 }
 
-String CommandHandler::handleNTP(const std::vector<String>& parts) {
+String CommandHandler::handleNTP(const ParsedCommand& parts) {
     if (parts.size() < 2) {
         return "ERR,ntp needs subcommand (enable/disable/sync)";
     }
@@ -954,7 +1073,7 @@ String CommandHandler::handleNTP(const std::vector<String>& parts) {
     return "ERR,unknown ntp subcommand: " + subCmd;
 }
 
-String CommandHandler::handleTimezone(const std::vector<String>& parts) {
+String CommandHandler::handleTimezone(const ParsedCommand& parts) {
     if (parts.size() < 2) {
         return "ERR,timezone needs TZ_STRING";
     }
@@ -1082,7 +1201,7 @@ size_t CommandHandler::base64Decode(const String& input, uint8_t* output, size_t
 // OTA Update Handler with ACK protocol
 // ═══════════════════════════════════════════
 
-String CommandHandler::handleOTA(const std::vector<String>& parts) {
+String CommandHandler::handleOTA(const ParsedCommand& parts) {
     if (parts.size() < 2) {
         return "ERR,OTA requires subcommand";
     }
@@ -1108,6 +1227,10 @@ String CommandHandler::handleOTA(const std::vector<String>& parts) {
             _effectManager->pause();
         }
 
+        if (_timeManager) {
+            _timeManager->clearAllCallbacks();
+        }
+
         // Inizializza Update con UPDATE_SIZE_UNKNOWN per ESP32
         if (!Update.begin(_otaSize, U_FLASH)) {
             DEBUG_PRINTF("[OTA] Update.begin() failed! Error: %d\n", Update.getError());
@@ -1120,11 +1243,15 @@ String CommandHandler::handleOTA(const std::vector<String>& parts) {
         _otaInProgress = true;
         _otaWritten = 0;
         _otaExpectedChunk = 0;
+        _otaStartTime = millis();       // ✅ Avvia timer watchdog
+        _otaLastActivity = millis();    // ✅ Ultima attività
 
         // Mostra "OTA" sul display
         if (_displayManager) {
             _displayManager->showOTAProgress(0);
         }
+
+        DEBUG_PRINTLN(F("[OTA] ✓ Watchdog started (5min timeout, 30s chunk timeout)"));
 
         return "OTA_READY";
     }
@@ -1180,10 +1307,12 @@ String CommandHandler::handleOTA(const std::vector<String>& parts) {
 
         _otaWritten += written;
         _otaExpectedChunk++;
+        _otaLastActivity = millis();  // ✅ Aggiorna timestamp ultima attività
         int percent = (_otaWritten * 100) / _otaSize;
 
-        // Aggiorna display ogni 5%
-        if (_displayManager && percent % 5 == 0) {
+        // ✅ Aggiorna display ad OGNI chunk per mantenere visibile il progresso
+        // Questo evita che gli effetti ridisegnino sopra durante l'OTA
+        if (_displayManager) {
             _displayManager->showOTAProgress(percent);
         }
 
@@ -1235,12 +1364,23 @@ String CommandHandler::handleOTA(const std::vector<String>& parts) {
 
         _otaInProgress = false;
 
+        // ✅ Salva stato OTA in Preferences per validazione post-boot
+        Preferences prefs;
+        prefs.begin("ota", false);
+        prefs.putBool("pending", true);
+        prefs.putULong("timestamp", millis());
+        prefs.end();
+
+        DEBUG_PRINTLN(F("[OTA] ✓ OTA state saved - boot validation will be required"));
+
         // Mostra successo sul display
         if (_displayManager) {
             _displayManager->showOTASuccess();
         }
 
-        DEBUG_PRINTLN("[OTA] Update SUCCESS! Rebooting in 3 seconds...");
+        DEBUG_PRINTLN(F("[OTA] ✓ Update SUCCESS! Rebooting in 3 seconds..."));
+        DEBUG_PRINTLN(F("[OTA] Next boot will validate the new firmware"));
+        DEBUG_PRINTLN(F("[OTA] If boot fails, automatic rollback will occur"));
 
         // Riavvia dopo 3 secondi
         delay(3000);
@@ -1271,7 +1411,7 @@ String CommandHandler::handleOTA(const std::vector<String>& parts) {
 // Image Upload/Management Handler
 // ═══════════════════════════════════════════
 
-String CommandHandler::handleImage(const std::vector<String>& parts) {
+String CommandHandler::handleImage(const ParsedCommand& parts) {
     if (!_imageManager) {
         return "ERR,Image manager not available";
     }

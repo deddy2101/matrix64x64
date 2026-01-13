@@ -47,10 +47,10 @@ private:
     // Timer per aggiornamento
     unsigned long lastUpdate;
     
-    // ✅ Callbacks per notifiche - ORA SUPPORTA MULTIPLI CALLBACKS!
-    std::vector<TimeCallback> onSecondChangeCallbacks;
-    std::vector<TimeCallback> onMinuteChangeCallbacks;
-    std::vector<TimeCallback> onHourChangeCallbacks;
+    std::vector<std::pair<int, TimeCallback>> onSecondChangeCallbacks;
+    std::vector<std::pair<int, TimeCallback>> onMinuteChangeCallbacks;
+    std::vector<std::pair<int, TimeCallback>> onHourChangeCallbacks;
+    int nextCallbackId = 1;  // ID progressivo per callbacks
     
     // Modalità
     TimeMode mode;
@@ -76,7 +76,8 @@ private:
     bool syncFromNTP();
     void checkNtpSync();
 
-    // Timezone - converte UTC a ora locale (Italia)
+    // Timezone
+    char currentTimezone[48];  // Timezone string corrente (es: "CET-1CEST,M3.5.0,M10.5.0/3")
     void applyTimezone(struct tm* timeinfo);
     time_t getLocalEpoch(time_t utcEpoch);
     
@@ -127,45 +128,35 @@ public:
     void setNTPSyncInterval(unsigned long intervalMs) { ntpSyncInterval = intervalMs; }
     
     // ✅ Callbacks (pattern Observer) - NUOVI METODI CON SUPPORTO MULTIPLO
-    void addOnSecondChange(TimeCallback callback) { 
-        if (callback) {
-            onSecondChangeCallbacks.push_back(callback);
-            DEBUG_PRINTF("[TimeManager] Callback registered (total: %d)\n", 
-                         onSecondChangeCallbacks.size());
-        }
-    }
+    // void addOnSecondChange(TimeCallback callback) { 
+    //     if (callback) {
+    //         onSecondChangeCallbacks.push_back(callback);
+    //         DEBUG_PRINTF("[TimeManager] Callback registered (total: %d)\n", 
+    //                      onSecondChangeCallbacks.size());
+    //     }
+    // }
     
-    void addOnMinuteChange(TimeCallback callback) { 
-        if (callback) {
-            onMinuteChangeCallbacks.push_back(callback);
-            DEBUG_PRINTF("[TimeManager] Minute callback registered (total: %d)\n", 
-                         onMinuteChangeCallbacks.size());
-        }
-    }
+    // void addOnMinuteChange(TimeCallback callback) { 
+    //     if (callback) {
+    //         onMinuteChangeCallbacks.push_back(callback);
+    //         DEBUG_PRINTF("[TimeManager] Minute callback registered (total: %d)\n", 
+    //                      onMinuteChangeCallbacks.size());
+    //     }
+    // }
     
-    void addOnHourChange(TimeCallback callback) { 
-        if (callback) {
-            onHourChangeCallbacks.push_back(callback);
-            DEBUG_PRINTF("[TimeManager] Hour callback registered (total: %d)\n", 
-                         onHourChangeCallbacks.size());
-        }
-    }
+    // void addOnHourChange(TimeCallback callback) { 
+    //     if (callback) {
+    //         onHourChangeCallbacks.push_back(callback);
+    //         DEBUG_PRINTF("[TimeManager] Hour callback registered (total: %d)\n", 
+    //                      onHourChangeCallbacks.size());
+    //     }
+    // }
+
+    int addOnSecondChange(TimeCallback callback);
+    int addOnMinuteChange(TimeCallback callback);
+    int addOnHourChange(TimeCallback callback);
     
-    // ✅ Metodi legacy per compatibilità (sovrascrivono tutti i callbacks)
-    void setOnSecondChange(TimeCallback callback) { 
-        onSecondChangeCallbacks.clear();
-        if (callback) onSecondChangeCallbacks.push_back(callback);
-    }
-    
-    void setOnMinuteChange(TimeCallback callback) { 
-        onMinuteChangeCallbacks.clear();
-        if (callback) onMinuteChangeCallbacks.push_back(callback);
-    }
-    
-    void setOnHourChange(TimeCallback callback) { 
-        onHourChangeCallbacks.clear();
-        if (callback) onHourChangeCallbacks.push_back(callback);
-    }
+    void removeCallback(int callbackId);
     
     // Rimuovi tutti i callbacks
     void clearAllCallbacks() {

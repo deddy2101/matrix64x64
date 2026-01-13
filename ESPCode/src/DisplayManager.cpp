@@ -97,6 +97,9 @@ void DisplayManager::showOTAProgress(int percent) {
 
     display->clearScreen();
 
+    // ✅ Reset font al default (importante se un effetto ha impostato font custom)
+    display->setFont(nullptr);
+
     // Titolo "OTA"
     display->setTextSize(2);
     display->setTextColor(color565(255, 165, 0)); // Arancione
@@ -142,6 +145,9 @@ void DisplayManager::showOTASuccess() {
     if (!display) return;
 
     display->clearScreen();
+
+    // ✅ Reset font al default
+    display->setFont(nullptr);
 
     // Checkmark grande e centrato (16x16 circa)
     // Centro: x=32, y=20

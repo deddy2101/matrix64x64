@@ -2,7 +2,6 @@
 #define COMMAND_HANDLER_H
 
 #include <Arduino.h>
-#include <vector>
 #include <Update.h>
 #include "TimeManager.h"
 #include "EffectManager.h"
@@ -11,6 +10,28 @@
 #include "WiFiManager.h"
 #include "ImageManager.h"
 #include "Debug.h"
+
+// Struttura per parsing comandi senza allocazioni dinamiche
+#define MAX_CMD_PARTS 10
+struct ParsedCommand {
+    String parts[MAX_CMD_PARTS];
+    int count;
+
+    ParsedCommand() : count(0) {}
+
+    // Operator[] per compatibilità con vector
+    String& operator[](int index) {
+        return parts[index];
+    }
+
+    const String& operator[](int index) const {
+        return parts[index];
+    }
+
+    int size() const {
+        return count;
+    }
+};
 
 
 // Forward declaration
@@ -128,6 +149,10 @@ public:
     void updateBrightness();
     void processSerial(const String& cmd);
 
+    // OTA Watchdog
+    void checkOTAWatchdog();              // Chiamare nel loop per monitorare timeout
+    static void checkOTABootStatus();     // Chiamare nel setup per verificare boot dopo OTA
+
 private:
     TimeManager* _timeManager;
     EffectManager* _effectManager;
@@ -141,28 +166,28 @@ private:
     SnakeEffect* _snakeEffect;
     
     // Parser helper
-    std::vector<String> splitCommand(const String& cmd, char delimiter = ',');
-    
+    ParsedCommand splitCommand(const String& cmd, char delimiter = ',');
+
     // Handler specifici
-    String handleSetTime(const std::vector<String>& parts);
-    String handleSetDateTime(const std::vector<String>& parts);
-    // String handleSetMode(const std::vector<String>& parts);
-    String handleEffect(const std::vector<String>& parts);
-    String handleBrightness(const std::vector<String>& parts);
-    String handleNightTime(const std::vector<String>& parts);
-    String handleDuration(const std::vector<String>& parts);
-    String handleAutoSwitch(const std::vector<String>& parts);
-    String handleWiFi(const std::vector<String>& parts);
-    String handleDeviceName(const std::vector<String>& parts);
-    String handleScrollText(const std::vector<String>& parts);
-    String handlePong(const std::vector<String>& parts);
-    String handleSnake(const std::vector<String>& parts);
-    String handleNTP(const std::vector<String>& parts);
-    String handleTimezone(const std::vector<String>& parts);
+    String handleSetTime(const ParsedCommand& parts);
+    String handleSetDateTime(const ParsedCommand& parts);
+    // String handleSetMode(const ParsedCommand& parts);
+    String handleEffect(const ParsedCommand& parts);
+    String handleBrightness(const ParsedCommand& parts);
+    String handleNightTime(const ParsedCommand& parts);
+    String handleDuration(const ParsedCommand& parts);
+    String handleAutoSwitch(const ParsedCommand& parts);
+    String handleWiFi(const ParsedCommand& parts);
+    String handleDeviceName(const ParsedCommand& parts);
+    String handleScrollText(const ParsedCommand& parts);
+    String handlePong(const ParsedCommand& parts);
+    String handleSnake(const ParsedCommand& parts);
+    String handleNTP(const ParsedCommand& parts);
+    String handleTimezone(const ParsedCommand& parts);
     String handleSave();
     String handleRestart();
-    String handleOTA(const std::vector<String>& parts);
-    String handleImage(const std::vector<String>& parts);
+    String handleOTA(const ParsedCommand& parts);
+    String handleImage(const ParsedCommand& parts);
     String handleWiFiScan();
 
     // OTA state
@@ -171,9 +196,15 @@ private:
     size_t _otaWritten;
     int _otaExpectedChunk;
     String _otaExpectedMD5;
+    unsigned long _otaStartTime;      // Timestamp inizio OTA
+    unsigned long _otaLastActivity;   // Ultima attività OTA
 
     // Base64 decode helper
     size_t base64Decode(const String& input, uint8_t* output, size_t maxLen);
+
+    // OTA watchdog constants
+    static constexpr unsigned long OTA_TIMEOUT_MS = 300000;        // 5 minuti timeout totale
+    static constexpr unsigned long OTA_CHUNK_TIMEOUT_MS = 30000;   // 30s timeout tra chunk
 };
 
 #endif // COMMAND_HANDLER_H
