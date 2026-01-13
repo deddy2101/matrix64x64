@@ -1,125 +1,117 @@
-# 🔮 LED Matrix Firmware Server
+# LED Matrix Firmware Server
 
-Sistema completo per distribuzione e gestione firmware OTA per dispositivi ESP32.
+OTA firmware distribution and management system for ESP32 devices.
 
-## 🌟 Features
+## Features
 
-✅ **Interfaccia Pubblica (Porta 80)** - Download firmware (sola lettura)
-✅ **Admin Panel (Porta 81)** - Upload e gestione firmware (protetto con password)
-✅ **Docker Ready** - Deploy con un comando
-✅ **Volume Persistente** - Dati salvati in `./data/binaries`
-✅ **Auto Manifest** - Genera automaticamente `manifest.json`
-✅ **API REST** - Endpoint per app Flutter
-✅ **Versioning** - Supporta formato SemVer + Build (X.Y.Z+N)
-✅ **MD5 Checksum** - Verifica integrità firmware
+- **Public Interface (Port 80)**: Firmware download (read-only)
+- **Admin Panel (Port 81)**: Firmware upload and management (password protected)
+- **Docker Ready**: Single-command deployment
+- **Persistent Volume**: Data stored in `./data/binaries`
+- **Auto Manifest**: Automatically generates `manifest.json`
+- **REST API**: Endpoints for Flutter app integration
+- **Versioning**: SemVer + Build format support (X.Y.Z+N)
+- **MD5 Checksum**: Firmware integrity verification
 
----
-
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
-# 1. Clona repo
-git clone https://github.com/tuousername/firmware-server.git
+# 1. Clone repository
+git clone https://github.com/yourusername/firmware-server.git
 cd firmware-server
 
-# 2. Configura credenziali (opzionale)
+# 2. Configure credentials (optional)
 cp .env.example .env
-# Modifica .env con le tue credenziali
+# Edit .env with your credentials
 
-# 3. Avvia server
+# 3. Start server
 docker-compose up -d
 
-# 4. Accedi alle interfacce
-# Pubblica: http://localhost (porta 80)
-# Admin:    http://localhost:81 (porta 81)
+# 4. Access interfaces
+# Public: http://localhost (port 80)
+# Admin:  http://localhost:81 (port 81)
 ```
 
----
-
-## 📁 Struttura Progetto
+## Project Structure
 
 ```
 firmware-server/
-├── docker-compose.yml       # Orchestrazione 2 servizi
-├── .env.example             # Template credenziali
+├── docker-compose.yml       # 2-service orchestration
+├── .env.example             # Credential template
 ├── .gitignore
 ├── README.md
 │
-├── public/                  # Nginx (porta 80)
+├── public/                  # Nginx (port 80)
 │   ├── nginx.conf
-│   └── index.html           # UI pubblica
+│   └── index.html           # Public UI
 │
-├── admin/                   # Node.js (porta 81)
+├── admin/                   # Node.js (port 81)
 │   ├── Dockerfile
 │   ├── package.json
 │   ├── server.js            # API server
 │   └── public/
-│       └── index.html       # UI admin
+│       └── index.html       # Admin UI
 │
-└── data/                    # Volume persistente
+└── data/                    # Persistent volume
     └── binaries/            # Firmware storage
         ├── 1.0.0+1/
         │   └── firmware.bin
         ├── 1.1.0+3/
         │   └── firmware.bin
-        └── manifest.json    # Auto-generato
+        └── manifest.json    # Auto-generated
 ```
 
----
+## Interfaces
 
-## 🌐 Interfacce
-
-### 🔓 Porta 80 - Public Interface
+### Port 80 - Public Interface
 
 **URL**: `http://binaries.server21.it`
 
-Interfaccia pubblica per visualizzare e scaricare firmware.
+Public interface for viewing and downloading firmware.
 
 **Features:**
-- ✅ Visualizzazione versioni disponibili
-- ✅ Download diretto firmware
-- ✅ Informazioni su dimensione, MD5, data rilascio
-- ✅ Badge "LATEST" per versione più recente
-- ✅ Nessuna autenticazione richiesta
+- View available versions
+- Direct firmware download
+- Information on size, MD5, release date
+- "LATEST" badge for newest version
+- No authentication required
 
 **API Endpoints:**
 ```
-GET /api/manifest           # Lista versioni JSON
-GET /binaries/{v}/firmware.bin  # Download firmware
+GET /api/manifest                    # List versions JSON
+GET /binaries/{version}/firmware.bin # Download firmware
 ```
 
-### 🔐 Porta 81 - Admin Panel
+### Port 81 - Admin Panel
 
 **URL**: `http://binaries.server21.it:81`
 
-Pannello amministratore per gestire firmware.
+Administrator panel for firmware management.
 
-**Credenziali Default:**
+**Default Credentials:**
 - Username: `admin`
 - Password: `changeme`
 
 **Features:**
-- ✅ Upload nuovo firmware (.bin)
-- ✅ Eliminazione versioni
-- ✅ Statistiche real-time
-- ✅ Auto-generazione manifest
-- ✅ Protezione Basic Auth
+- Upload new firmware (.bin)
+- Delete versions
+- Real-time statistics
+- Auto-generate manifest
+- Basic Auth protection
 
----
+## Firmware Upload
 
-## 📤 Upload Firmware
+### Via Admin Panel
 
-### Via Admin Panel (Consigliato)
-
-1. Apri `http://server:81`
-2. Login con credenziali admin
-3. Compila form:
-   - Versione: `1.2.0+5`
-   - File: Seleziona `.bin`
+1. Open `http://server:81`
+2. Login with admin credentials
+3. Fill form:
+   - Version: `1.2.0+5`
+   - File: Select `.bin`
 4. Click "Upload Firmware"
-5. Il manifest viene auto-generato
+5. Manifest auto-generated
 
-### Via API (Programmatico)
+### Via API
 
 ```bash
 curl -X POST http://server:81/api/upload \
@@ -128,39 +120,37 @@ curl -X POST http://server:81/api/upload \
   -F "firmware=@firmware.bin"
 ```
 
----
+## Production Deployment
 
-## 🐳 Deploy Produzione
+### 1. DNS Setup
 
-### 1. Setup DNS
-
-Punta dominio al tuo server:
+Point domain to server:
 ```
-binaries.server21.it → IP_SERVER
+binaries.server21.it → SERVER_IP
 ```
 
-### 2. Configura Credenziali
+### 2. Configure Credentials
 
 ```bash
-# Crea file .env
+# Create .env file
 cp .env.example .env
 
-# Modifica credenziali
+# Edit credentials
 nano .env
 ```
 
 ```env
-ADMIN_USERNAME=il_tuo_username
-ADMIN_PASSWORD=password_super_sicura
+ADMIN_USERNAME=your_username
+ADMIN_PASSWORD=secure_password
 ```
 
-### 3. Avvia Container
+### 3. Start Containers
 
 ```bash
 docker-compose up -d
 ```
 
-### 4. Verifica Funzionamento
+### 4. Verify
 
 ```bash
 # Public interface
@@ -173,13 +163,11 @@ curl http://binaries.server21.it:81/health
 curl http://binaries.server21.it/api/manifest
 ```
 
----
+## Security
 
-## 🔒 Sicurezza
+### HTTPS (Optional)
 
-### HTTPS (Opzionale ma Consigliato)
-
-Aggiungi reverse proxy con Certbot:
+Add reverse proxy with Certbot:
 
 ```yaml
 # docker-compose.yml
@@ -192,12 +180,12 @@ services:
       - ./ssl:/etc/nginx/ssl
 ```
 
-Oppure usa Cloudflare per SSL automatico.
+Or use Cloudflare for automatic SSL.
 
 ### Firewall
 
 ```bash
-# Apri solo porte necessarie
+# Open required ports only
 ufw allow 80/tcp
 ufw allow 81/tcp
 ufw enable
@@ -206,21 +194,19 @@ ufw enable
 ### Backup
 
 ```bash
-# Backup directory binaries
+# Backup binaries directory
 tar -czf backup-$(date +%Y%m%d).tar.gz data/binaries/
 
 # Restore
 tar -xzf backup-20260106.tar.gz
 ```
 
----
+## API Reference
 
-## 🛠 API Reference
-
-### Public Endpoints (Porta 80)
+### Public Endpoints (Port 80)
 
 #### GET /api/manifest
-Ritorna lista versioni disponibili.
+Returns list of available versions.
 
 **Response:**
 ```json
@@ -241,20 +227,18 @@ Ritorna lista versioni disponibili.
 ```
 
 #### GET /binaries/{version}/firmware.bin
-Download diretto firmware.
+Direct firmware download.
 
----
+### Admin Endpoints (Port 81)
 
-### Admin Endpoints (Porta 81) 🔐
-
-Tutti richiedono Basic Auth: `Authorization: Basic base64(user:pass)`
+All require Basic Auth: `Authorization: Basic base64(user:pass)`
 
 #### POST /api/upload
-Upload nuovo firmware.
+Upload new firmware.
 
 **Body (multipart/form-data):**
 - `version`: `1.2.0+5`
-- `firmware`: File `.bin`
+- `firmware`: `.bin` file
 
 **Response:**
 ```json
@@ -268,10 +252,10 @@ Upload nuovo firmware.
 ```
 
 #### GET /api/versions
-Lista tutte le versioni (come manifest).
+List all versions (same as manifest).
 
 #### DELETE /api/versions/{version}
-Elimina una versione.
+Delete a version.
 
 **Response:**
 ```json
@@ -283,20 +267,18 @@ Elimina una versione.
 ```
 
 #### POST /api/regenerate-manifest
-Rigenera manualmente il manifest.
+Manually regenerate manifest.
 
----
+## Flutter Integration
 
-## 💡 Integrazione Flutter
-
-L'app Flutter usa `FirmwareRepository` service:
+Flutter app uses `FirmwareRepository` service:
 
 ```dart
 final repo = FirmwareRepository(
   baseUrl: 'http://binaries.server21.it'
 );
 
-// Scarica lista versioni
+// Download version list
 final versions = await repo.fetchAvailableVersions();
 
 // Download firmware
@@ -307,40 +289,38 @@ final filePath = await repo.downloadFirmware(
   }
 );
 
-// Verifica aggiornamenti
+// Check for updates
 final update = await repo.checkForUpdate('1.0.0+1');
 if (update != null) {
-  print('Nuovo aggiornamento: ${update.fullVersion}');
+  print('New update: ${update.fullVersion}');
 }
 ```
 
----
+## Troubleshooting
 
-## 🐛 Troubleshooting
-
-### Container non si avvia
+### Container not starting
 
 ```bash
 docker-compose logs public
 docker-compose logs admin
 ```
 
-### Porta già in uso
+### Port already in use
 
-Modifica `docker-compose.yml`:
+Modify `docker-compose.yml`:
 ```yaml
 ports:
-  - "8080:80"   # Usa porta diversa
+  - "8080:80"   # Use different port
   - "8081:3000"
 ```
 
-### Permessi directory
+### Directory permissions
 
 ```bash
 chmod -R 755 data/binaries
 ```
 
-### Reset completo
+### Complete reset
 
 ```bash
 docker-compose down -v
@@ -348,17 +328,15 @@ rm -rf data/binaries/*
 docker-compose up -d
 ```
 
----
+## Monitoring
 
-## 📊 Monitoring
-
-### Logs in tempo reale
+### Real-time logs
 
 ```bash
 docker-compose logs -f
 ```
 
-### Health Check
+### Health check
 
 ```bash
 # Public
@@ -368,77 +346,53 @@ curl http://localhost/health
 curl http://localhost:81/health
 ```
 
-### Spazio disco
+### Disk space
 
 ```bash
 du -sh data/binaries
 ```
 
----
-
-## 🚢 Deploy su Server Remoto
+## Remote Deployment
 
 ### Via Git
 
 ```bash
-# Sul server
-git clone https://github.com/tuousername/firmware-server.git
+# On server
+git clone https://github.com/yourusername/firmware-server.git
 cd firmware-server
 cp .env.example .env
-nano .env  # Configura credenziali
+nano .env  # Configure credentials
 docker-compose up -d
 ```
 
 ### Via SCP
 
 ```bash
-# Dal locale
+# From local
 scp -r firmware-server/ user@server:/opt/firmware-server
 ssh user@server
 cd /opt/firmware-server
 docker-compose up -d
 ```
 
----
+## Version Format
 
-## 📝 Formato Versioni
+**Required format:** `MAJOR.MINOR.PATCH+BUILD`
 
-**Formato richiesto:** `MAJOR.MINOR.PATCH+BUILD`
-
-**Esempi validi:**
+**Valid examples:**
 - `1.0.0+1`
 - `1.2.3+10`
 - `2.0.0+1`
 
-**Esempi non validi:**
-- `1.0.0` (manca build)
-- `v1.0.0+1` (no prefisso)
-- `1.0+1` (manca patch)
+**Invalid examples:**
+- `1.0.0` (missing build)
+- `v1.0.0+1` (no prefix)
+- `1.0+1` (missing patch)
 
----
-
-## 📜 Licenza
+## License
 
 MIT
 
----
+## Support
 
-## 🤝 Contribuire
-
-Pull requests benvenuti!
-
-1. Fork il progetto
-2. Crea feature branch (`git checkout -b feature/amazing`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing`)
-5. Open Pull Request
-
----
-
-## 📧 Supporto
-
-Per bug o domande, apri una issue su GitHub.
-
----
-
-**Made with ❤️ for ESP32 LED Matrix**
+For bugs or questions, open an issue on GitHub.

@@ -1,48 +1,49 @@
 # Matrix 64x64 LED Display System
 
-Sistema completo per la gestione di una matrice LED 64x64 con ESP32, interfaccia Flutter e server OTA per aggiornamenti firmware.
+ESP32-based LED matrix controller with Flutter mobile app and OTA firmware server.
 
-## Panoramica del Progetto
+## Overview
 
-Questo progetto implementa un sistema di display LED controllabile tramite WiFi, con supporto per vari effetti visivi, orologio in tempo reale e gestione remota tramite app mobile.
+WiFi-controllable 64x64 LED matrix display system with visual effects, real-time clock support, and remote management via mobile application.
 
-### Componenti Principali
+### Project Structure
 
 ```
 matrix64x64/
-├── ESPCode/          # Firmware ESP32 per la matrice LED
-├── FlutterApp/       # App mobile per il controllo
-└── firmware-server/  # Server OTA per aggiornamenti firmware
+├── ESPCode/          # ESP32 firmware
+├── FlutterApp/       # Flutter mobile app
+└── firmware-server/  # OTA firmware server
 ```
 
-## Caratteristiche
+## Features
 
-- **Display LED 64x64**: Gestione matrice HUB75 tramite ESP32
-- **Effetti Visivi**: Pong, Mario Clock, Plasma, Scroll Text, Image Display
-- **Controllo WiFi**: WebSocket e API REST per controllo remoto
-- **App Mobile**: Interfaccia Flutter per Android/iOS
-- **OTA Updates**: Aggiornamenti firmware over-the-air
-- **mDNS Discovery**: Rilevamento automatico del dispositivo in rete
-- **Persistent Settings**: Salvataggio permanente delle configurazioni
+- **64x64 LED Matrix**: HUB75 matrix control via ESP32 DMA
+- **Visual Effects**: Pong, Mario Clock, Plasma, Scroll Text, Image Display
+- **WiFi Control**: WebSocket and REST API
+- **Mobile App**: Flutter app for Android/iOS
+- **OTA Updates**: Over-the-air firmware updates
+- **UDP Discovery**: Automatic device discovery via UDP broadcast
+- **AP Fallback**: Automatic Access Point mode when WiFi unavailable
+- **Persistent Settings**: Configuration stored in flash memory
 
-## Hardware Richiesto
+## Hardware Requirements
 
-- **ESP32 DevKit v1** (o compatibile)
-- **Matrice LED HUB75 64x64**
-- **Alimentatore 5V** (adeguato alla matrice LED)
-- **RTC DS3231** (opzionale, per orologio in tempo reale)
+- **ESP32 DevKit v1** or compatible
+- **HUB75 64x64 LED Matrix**
+- **5V Power Supply** (adequate for LED matrix current draw)
+- **DS3231 RTC Module** (optional)
 
 ## Quick Start
 
-### 1. Setup ESP32
+### ESP32 Firmware
 
 ```bash
 cd ESPCode
-# Configura le credenziali WiFi in Settings.cpp
+# Configure WiFi credentials in Settings.cpp
 pio run -t upload
 ```
 
-### 2. Setup App Flutter
+### Flutter App
 
 ```bash
 cd FlutterApp/clockapp
@@ -50,52 +51,61 @@ flutter pub get
 flutter run
 ```
 
-### 3. Setup Server OTA (opzionale)
+### OTA Firmware Server (Optional)
 
 ```bash
 cd firmware-server
 docker-compose up -d
 ```
 
-## Configurazione
+## Configuration
 
-### Hostname mDNS
+### Device Discovery
 
-Default: `led-matrix.local`
+UDP broadcast on port 7890. Device responds with:
+- Device name
+- IP address
+- WebSocket service port
 
-## Architettura
+### WiFi Modes
 
-### Comunicazione
+- **Station Mode**: Connects to configured WiFi network
+- **Access Point Mode**: Automatic fallback when WiFi unavailable
+  - SSID: Configured device name
+  - Password: `ledmatrix123`
+  - IP: `192.168.4.1`
 
-- **WebSocket**: Controllo in tempo reale degli effetti
-- **REST API**: Gestione configurazioni e impostazioni
-- **mDNS**: Discovery automatico del dispositivo
-- **OTA**: Aggiornamenti firmware HTTP
+## Architecture
 
-### Protocollo Comandi
+### Communication
 
-Il sistema utilizza un protocollo CSV per i comandi WebSocket:
+- **WebSocket**: Real-time effect control
+- **REST API**: Configuration and settings
+- **UDP Discovery**: Automatic device discovery (port 7890)
+- **OTA**: HTTP-based firmware updates
+
+### Command Protocol
+
+CSV-based WebSocket commands:
 ```
-EFFECT,nome_effetto,parametri...
-BRIGHTNESS,valore
-TEXT,messaggio
+EFFECT,effect_name,parameters...
+BRIGHTNESS,value
+TEXT,message
 ```
 
-## Documentazione
+## Documentation
 
-Per informazioni dettagliate su ogni componente:
+- [ESPCode README](ESPCode/README.md) - ESP32 firmware
+- [FlutterApp README](FlutterApp/clockapp/README.md) - Mobile app
+- [Firmware Server README](firmware-server/README.md) - OTA server
 
-- [ESPCode README](ESPCode/README.md) - Firmware ESP32
-- [FlutterApp README](FlutterApp/clockapp/README.md) - App mobile
-- [Firmware Server README](firmware-server/README.md) - Server OTA
+## Development
 
-## Sviluppo
+### Requirements
 
-### Requisiti
-
-- **PlatformIO**: Per compilare il firmware ESP32
-- **Flutter SDK**: Per l'app mobile (3.10.0+)
-- **Docker**: Per il server OTA (opzionale)
+- **PlatformIO**: ESP32 firmware compilation
+- **Flutter SDK**: Mobile app (3.10.0+)
+- **Docker**: OTA server (optional)
 
 ### Build
 
@@ -110,33 +120,12 @@ cd FlutterApp/clockapp && flutter build apk
 cd firmware-server && docker-compose build
 ```
 
-## Troubleshooting
+## License
 
-### ESP32 non si connette al WiFi
-- Verifica le credenziali in `Settings.cpp`
-- Controlla che il router supporti 2.4GHz
-- Verifica il serial monitor per errori: `pio device monitor`
+Open source software.
 
-### App non trova il dispositivo
-- Assicurati che il dispositivo mobile sia sulla stessa rete
-- Verifica che mDNS sia supportato dalla rete
-- Prova a connetterti manualmente tramite IP
-
-### Display LED non funziona
-- Verifica i collegamenti HUB75
-- Controlla l'alimentazione (5V adeguata)
-- Verifica la configurazione pin in `main.cpp`
-
-## Licenza
-
-Questo progetto è distribuito come software open source.
-
-## Autore
-
-Progetto sviluppato per la gestione di display LED Matrix con ESP32.
-
-## Versione
+## Version
 
 - **ESP32 Firmware**: v1.0
 - **Flutter App**: v1.1.0+5
-- **Ultimo aggiornamento**: Gennaio 2026
+- **Last Update**: January 2026
