@@ -8,9 +8,14 @@ ESP32 firmware for HUB75 64x64 LED matrix with visual effects, WiFi control, and
 - **Visual Effects**:
   - Pong Game
   - Mario Clock
+  - PacMan Clock
   - Plasma Effect
   - Scroll Text
-  - Image Display (Andre, Mario, Pokemon, Luigi, Fox)
+  - Dynamic Image Display (images uploaded from app)
+  - Snake Game
+  - Fire Effect
+  - Matrix Rain
+  - Star Field
 - **WiFi**: Station mode with automatic AP fallback
 - **WebSocket Server**: Real-time control via CSV commands
 - **REST API**: Configuration and OTA endpoints
@@ -83,6 +88,7 @@ ESPCode/
 │   ├── DisplayManager.cpp/h        # LED matrix hardware management
 │   ├── EffectManager.cpp/h         # Effect system
 │   ├── TimeManager.cpp/h           # RTC and clock management
+│   ├── ImageManager.cpp/h          # LittleFS image storage management
 │   ├── Settings.cpp/h              # Persistent configurations
 │   ├── WiFiManager.cpp/h           # WiFi connection management
 │   ├── WebServerManager.cpp/h      # HTTP/REST API server
@@ -90,19 +96,18 @@ ESPCode/
 │   ├── CommandHandler.cpp/h        # CSV command parser
 │   ├── Discovery.cpp/h             # UDP Discovery service
 │   ├── Debug.h                     # Debug macros
-│   ├── effects/                    # Visual effects
-│   │   ├── Effect.h                # Base effect class
-│   │   ├── PongEffect.cpp/h
-│   │   ├── MarioClockEffect.cpp/h
-│   │   ├── PlasmaEffect.cpp/h
-│   │   ├── ScrollTextEffect.cpp/h
-│   │   └── ImageEffect.cpp/h
-│   └── images/                     # Image headers
-│       ├── andre.h
-│       ├── mario.h
-│       ├── pokemon.h
-│       ├── luigi.h
-│       └── fox.h
+│   └── effects/                    # Visual effects
+│       ├── Effect.h                # Base effect class
+│       ├── PongEffect.cpp/h
+│       ├── MarioClockEffect.cpp/h
+│       ├── PacManClockEffect.cpp/h
+│       ├── PlasmaEffect.cpp/h
+│       ├── ScrollTextEffect.cpp/h
+│       ├── DynamicImageEffect.cpp/h # Images from app
+│       ├── SnakeEffect.cpp/h
+│       ├── FireEffect.cpp/h
+│       ├── MatrixRainEffect.cpp/h
+│       └── StarFieldEffect.cpp/h
 ├── platformio.ini                  # PlatformIO configuration
 └── README.md
 ```
@@ -128,9 +133,14 @@ EFFECT,effect_name
 Available effects:
 - `pong` - Animated Pong game
 - `mario_clock` - Mario animated clock
+- `pacman_clock` - PacMan animated clock
 - `plasma` - Colorful plasma effect
 - `text` - Scrolling text
-- `image` - Static image display
+- `dynamic_image` - Display images uploaded from app
+- `snake` - Snake game
+- `fire` - Fire simulation effect
+- `matrix_rain` - Matrix rain effect
+- `starfield` - Star field animation
 
 #### Display Control
 
@@ -157,6 +167,17 @@ WIFI_SCAN              # Scan WiFi networks
 WIFI_CONNECT,ssid,pass # Connect to network
 WIFI_AP                # Access Point mode
 WIFI_STATUS            # Connection status
+```
+
+#### Image Management
+
+```
+IMAGE_LIST             # List available images
+IMAGE_SHOW,name       # Display specific image
+IMAGE_NEXT            # Next image in slideshow
+IMAGE_PREV            # Previous image in slideshow
+IMAGE_SLIDESHOW,1     # Enable slideshow (0=disable)
+IMAGE_DURATION,5000   # Set slideshow duration (ms)
 ```
 
 ### Example Session
@@ -269,6 +290,37 @@ Upload firmware `.bin` file as multipart/form-data.
 curl -X POST -F "firmware=@firmware.bin" http://device-ip/update
 ```
 
+### POST /image/upload
+
+Upload image to LittleFS storage.
+
+**Body (multipart/form-data):**
+- `image`: RGB565 raw binary file (8192 bytes)
+- `name`: Image filename
+
+```bash
+curl -X POST -F "image=@image.rgb565" -F "name=myimage.rgb565" http://device-ip/image/upload
+```
+
+### GET /image/list
+
+List all stored images.
+
+```json
+{
+  "images": [
+    {
+      "name": "image1.rgb565",
+      "size": 8192
+    }
+  ]
+}
+```
+
+### DELETE /image/{name}
+
+Delete stored image.
+
 ## Advanced Configuration
 
 ### Matrix Dimensions
@@ -302,6 +354,28 @@ Settings saved in flash EEPROM:
 - Default brightness
 - Startup effect
 - Custom text
+
+### Image Management
+
+Images are stored in LittleFS filesystem and managed via the app:
+
+**Image Storage:**
+- Images uploaded from Flutter app
+- Stored in `/images/` directory on LittleFS
+- Format: RGB565 raw binary (64x64 pixels = 8192 bytes)
+- Automatic management via ImageManager class
+
+**Image Upload:**
+- Upload images directly from Flutter app
+- Supports PNG/JPG conversion in app
+- Automatic resizing to 64x64 pixels
+- Images persist across reboots
+
+**Dynamic Image Effect:**
+- Displays images from LittleFS storage
+- Slideshow mode with configurable duration
+- Manual navigation between images
+- Automatic image list refresh
 
 ## Adding New Effects
 

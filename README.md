@@ -18,13 +18,15 @@ matrix64x64/
 ## Features
 
 - **64x64 LED Matrix**: HUB75 matrix control via ESP32 DMA
-- **Visual Effects**: Pong, Mario Clock, Plasma, Scroll Text, Image Display
+- **Visual Effects**: Pong, Mario Clock, PacMan Clock, Snake, Plasma, Fire, Matrix Rain, Star Field, Scroll Text
+- **Dynamic Images**: Upload and display custom images from mobile app
 - **WiFi Control**: WebSocket and REST API
 - **Mobile App**: Flutter app for Android/iOS
 - **OTA Updates**: Over-the-air firmware updates
 - **UDP Discovery**: Automatic device discovery via UDP broadcast
 - **AP Fallback**: Automatic Access Point mode when WiFi unavailable
 - **Persistent Settings**: Configuration stored in flash memory
+- **LittleFS Storage**: Image storage with upload/delete capabilities
 
 ## Hardware Requirements
 
