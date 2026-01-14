@@ -42,11 +42,15 @@ class MarioClockEffect : public Effect {
 private:
     SpriteRenderer* spriteRenderer;
     TimeManager* timeManager;
-    
+
     // Strutture
     MarioBlock* hourBlock;
     MarioBlock* minuteBlock;
     MarioSprite* marioSprite;
+
+    // Theme support
+    bool isDayTheme;
+    void updateTheme();
     
     // State
     MarioState marioState;
@@ -103,6 +107,8 @@ private:
     void drawGround();
     void drawBlock(MarioBlock& block);
     void redrawBackground(int x, int y, int width, int height);
+    void drawMoon(int x, int y);
+    void drawStars();
     
     bool checkCollision(MarioSprite& mario, MarioBlock& block);
     void startJump();
@@ -118,6 +124,7 @@ public:
     void cleanup() override;
     const char* getName() override { return "Mario Clock"; }
     void reset() override;
+    void onThemeChange(bool isDay) override;
 };
 
 // Strutture di supporto

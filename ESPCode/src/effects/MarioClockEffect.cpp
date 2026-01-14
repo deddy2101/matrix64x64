@@ -4,13 +4,14 @@
 #include "pipeSprite.h"
 #endif
 
-MarioClockEffect::MarioClockEffect(DisplayManager* dm, TimeManager* tm) 
-    : Effect(dm), 
+MarioClockEffect::MarioClockEffect(DisplayManager* dm, TimeManager* tm)
+    : Effect(dm),
       spriteRenderer(new SpriteRenderer(dm)),
       timeManager(tm),
       hourBlock(new MarioBlock()),
       minuteBlock(new MarioBlock()),
       marioSprite(new MarioSprite()),
+      isDayTheme(true),
       marioState(IDLE),
       currentJumpTarget(NONE),
       marioTargetX(23),
@@ -44,24 +45,27 @@ MarioClockEffect::~MarioClockEffect() {
 
 void MarioClockEffect::init() {
     DEBUG_PRINTLN("[MarioClockEffect] Initializing");
-    
+
+    // Detect initial theme based on time
+    updateTheme();
+
     initMario();
     initBlocks();
 #if ENABLE_PIPE_ANIMATION
     initPipe();
 #endif
-    
+
     displayManager->setTextSize(1);
     displayManager->setFont(&Super_Mario_Bros__24pt7b);
-    
+
     lastHour = timeManager->getHour();
     lastMinute = timeManager->getMinute();
-    
+
     hourBlock->text = String(lastHour);
     char minStr[3];
     sprintf(minStr, "%02d", lastMinute);
     minuteBlock->text = String(minStr);
-    
+
     minuteCallbackId = timeManager->addOnMinuteChange([this](int h, int m, int s) {
         DEBUG_PRINTF("[MarioClockEffect] Minute changed callback: %02d:%02d\n", h, m);
         
@@ -257,11 +261,15 @@ void MarioClockEffect::drawPipe() {
             uint16_t color = pgm_read_word(&PIPE_SPRITE[idx]);
             
             uint8_t r, g, b;
-            
+
             // Se pixel trasparente, ridisegna lo sfondo
             if (color == _MASK) {
-                // Default: colore cielo
-                r = 0; g = 145; b = 206;
+                // Default: colore cielo (theme-dependent)
+                if (isDayTheme) {
+                    r = 0; g = 145; b = 206;
+                } else {
+                    r = 10; g = 20; b = 50;
+                }
                 
                 // Controlla se è nella collina
                 if (screenX < 20 && screenY >= 34 && screenY < 56) {
@@ -310,16 +318,39 @@ void MarioClockEffect::reset() {
     lastMinute = -1;
 }
 
+void MarioClockEffect::updateTheme() {
+    // Use TimeManager which uses Settings for dynamic night hours
+    bool shouldBeDayTheme = timeManager->isDayTheme();
+
+    if (isDayTheme != shouldBeDayTheme) {
+        isDayTheme = shouldBeDayTheme;
+        needsRedraw = true;
+        DEBUG_PRINTF("[MarioClockEffect] Theme changed to: %s\n",
+                     isDayTheme ? "DAY" : "NIGHT");
+    }
+}
+
+void MarioClockEffect::onThemeChange(bool isDay) {
+    if (isDayTheme != isDay) {
+        isDayTheme = isDay;
+        needsRedraw = true;
+        DEBUG_PRINTF("[MarioClockEffect] Theme switched via callback to: %s\n", isDay ? "DAY" : "NIGHT");
+    }
+}
+
 void MarioClockEffect::update() {
+    // Check for theme changes every update
+    updateTheme();
+
     updateMario();
-    
+
 #if ENABLE_PIPE_ANIMATION
     updatePipe();
 #endif
-    
+
     static unsigned long lastHourUpdate = 0;
     static unsigned long lastMinuteUpdate = 0;
-    
+
     updateBlock(*hourBlock, lastHourUpdate);
     updateBlock(*minuteBlock, lastMinuteUpdate);
 }
@@ -333,30 +364,47 @@ void MarioClockEffect::draw() {
 }
 
 void MarioClockEffect::drawScene() {
-    displayManager->fillScreen(0, 145, 206);
-    
+    // Theme-dependent sky color
+    if (isDayTheme) {
+        // Day: light blue sky
+        displayManager->fillScreen(0, 145, 206);
+    } else {
+        // Night: dark blue/purple sky
+        displayManager->fillScreen(10, 20, 50);
+    }
+
     displayManager->setTextSize(1);
     displayManager->setFont(&Super_Mario_Bros__24pt7b);
-    
+
     spriteRenderer->drawSprite(HILL, 0, 34, 20, 22);
     spriteRenderer->drawSprite(BUSH, 43, 47, 21, 9);
-    spriteRenderer->drawSprite(CLOUD1, 0, 21, 13, 12);
-    spriteRenderer->drawSprite(CLOUD2, 51, 7, 13, 12);
-    
+
+    // Day: clouds, Night: stars/moon
+    if (isDayTheme) {
+        spriteRenderer->drawSprite(CLOUD1, 0, 21, 13, 12);
+        spriteRenderer->drawSprite(CLOUD2, 51, 7, 13, 12);
+    } else {
+        // Draw moon and stars for night theme
+        // Moon at position of CLOUD2
+        drawMoon(51, 7);
+        // Stars scattered
+        drawStars();
+    }
+
     drawGround();
-    
+
     drawBlock(*hourBlock);
     drawBlock(*minuteBlock);
-    
+
 #if ENABLE_PIPE_ANIMATION
     // Disegna tubo se visibile
     if (pipe->state != PIPE_HIDDEN) {
         drawPipe();
     }
 #endif
-    
+
     spriteRenderer->drawSpriteFlipped(MARIO_IDLE, marioSprite->x, marioSprite->y,
-                                     MARIO_IDLE_SIZE[0], MARIO_IDLE_SIZE[1], 
+                                     MARIO_IDLE_SIZE[0], MARIO_IDLE_SIZE[1],
                                      !marioFacingRight);
 }
 
@@ -404,17 +452,9 @@ bool MarioClockEffect::checkCollision(MarioSprite& mario, MarioBlock& block) {
 void MarioClockEffect::updateBlock(MarioBlock& block, unsigned long& lastUpdate) {
     if (block.isHit) {
         if (millis() - lastUpdate >= 50) {
-            for (int dy = 0; dy < block.height + 6; dy++) {
-                for (int dx = 0; dx < block.width + 2; dx++) {
-                    int px = block.x + dx - 1;
-                    int py = block.y + dy - 3;
-                    if (px >= 0 && px < displayManager->getWidth() && 
-                        py >= 0 && py < displayManager->getHeight()) {
-                        displayManager->drawPixel(px, py, 0, 145, 206);
-                    }
-                }
-            }
-            
+            // Clear area around block using theme-aware background redraw
+            redrawBackground(block.x - 1, block.y - 3, block.width + 2, block.height + 6);
+
             block.y += BLOCK_MOVE_PACE * (block.direction == 1 ? -1 : 1);
             block.moveAmount += BLOCK_MOVE_PACE;
             
@@ -438,15 +478,21 @@ void MarioClockEffect::updateBlock(MarioBlock& block, unsigned long& lastUpdate)
 void MarioClockEffect::redrawBackground(int x, int y, int width, int height) {
     int screenWidth = displayManager->getWidth();
     int screenHeight = displayManager->getHeight();
-    
+
     for (int dy = 0; dy < height; dy++) {
         for (int dx = 0; dx < width; dx++) {
             int px = x + dx;
             int py = y + dy;
-            
+
             if (px < 0 || px >= screenWidth || py < 0 || py >= screenHeight) continue;
-            
-            uint8_t r = 0, g = 145, b = 206;
+
+            // Theme-dependent sky color
+            uint8_t r, g, b;
+            if (isDayTheme) {
+                r = 0; g = 145; b = 206; // Day sky
+            } else {
+                r = 10; g = 20; b = 50; // Night sky
+            }
             
             if (py >= screenHeight - 8) {
                 int groundY = py - (screenHeight - 8);
@@ -508,6 +554,53 @@ void MarioClockEffect::redrawBackground(int x, int y, int width, int height) {
             }
             
             displayManager->drawPixel(px, py, r, g, b);
+        }
+    }
+}
+
+void MarioClockEffect::drawMoon(int x, int y) {
+    // Simple moon - yellow/white circle (8x8 pixels)
+    const int moonRadius = 4;
+    const uint8_t moonR = 255, moonG = 250, moonB = 200; // Warm yellow/white
+
+    for (int dy = -moonRadius; dy <= moonRadius; dy++) {
+        for (int dx = -moonRadius; dx <= moonRadius; dx++) {
+            // Circle equation
+            if (dx*dx + dy*dy <= moonRadius*moonRadius) {
+                int px = x + dx + moonRadius;
+                int py = y + dy + moonRadius;
+                if (px >= 0 && px < displayManager->getWidth() &&
+                    py >= 0 && py < displayManager->getHeight()) {
+                    displayManager->drawPixel(px, py, moonR, moonG, moonB);
+                }
+            }
+        }
+    }
+}
+
+void MarioClockEffect::drawStars() {
+    // Draw small stars scattered across the sky
+    // Stars are just 1-2 pixel bright dots
+    const uint8_t starR = 255, starG = 255, starB = 255;
+
+    // Fixed star positions for consistency
+    int starPositions[][2] = {
+        {5, 5}, {15, 8}, {25, 3}, {35, 10},
+        {8, 15}, {20, 18}, {45, 15}, {58, 12},
+        {12, 25}, {40, 22}, {55, 20}
+    };
+
+    for (int i = 0; i < 11; i++) {
+        int sx = starPositions[i][0];
+        int sy = starPositions[i][1];
+
+        // Draw a small cross-shaped star
+        displayManager->drawPixel(sx, sy, starR, starG, starB);
+        if (i % 2 == 0) { // Some stars are bigger
+            displayManager->drawPixel(sx-1, sy, starR, starG, starB);
+            displayManager->drawPixel(sx+1, sy, starR, starG, starB);
+            displayManager->drawPixel(sx, sy-1, starR, starG, starB);
+            displayManager->drawPixel(sx, sy+1, starR, starG, starB);
         }
     }
 }

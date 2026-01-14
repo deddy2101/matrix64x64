@@ -126,6 +126,7 @@ void setup() {
     // ─────────────────────────────────────────
     DEBUG_PRINTLN(F("[Setup] Initializing TimeManager..."));
     timeManager = new TimeManager;  // RTC mode
+    timeManager->setSettings(&settings);  // Set settings for dynamic night hours
     timeManager->enableNTP(settings.isNTPEnabled());
     timeManager->begin();
     timeManager->setTimezone(settings.getTimezone());

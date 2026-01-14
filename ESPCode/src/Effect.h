@@ -62,6 +62,13 @@ public:
      * Default: non fa nulla
      */
     virtual void cleanup() {}
+
+    /**
+     * Callback opzionale chiamato quando cambia il tema giorno/notte.
+     * Gli effetti che supportano temi multipli possono implementare questo metodo.
+     * @param isDay true = tema giorno, false = tema notte
+     */
+    virtual void onThemeChange(bool isDay) {}
     
     // ========== GESTIONE CICLO DI VITA ==========
     

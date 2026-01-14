@@ -43,6 +43,10 @@ class PacManClockEffect : public Effect {
 private:
     TimeManager* timeManager;
 
+    // Theme support
+    bool isDayTheme;
+    void updateTheme();
+
     // Mappa di gioco (copia modificabile)
     static const int MAP_SIZE = 12;
     uint8_t gameMap[MAP_SIZE][MAP_SIZE];
@@ -127,6 +131,7 @@ public:
     void cleanup() override;
     const char* getName() override { return "Pac-Man Clock"; }
     void reset() override;
+    void onThemeChange(bool isDay) override;
 };
 
 #endif // PACMAN_CLOCK_EFFECT_H

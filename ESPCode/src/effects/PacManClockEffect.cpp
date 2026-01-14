@@ -4,6 +4,7 @@
 PacManClockEffect::PacManClockEffect(DisplayManager* dm, TimeManager* tm)
     : Effect(dm),
       timeManager(tm),
+      isDayTheme(true),
       pacDirection(PAC_RIGHT),
       pacState(PAC_MOVING),
       pacAnimFrame(false),
@@ -23,6 +24,9 @@ PacManClockEffect::~PacManClockEffect() {
 
 void PacManClockEffect::init() {
     DEBUG_PRINTLN("[PacManClockEffect] Initializing");
+
+    // Detect initial theme
+    updateTheme();
 
     // Copia mappa iniziale
     resetMap();
@@ -93,8 +97,30 @@ int PacManClockEffect::pixelToMap(int pixelCoord) {
     return (pixelCoord - MAP_BORDER_SIZE) / BLOCK_SIZE;
 }
 
+void PacManClockEffect::updateTheme() {
+    bool shouldBeDayTheme = timeManager->isDayTheme();
+
+    if (isDayTheme != shouldBeDayTheme) {
+        isDayTheme = shouldBeDayTheme;
+        needsRedraw = true;
+        DEBUG_PRINTF("[PacManClockEffect] Theme changed to: %s\n",
+                     isDayTheme ? "DAY" : "NIGHT");
+    }
+}
+
+void PacManClockEffect::onThemeChange(bool isDay) {
+    if (isDayTheme != isDay) {
+        isDayTheme = isDay;
+        needsRedraw = true;
+        DEBUG_PRINTF("[PacManClockEffect] Theme switched via callback to: %s\n", isDay ? "DAY" : "NIGHT");
+    }
+}
+
 void PacManClockEffect::update() {
     unsigned long now = millis();
+
+    // Check for theme changes
+    updateTheme();
 
     // Aggiorna blink dei due punti ogni secondo
     if (now - lastSecondBlink >= 1000) {
@@ -103,13 +129,12 @@ void PacManClockEffect::update() {
         lastSecondBlink = now;
     }
 
-    // // Aggiorna orologio ogni minuto
-    // if (now - lastClockUpdate >= 60000) {
-    //     drawClock();
-    //     lastClockUpdate = now;
-    // }
+    // Night theme: PacMan sleeps, no movement
+    if (!isDayTheme) {
+        return;  // Skip all PacMan updates during night
+    }
 
-    // Aggiorna Pacman ogni 75ms
+    // Aggiorna Pacman ogni 75ms (solo di giorno)
     if (now - lastPacmanUpdate >= 75) {
         updatePacman();
         lastPacmanUpdate = now;
@@ -306,6 +331,42 @@ void PacManClockEffect::drawColonBlink() {
 }
 
 void PacManClockEffect::drawPacman() {
+    if (!isDayTheme) {
+        // Night theme: Draw sleeping PacMan (closed eyes)
+        // Simple circle with closed eyes
+        uint8_t sleepR = (PACMAN_COLOR >> 11) << 3;
+        uint8_t sleepG = ((PACMAN_COLOR >> 5) & 0x3F) << 2;
+        uint8_t sleepB = (PACMAN_COLOR & 0x1F) << 3;
+
+        // Draw PacMan body (closed mouth)
+        for (int dy = 0; dy < PACMAN_SPRITE_SIZE; dy++) {
+            for (int dx = 0; dx < PACMAN_SPRITE_SIZE; dx++) {
+                // Simple filled circle
+                int centerX = PACMAN_SPRITE_SIZE / 2;
+                int centerY = PACMAN_SPRITE_SIZE / 2;
+                int distSq = (dx - centerX) * (dx - centerX) + (dy - centerY) * (dy - centerY);
+                if (distSq <= (PACMAN_SPRITE_SIZE / 2) * (PACMAN_SPRITE_SIZE / 2)) {
+                    displayManager->drawPixel(pacX + dx, pacY + dy, sleepR, sleepG, sleepB);
+                }
+            }
+        }
+
+        // Draw closed eyes (two horizontal lines)
+        displayManager->drawPixel(pacX + 1, pacY + 1, 0, 0, 0);
+        displayManager->drawPixel(pacX + 2, pacY + 1, 0, 0, 0);
+        displayManager->drawPixel(pacX + 3, pacY + 1, 0, 0, 0);
+
+        // Draw "Z" for sleeping (above PacMan)
+        displayManager->drawPixel(pacX + 4, pacY - 2, 255, 255, 255);
+        displayManager->drawPixel(pacX + 5, pacY - 2, 255, 255, 255);
+        displayManager->drawPixel(pacX + 5, pacY - 3, 255, 255, 255);
+        displayManager->drawPixel(pacX + 4, pacY - 4, 255, 255, 255);
+        displayManager->drawPixel(pacX + 5, pacY - 4, 255, 255, 255);
+
+        return;
+    }
+
+    // Day theme: Normal animated PacMan
     // Seleziona frame animazione
     const uint16_t* sprite = pacAnimFrame ? currentSprite[1] : currentSprite[0];
 

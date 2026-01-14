@@ -19,12 +19,18 @@ enum class TimeMode {
     RTC         // RTC interno ESP32 (tempo reale)
 };
 
+// Forward declaration
+class Settings;
+
 class TimeManager {
 private:
     // DS3231 RTC esterno
     RTC_DS3231 ds3231;
     bool ds3231Available;
-    
+
+    // Settings reference for dynamic night hours
+    Settings* settings;
+
     // Pin I2C (default ESP32)
     static constexpr int SDA_PIN = 21;
     static constexpr int SCL_PIN = 22;
@@ -87,6 +93,7 @@ public:
     // Setup
     void begin(int hour = 12, int minute = 0, int second = 0);
     void setTimezone(const char* tz);
+    void setSettings(Settings* s) { settings = s; }
     
     // Update (chiamare nel loop)
     void update();
@@ -108,6 +115,14 @@ public:
     String getTimeString() const;
     String getDateString() const;
     String getFullStatus();
+
+    // Day/Night detection with custom hours
+    bool isDayTime(int dayStartHour, int nightStartHour) const;
+    bool isNightTime(int dayStartHour, int nightStartHour) const;
+
+    // Day/Night detection using Settings (recommended - uses dynamic night hours from settings)
+    bool isDayTheme() const;
+    bool isNightTheme() const;
     
     // Setters
     void setTime(int hour, int minute, int second = 0);

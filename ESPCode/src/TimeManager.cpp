@@ -1,7 +1,9 @@
 #include "TimeManager.h"
+#include "Settings.h"
 
 TimeManager::TimeManager()
     : ds3231Available(false),
+      settings(nullptr),
       currentHour(12),
       currentMinute(0),
       currentSecond(0),
@@ -610,4 +612,28 @@ String TimeManager::getModeString() const {
 float TimeManager::getDS3231Temperature() {
     if (!ds3231Available) return 0.0f;
     return ds3231.getTemperature();
+}
+
+bool TimeManager::isDayTime(int dayStartHour, int nightStartHour) const {
+    return currentHour >= dayStartHour && currentHour < nightStartHour;
+}
+
+bool TimeManager::isNightTime(int dayStartHour, int nightStartHour) const {
+    return !isDayTime(dayStartHour, nightStartHour);
+}
+
+bool TimeManager::isDayTheme() const {
+    if (settings) {
+        return !settings->isNightTime(currentHour);
+    }
+    // Fallback to default if settings not available
+    return isDayTime(6, 20);
+}
+
+bool TimeManager::isNightTheme() const {
+    if (settings) {
+        return settings->isNightTime(currentHour);
+    }
+    // Fallback to default if settings not available
+    return isNightTime(6, 20);
 }
