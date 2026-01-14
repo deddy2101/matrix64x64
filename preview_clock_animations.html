@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Preview Orologi Animati Matrix 64x64</title>
+    <style>
+        body {
+            background: #1a1a1a;
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            padding: 20px;
+            margin: 0;
+        }
+        h1 {
+            text-align: center;
+            color: #00ff00;
+            text-shadow: 0 0 10px #00ff00;
+        }
+        .gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 30px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+        .animation-card {
+            background: #2a2a2a;
+            border: 2px solid #444;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            transition: transform 0.3s, border-color 0.3s;
+        }
+        .animation-card:hover {
+            transform: translateY(-5px);
+            border-color: #00ff00;
+        }
+        .animation-card h2 {
+            margin-top: 0;
+            color: #00ff00;
+        }
+        .canvas-container {
+            background: #000;
+            display: inline-block;
+            border: 2px solid #333;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        canvas {
+            display: block;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+        .description {
+            font-size: 14px;
+            color: #aaa;
+            margin-top: 10px;
+            line-height: 1.5;
+        }
+        .time-display {
+            color: #00ff00;
+            font-size: 18px;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🕐 OROLOGI ANIMATI MATRIX 64x64 🕐</h1>
+    <div class="gallery" id="gallery"></div>
+
+    <script>
+        function drawDigit(ctx, digit, x, y, color) {
+            const digits = {
+                '0': [[1,1,1],[1,0,1],[1,0,1],[1,0,1],[1,1,1]],
+                '1': [[0,1,0],[1,1,0],[0,1,0],[0,1,0],[1,1,1]],
+                '2': [[1,1,1],[0,0,1],[1,1,1],[1,0,0],[1,1,1]],
+                '3': [[1,1,1],[0,0,1],[1,1,1],[0,0,1],[1,1,1]],
+                '4': [[1,0,1],[1,0,1],[1,1,1],[0,0,1],[0,0,1]],
+                '5': [[1,1,1],[1,0,0],[1,1,1],[0,0,1],[1,1,1]],
+                '6': [[1,1,1],[1,0,0],[1,1,1],[1,0,1],[1,1,1]],
+                '7': [[1,1,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1]],
+                '8': [[1,1,1],[1,0,1],[1,1,1],[1,0,1],[1,1,1]],
+                '9': [[1,1,1],[1,0,1],[1,1,1],[0,0,1],[1,1,1]],
+                ':': [[0],[1],[0],[1],[0]]
+            };
+
+            const pattern = digits[digit] || digits['0'];
+            ctx.fillStyle = color;
+
+            for(let row = 0; row < pattern.length; row++) {
+                for(let col = 0; col < pattern[row].length; col++) {
+                    if(pattern[row][col]) {
+                        ctx.fillRect(x + col * 2, y + row * 2, 2, 2);
+                    }
+                }
+            }
+        }
+
+        function drawTime(ctx, y, color = '#ffffff') {
+            const now = new Date();
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const timeStr = `${hours}:${minutes}`;
+
+            let xOffset = 10;
+            for(let char of timeStr) {
+                drawDigit(ctx, char, xOffset, y, color);
+                xOffset += (char === ':' ? 3 : 8);
+            }
+        }
+
+        const clocks = [
+            {
+                name: "Space Invaders Clock",
+                description: "Alieno che protegge l'ora. Si muove avanti e indietro come un guardiano del tempo.",
+                draw: (ctx, frame) => {
+                    // Sfondo stellato
+                    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+                    for(let i = 0; i < 20; i++) {
+                        const sx = (i * 17 + frame) % 64;
+                        const sy = (i * 23) % 64;
+                        ctx.fillRect(sx, sy, 1, 1);
+                    }
+
+                    // Ora al centro
+                    drawTime(ctx, 28, '#00ff00');
+
+                    // Alien sopra
+                    ctx.fillStyle = '#00ff00';
+                    const x = 20 + Math.sin(frame * 0.05) * 10;
+                    const alien = [
+                        [0,0,1,0,0,0,0,0,1,0,0],
+                        [0,0,0,1,0,0,0,1,0,0,0],
+                        [0,0,1,1,1,1,1,1,1,0,0],
+                        [0,1,1,0,1,1,1,0,1,1,0],
+                        [1,1,1,1,1,1,1,1,1,1,1]
+                    ];
+                    for(let row = 0; row < alien.length; row++) {
+                        for(let col = 0; col < alien[row].length; col++) {
+                            if(alien[row][col]) {
+                                ctx.fillRect(x + col * 2, 8 + row * 2, 2, 2);
+                            }
+                        }
+                    }
+
+                    // Alien sotto
+                    for(let row = 0; row < alien.length; row++) {
+                        for(let col = 0; col < alien[row].length; col++) {
+                            if(alien[row][col]) {
+                                ctx.fillRect(x + col * 2, 48 + row * 2, 2, 2);
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                name: "Pac-Man Eating Time",
+                description: "Pac-Man mangia i numeri dell'ora mentre i fantasmi lo inseguono!",
+                draw: (ctx, frame) => {
+                    const now = new Date();
+                    const seconds = now.getSeconds();
+
+                    // Ora al centro
+                    drawTime(ctx, 26, '#ffff00');
+
+                    // Pac-Man che gira intorno
+                    const angle = (frame * 0.1) % (Math.PI * 2);
+                    const pacX = 32 + Math.cos(angle) * 20;
+                    const pacY = 32 + Math.sin(angle) * 20;
+
+                    ctx.fillStyle = '#ffff00';
+                    ctx.beginPath();
+                    const mouthOpen = Math.sin(frame * 0.3) * 0.3;
+                    ctx.arc(pacX, pacY, 5, mouthOpen, Math.PI * 2 - mouthOpen);
+                    ctx.lineTo(pacX, pacY);
+                    ctx.fill();
+
+                    // Occhio
+                    ctx.fillStyle = '#000000';
+                    ctx.fillRect(pacX - 1, pacY - 3, 2, 2);
+
+                    // Fantasma che insegue
+                    const ghostAngle = angle - 1;
+                    const ghostX = 32 + Math.cos(ghostAngle) * 20;
+                    const ghostY = 32 + Math.sin(ghostAngle) * 20;
+
+                    ctx.fillStyle = seconds % 2 === 0 ? '#ff0000' : '#00ffff';
+                    ctx.fillRect(ghostX - 4, ghostY - 4, 8, 8);
+                    ctx.fillRect(ghostX - 5, ghostY - 2, 10, 6);
+                    // Occhi
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(ghostX - 2, ghostY - 1, 2, 2);
+                    ctx.fillRect(ghostX + 1, ghostY - 1, 2, 2);
+                    ctx.fillStyle = '#0000ff';
+                    ctx.fillRect(ghostX - 1, ghostY, 1, 1);
+                    ctx.fillRect(ghostX + 2, ghostY, 1, 1);
+
+                    // Pallini
+                    ctx.fillStyle = '#ffb897';
+                    for(let i = 0; i < 8; i++) {
+                        const dotAngle = (i / 8) * Math.PI * 2;
+                        const dotX = 32 + Math.cos(dotAngle) * 24;
+                        const dotY = 32 + Math.sin(dotAngle) * 24;
+                        if(Math.abs(dotAngle - angle) > 0.5) {
+                            ctx.fillRect(dotX, dotY, 2, 2);
+                        }
+                    }
+                }
+            },
+            {
+                name: "Mario Time Jump",
+                description: "Mario salta per prendere le monete dell'ora!",
+                draw: (ctx, frame) => {
+                    // Sfondo cielo
+                    ctx.fillStyle = '#5c94fc';
+                    ctx.fillRect(0, 0, 64, 40);
+                    // Terra
+                    ctx.fillStyle = '#8b4513';
+                    ctx.fillRect(0, 40, 64, 24);
+                    ctx.fillStyle = '#00ff00';
+                    ctx.fillRect(0, 40, 64, 4);
+
+                    // Ora come blocchi ?
+                    const now = new Date();
+                    const hours = String(now.getHours()).padStart(2, '0');
+                    const minutes = String(now.getMinutes()).padStart(2, '0');
+
+                    // Blocchi per l'ora
+                    ctx.fillStyle = '#ff8800';
+                    ctx.fillRect(8, 15, 10, 10);
+                    ctx.fillRect(28, 15, 10, 10);
+                    ctx.strokeStyle = '#000000';
+                    ctx.strokeRect(8, 15, 10, 10);
+                    ctx.strokeRect(28, 15, 10, 10);
+
+                    // Numeri sui blocchi
+                    ctx.fillStyle = '#000000';
+                    ctx.font = 'bold 8px monospace';
+                    ctx.fillText(hours, 10, 23);
+                    ctx.fillText(minutes, 30, 23);
+
+                    // Mario che salta
+                    const jumpHeight = Math.abs(Math.sin(frame * 0.1)) * 15;
+                    const marioY = 30 - jumpHeight;
+                    const marioX = 46;
+
+                    // Mario sprite semplice
+                    // Cappello
+                    ctx.fillStyle = '#ff0000';
+                    ctx.fillRect(marioX, marioY, 8, 3);
+                    // Faccia
+                    ctx.fillStyle = '#ffccaa';
+                    ctx.fillRect(marioX+1, marioY+3, 6, 4);
+                    // Occhi
+                    ctx.fillStyle = '#000000';
+                    ctx.fillRect(marioX+2, marioY+4, 1, 1);
+                    ctx.fillRect(marioX+5, marioY+4, 1, 1);
+                    // Baffi
+                    ctx.fillRect(marioX+2, marioY+6, 4, 1);
+                    // Corpo
+                    ctx.fillStyle = '#ff0000';
+                    ctx.fillRect(marioX+1, marioY+7, 6, 4);
+                    // Bottoni blu
+                    ctx.fillStyle = '#0000ff';
+                    ctx.fillRect(marioX+2, marioY+8, 1, 1);
+                    ctx.fillRect(marioX+5, marioY+8, 1, 1);
+                    // Gambe
+                    ctx.fillStyle = '#0000ff';
+                    ctx.fillRect(marioX+2, marioY+11, 2, 3);
+                    ctx.fillRect(marioX+4, marioY+11, 2, 3);
+
+                    // Moneta che brilla
+                    const coinY = 8 + Math.sin(frame * 0.2) * 2;
+                    ctx.fillStyle = '#ffff00';
+                    ctx.beginPath();
+                    ctx.arc(50, coinY, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#ff8800';
+                    ctx.fillRect(49, coinY-1, 2, 2);
+                }
+            },
+            {
+                name: "Minecraft Creeper Clock",
+                description: "Il Creeper pulsa ogni secondo. ATTENZIONE: potrebbe esplodere!",
+                draw: (ctx, frame) => {
+                    const now = new Date();
+                    const seconds = now.getSeconds();
+                    const pulse = Math.sin(frame * 0.3) * 0.15 + 1;
+
+                    // Sfondo minecraft
+                    for(let i = 0; i < 64; i += 8) {
+                        for(let j = 0; j < 64; j += 8) {
+                            ctx.fillStyle = ((i + j) % 16 === 0) ? '#228b22' : '#32cd32';
+                            ctx.fillRect(i, j, 8, 8);
+                        }
+                    }
+
+                    // Creeper al centro
+                    const size = 3;
+                    const offsetX = 8;
+                    const offsetY = 8;
+
+                    ctx.fillStyle = seconds % 2 === 0 ? '#0da70d' : '#ff0000'; // Rosso quando "pulsa"
+                    const body = [
+                        [0,1,1,1,1,1,1,0],
+                        [0,1,1,1,1,1,1,0],
+                        [0,1,0,1,1,0,1,0],
+                        [0,1,0,1,1,0,1,0],
+                        [0,1,1,1,1,1,1,0],
+                        [0,1,1,0,0,1,1,0],
+                        [0,1,1,1,1,1,1,0],
+                        [0,1,1,0,0,1,1,0]
+                    ];
+
+                    for(let row = 0; row < body.length; row++) {
+                        for(let col = 0; col < body[row].length; col++) {
+                            if(body[row][col]) {
+                                ctx.fillRect(
+                                    offsetX + col * size * pulse,
+                                    offsetY + row * size * pulse,
+                                    size * pulse,
+                                    size * pulse
+                                );
+                            }
+                        }
+                    }
+
+                    // Ora in basso
+                    drawTime(ctx, 50, '#ffffff');
+
+                    // Testo "TNT" se è un secondo pari
+                    if(seconds % 2 === 0) {
+                        ctx.fillStyle = '#ff0000';
+                        ctx.font = 'bold 8px monospace';
+                        ctx.fillText('BOOM!', 40, 20);
+                    }
+                }
+            },
+            {
+                name: "Among Us Time Task",
+                description: "Crewmate sta facendo il task dell'orologio!",
+                draw: (ctx, frame) => {
+                    // Sfondo navicella
+                    ctx.fillStyle = '#808080';
+                    ctx.fillRect(0, 0, 64, 64);
+
+                    // Pannello task al centro
+                    ctx.fillStyle = '#4a4a4a';
+                    ctx.fillRect(14, 8, 36, 30);
+                    ctx.strokeStyle = '#00ffff';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(14, 8, 36, 30);
+
+                    // Ora sul pannello
+                    drawTime(ctx, 18, '#00ff00');
+
+                    // Barra progresso task
+                    const progress = (frame % 100) / 100;
+                    ctx.fillStyle = '#00ff00';
+                    ctx.fillRect(16, 33, 32 * progress, 3);
+
+                    // Crewmate che fa il task
+                    const x = 24;
+                    const y = 42;
+
+                    // Corpo
+                    ctx.fillStyle = '#c51111';
+                    ctx.fillRect(x+2, y, 12, 4);
+                    ctx.fillRect(x, y+4, 16, 12);
+                    ctx.fillRect(x+2, y+16, 12, 4);
+
+                    // Visiera
+                    ctx.fillStyle = '#8dd8ff';
+                    ctx.fillRect(x+4, y+6, 8, 6);
+
+                    // Zaino
+                    ctx.fillStyle = '#8b0000';
+                    ctx.fillRect(x, y+6, 2, 8);
+
+                    // Testo "TASK COMPLETE" se la barra è piena
+                    if(progress > 0.99) {
+                        ctx.fillStyle = '#00ff00';
+                        ctx.font = 'bold 6px monospace';
+                        ctx.fillText('COMPLETE!', 17, 44);
+                    }
+                }
+            },
+            {
+                name: "Sonic Speed Time",
+                description: "Sonic corre veloce, ma non più veloce del tempo!",
+                draw: (ctx, frame) => {
+                    // Sfondo Green Hill Zone
+                    ctx.fillStyle = '#0099ff';
+                    ctx.fillRect(0, 0, 64, 40);
+                    ctx.fillStyle = '#8b4513';
+                    ctx.fillRect(0, 40, 64, 24);
+                    ctx.fillStyle = '#00cc00';
+                    ctx.fillRect(0, 40, 64, 4);
+
+                    // Sonic che corre
+                    const sonicX = (frame * 2) % 80 - 10;
+                    const sonicY = 32 + Math.sin(frame * 0.3) * 3;
+
+                    ctx.fillStyle = '#0066ff';
+                    ctx.fillRect(sonicX+2, sonicY, 10, 3);
+                    ctx.fillRect(sonicX, sonicY+3, 14, 8);
+                    ctx.fillRect(sonicX+3, sonicY+11, 8, 3);
+
+                    // Occhi
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(sonicX+4, sonicY+4, 4, 3);
+                    ctx.fillStyle = '#000000';
+                    ctx.fillRect(sonicX+5, sonicY+5, 2, 2);
+
+                    // Anelli con ora
+                    ctx.strokeStyle = '#ffff00';
+                    ctx.lineWidth = 2;
+
+                    // Anello 1 - ore
+                    ctx.beginPath();
+                    ctx.arc(15, 15, 6, 0, Math.PI * 2);
+                    ctx.stroke();
+                    const now = new Date();
+                    const hours = String(now.getHours()).padStart(2, '0');
+                    ctx.fillStyle = '#ffff00';
+                    ctx.font = 'bold 6px monospace';
+                    ctx.fillText(hours, 11, 17);
+
+                    // Due punti
+                    ctx.fillText(':', 28, 17);
+
+                    // Anello 2 - minuti
+                    ctx.beginPath();
+                    ctx.arc(42, 15, 6, 0, Math.PI * 2);
+                    ctx.stroke();
+                    const minutes = String(now.getMinutes()).padStart(2, '0');
+                    ctx.fillText(minutes, 38, 17);
+
+                    // Scia velocità
+                    for(let i = 0; i < 3; i++) {
+                        ctx.fillStyle = `rgba(0, 102, 255, ${0.3 - i * 0.1})`;
+                        ctx.fillRect(sonicX - (i + 1) * 4, sonicY + 4, 3, 4);
+                    }
+                }
+            },
+            {
+                name: "Tetris Time Stack",
+                description: "I blocchi dell'ora cadono e si impilano!",
+                draw: (ctx, frame) => {
+                    // Sfondo nero
+                    ctx.fillStyle = '#000000';
+                    ctx.fillRect(0, 0, 64, 64);
+
+                    // Griglia
+                    ctx.strokeStyle = '#222222';
+                    ctx.lineWidth = 1;
+                    for(let i = 0; i <= 64; i += 8) {
+                        ctx.beginPath();
+                        ctx.moveTo(i, 0);
+                        ctx.lineTo(i, 64);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.moveTo(0, i);
+                        ctx.lineTo(64, i);
+                        ctx.stroke();
+                    }
+
+                    // Blocchi impilati in basso
+                    const colors = ['#00f0f0', '#f0f000', '#a000f0', '#00f000', '#f00000'];
+                    for(let i = 0; i < 8; i++) {
+                        ctx.fillStyle = colors[i % colors.length];
+                        ctx.fillRect(i * 8, 56, 8, 8);
+                    }
+
+                    // Ora al centro
+                    drawTime(ctx, 26, '#ffffff');
+
+                    // Blocco che cade
+                    const fallY = (frame * 1.5) % 70 - 10;
+                    ctx.fillStyle = colors[Math.floor(frame / 20) % colors.length];
+                    ctx.fillRect(24, fallY, 8, 8);
+                    ctx.fillRect(32, fallY, 8, 8);
+                }
+            },
+            {
+                name: "Nyan Cat Time Trail",
+                description: "Nyan Cat lascia una scia arcobaleno con l'ora!",
+                draw: (ctx, frame) => {
+                    // Sfondo spazio
+                    ctx.fillStyle = '#000033';
+                    ctx.fillRect(0, 0, 64, 64);
+
+                    // Stelline
+                    ctx.fillStyle = '#ffffff';
+                    for(let i = 0; i < 30; i++) {
+                        const sx = (i * 23 - frame * 2) % 64;
+                        const sy = (i * 17) % 64;
+                        ctx.fillRect(sx, sy, 1, 1);
+                    }
+
+                    const x = 26;
+                    const y = 20;
+
+                    // Scia arcobaleno con ora
+                    const colors = ['#ff0000', '#ff7f00', '#ffff00', '#00ff00', '#0000ff', '#8b00ff'];
+                    for(let i = 0; i < 6; i++) {
+                        ctx.fillStyle = colors[i];
+                        ctx.fillRect(x - 20, y + 2 + i * 2, 20, 2);
+                    }
+
+                    // Ora sulla scia
+                    const now = new Date();
+                    const hours = String(now.getHours()).padStart(2, '0');
+                    const minutes = String(now.getMinutes()).padStart(2, '0');
+                    ctx.fillStyle = '#000000';
+                    ctx.font = 'bold 6px monospace';
+                    ctx.fillText(hours, x - 16, y + 9);
+                    ctx.fillText(':', x - 8, y + 9);
+                    ctx.fillText(minutes, x - 4, y + 9);
+
+                    // Pop-Tart body
+                    ctx.fillStyle = '#ffb6c1';
+                    ctx.fillRect(x, y, 14, 10);
+                    ctx.fillStyle = '#ff1493';
+                    ctx.fillRect(x+2, y+2, 10, 6);
+
+                    // Testa gatto
+                    ctx.fillStyle = '#999999';
+                    ctx.fillRect(x+10, y+1, 8, 8);
+                    ctx.fillRect(x+10, y-1, 2, 2);
+                    ctx.fillRect(x+16, y-1, 2, 2);
+
+                    // Occhi
+                    ctx.fillStyle = '#000000';
+                    ctx.fillRect(x+12, y+3, 1, 1);
+                    ctx.fillRect(x+15, y+3, 1, 1);
+
+                    // Piedi animati
+                    ctx.fillStyle = '#999999';
+                    const footAnim = Math.floor(frame / 5) % 2;
+                    ctx.fillRect(x+2, y+10, 2, 2+footAnim);
+                    ctx.fillRect(x+10, y+10, 2, 2+(1-footAnim));
+                }
+            },
+            {
+                name: "Matrix Digital Clock",
+                description: "L'ora scorre come pioggia digitale in stile Matrix",
+                draw: (ctx, frame) => {
+                    // Pioggia matrix
+                    const chars = '01アイウエオカキクケコサシスセソタチツテト';
+                    ctx.font = '10px monospace';
+
+                    for(let i = 0; i < 10; i++) {
+                        const x = i * 7;
+                        const offset = (frame + i * 10) % 80;
+
+                        for(let j = 0; j < 12; j++) {
+                            const y = (j * 6 + offset) % 70;
+                            const alpha = 1 - (j / 12);
+                            ctx.fillStyle = `rgba(0, 255, 0, ${alpha * 0.3})`;
+                            const char = chars[Math.floor((frame + i + j) / 5) % chars.length];
+                            ctx.fillText(char, x, y);
+                        }
+                    }
+
+                    // Ora in evidenza al centro
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                    ctx.fillRect(8, 24, 48, 16);
+
+                    ctx.strokeStyle = '#00ff00';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(8, 24, 48, 16);
+
+                    drawTime(ctx, 28, '#00ff00');
+
+                    // Effetto glitch
+                    if(frame % 60 === 0) {
+                        ctx.fillStyle = 'rgba(0, 255, 0, 0.5)';
+                        ctx.fillRect(0, 24, 64, 16);
+                    }
+                }
+            },
+            {
+                name: "Pong Time Match",
+                description: "Le paddle di Pong tengono il tempo!",
+                draw: (ctx, frame) => {
+                    // Sfondo
+                    ctx.fillStyle = '#000000';
+                    ctx.fillRect(0, 0, 64, 64);
+
+                    const now = new Date();
+                    const hours = now.getHours();
+                    const minutes = now.getMinutes();
+
+                    // Paddle sinistro - ore
+                    ctx.fillStyle = '#ffffff';
+                    const leftPaddleY = 10 + (hours / 24) * 30;
+                    ctx.fillRect(4, leftPaddleY, 3, 16);
+
+                    // Paddle destro - minuti
+                    const rightPaddleY = 10 + (minutes / 60) * 30;
+                    ctx.fillRect(57, rightPaddleY, 3, 16);
+
+                    // Linea centrale
+                    for(let i = 0; i < 64; i += 6) {
+                        ctx.fillRect(31, i, 2, 3);
+                    }
+
+                    // Ora al centro
+                    drawTime(ctx, 28, '#ffffff');
+
+                    // Pallina che rimbalza
+                    const ballX = 32 + Math.sin(frame * 0.1) * 22;
+                    const ballY = 32 + Math.cos(frame * 0.13) * 14;
+                    ctx.fillRect(ballX-2, ballY-2, 4, 4);
+
+                    // Score-like display in alto
+                    ctx.font = 'bold 8px monospace';
+                    ctx.fillText(String(hours).padStart(2, '0'), 10, 8);
+                    ctx.fillText(String(minutes).padStart(2, '0'), 46, 8);
+                }
+            },
+            {
+                name: "Flappy Time",
+                description: "L'uccello vola attraverso i tubi dell'ora!",
+                draw: (ctx, frame) => {
+                    // Sfondo
+                    ctx.fillStyle = '#4ec0ca';
+                    ctx.fillRect(0, 0, 64, 54);
+                    ctx.fillStyle = '#ded895';
+                    ctx.fillRect(0, 54, 64, 10);
+
+                    // Tubi con numeri
+                    const now = new Date();
+                    const hours = String(now.getHours()).padStart(2, '0');
+                    const minutes = String(now.getMinutes()).padStart(2, '0');
+
+                    // Tubo sinistro (ore)
+                    ctx.fillStyle = '#00dd00';
+                    ctx.fillRect(12, 0, 10, 18);
+                    ctx.fillRect(12, 38, 10, 26);
+                    ctx.fillRect(10, 16, 14, 4);
+                    ctx.fillRect(10, 36, 14, 4);
+
+                    ctx.fillStyle = '#000000';
+                    ctx.font = 'bold 8px monospace';
+                    ctx.fillText(hours, 13, 30);
+
+                    // Tubo destro (minuti)
+                    ctx.fillStyle = '#00dd00';
+                    ctx.fillRect(42, 0, 10, 22);
+                    ctx.fillRect(42, 42, 10, 22);
+                    ctx.fillRect(40, 20, 14, 4);
+                    ctx.fillRect(40, 40, 14, 4);
+
+                    ctx.fillStyle = '#000000';
+                    ctx.fillText(minutes, 43, 34);
+
+                    // Bird
+                    const birdY = 28 + Math.sin(frame * 0.15) * 6;
+                    ctx.fillStyle = '#ffff00';
+                    ctx.fillRect(28, birdY, 8, 6);
+                    ctx.fillStyle = '#ff8800';
+                    ctx.fillRect(26, birdY+2, 2, 2);
+                    ctx.fillStyle = '#000000';
+                    ctx.fillRect(32, birdY+1, 2, 2);
+
+                    // Ala
+                    ctx.fillStyle = '#ffaa00';
+                    const wingY = birdY + 3 + Math.sin(frame * 0.5) * 2;
+                    ctx.fillRect(30, wingY, 3, 2);
+                }
+            },
+            {
+                name: "Pokemon Time Catch",
+                description: "Cattura l'ora con la Pokeball!",
+                draw: (ctx, frame) => {
+                    // Sfondo erba
+                    ctx.fillStyle = '#88dd88';
+                    ctx.fillRect(0, 0, 64, 64);
+
+                    // Pikachu
+                    const x = 10;
+                    const y = 38 + Math.abs(Math.sin(frame * 0.1)) * 3;
+
+                    ctx.fillStyle = '#ffde00';
+                    ctx.fillRect(x+2, y-4, 3, 6);
+                    ctx.fillRect(x+11, y-4, 3, 6);
+                    ctx.fillStyle = '#000000';
+                    ctx.fillRect(x+2, y-4, 3, 2);
+                    ctx.fillRect(x+11, y-4, 3, 2);
+
+                    ctx.fillStyle = '#ffde00';
+                    ctx.fillRect(x, y+2, 16, 12);
+
+                    ctx.fillStyle = '#000000';
+                    ctx.fillRect(x+4, y+5, 2, 2);
+                    ctx.fillRect(x+10, y+5, 2, 2);
+
+                    ctx.fillStyle = '#ff0000';
+                    ctx.fillRect(x+1, y+8, 3, 2);
+                    ctx.fillRect(x+12, y+8, 3, 2);
+
+                    // Pokeball con ora
+                    ctx.fillStyle = '#ff0000';
+                    ctx.fillRect(38, 10, 16, 8);
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(38, 18, 16, 8);
+                    ctx.fillStyle = '#000000';
+                    ctx.strokeRect(38, 10, 16, 16);
+                    ctx.fillRect(38, 17, 16, 2);
+
+                    ctx.beginPath();
+                    ctx.arc(46, 18, 3, 0, Math.PI * 2);
+                    ctx.stroke();
+                    ctx.fillStyle = '#ffffff';
+                    ctx.beginPath();
+                    ctx.arc(46, 18, 2, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Ora sotto la pokeball
+                    drawTime(ctx, 32, '#000000');
+
+                    // Effetto cattura
+                    if(Math.floor(frame / 30) % 2 === 0) {
+                        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        ctx.arc(46, 18, 10, 0, Math.PI * 2);
+                        ctx.stroke();
+                    }
+                }
+            }
+        ];
+
+        function createCanvas(clock) {
+            const card = document.createElement('div');
+            card.className = 'animation-card';
+
+            card.innerHTML = `
+                <h2>${clock.name}</h2>
+                <div class="canvas-container">
+                    <canvas id="canvas-${clock.name.replace(/\s+/g, '-')}" width="64" height="64"></canvas>
+                </div>
+                <div class="time-display" id="time-${clock.name.replace(/\s+/g, '-')}">--:--</div>
+                <div class="description">${clock.description}</div>
+            `;
+
+            return card;
+        }
+
+        function animate() {
+            const frame = Date.now() / 50;
+
+            clocks.forEach(clock => {
+                const canvasId = `canvas-${clock.name.replace(/\s+/g, '-')}`;
+                const canvas = document.getElementById(canvasId);
+                if(canvas) {
+                    const ctx = canvas.getContext('2d');
+                    ctx.clearRect(0, 0, 64, 64);
+                    clock.draw(ctx, frame);
+                }
+
+                // Update time display
+                const timeId = `time-${clock.name.replace(/\s+/g, '-')}`;
+                const timeDisplay = document.getElementById(timeId);
+                if(timeDisplay) {
+                    const now = new Date();
+                    timeDisplay.textContent = now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                }
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // Setup
+        const gallery = document.getElementById('gallery');
+        clocks.forEach(clock => {
+            gallery.appendChild(createCanvas(clock));
+        });
+
+        // Start animation
+        animate();
+    </script>
+</body>
+</html>

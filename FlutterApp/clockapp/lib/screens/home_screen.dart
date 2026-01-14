@@ -12,6 +12,9 @@ import '../dialogs/wifi_config_dialog.dart';
 import '../dialogs/restart_confirm_dialog.dart';
 import 'image_management_screen.dart';
 import 'game_controller_screen.dart';
+import 'scheduled_text_screen.dart';
+import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+import '../models/scheduled_text.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -38,6 +41,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final List<String> _consoleLog = [];
   final ScrollController _consoleScroll = ScrollController();
   final TextEditingController _scrollTextController = TextEditingController();
+  Color _scrollTextColor = Colors.yellow;
 
   // Subscriptions
   late List<StreamSubscription> _subscriptions;
@@ -523,6 +527,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 'Testo Scorrevole',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
               ),
+              const Spacer(),
+              // Button to navigate to scheduled texts
+              IconButton(
+                icon: const Icon(Icons.schedule),
+                tooltip: 'Scritte programmate',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ScheduledTextScreen(deviceService: _device),
+                    ),
+                  );
+                },
+              ),
             ],
           ),
           const SizedBox(height: 16),
@@ -548,6 +566,54 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             style: const TextStyle(fontSize: 14),
           ),
           const SizedBox(height: 12),
+          // Color picker
+          Row(
+            children: [
+              const Text('Colore:', style: TextStyle(fontSize: 14)),
+              const SizedBox(width: 12),
+              InkWell(
+                onTap: () async {
+                  Color pickerColor = _scrollTextColor;
+                  await showDialog(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Scegli Colore'),
+                      content: SingleChildScrollView(
+                        child: ColorPicker(
+                          pickerColor: pickerColor,
+                          onColorChanged: (color) => pickerColor = color,
+                          pickerAreaHeightPercent: 0.8,
+                        ),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Annulla'),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            setState(() => _scrollTextColor = pickerColor);
+                            Navigator.pop(context);
+                          },
+                          child: const Text('OK'),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: _scrollTextColor,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.white24),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
@@ -557,8 +623,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   onTap: () {
                     final text = _scrollTextController.text.trim();
                     if (text.isNotEmpty) {
-                      _device.setScrollText(text);
-                      _addLog('→ ScrollText: $text');
+                      final colorValue = ScheduledText.colorToRgb565(_scrollTextColor);
+                      _device.send('scrolltext,$text,$colorValue');
+                      _addLog('→ ScrollText: $text (color: 0x${_scrollTextColor.toARGB32().toRadixString(16)})');
                       HapticFeedback.lightImpact();
                     }
                   },
@@ -572,9 +639,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   onTap: () {
                     final text = _scrollTextController.text.trim();
                     if (text.isNotEmpty) {
-                      _device.setScrollText(text);
+                      final colorValue = ScheduledText.colorToRgb565(_scrollTextColor);
+                      _device.send('scrolltext,$text,$colorValue');
                       _device.saveSettings();
-                      _addLog('→ ScrollText salvato: $text');
+                      _addLog('→ ScrollText salvato: $text (color: 0x${_scrollTextColor.toARGB32().toRadixString(16)})');
                       HapticFeedback.lightImpact();
                     }
                   },

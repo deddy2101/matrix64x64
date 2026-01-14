@@ -10,33 +10,53 @@ ScrollTextEffect::ScrollTextEffect(DisplayManager* dm, const String& scrollText,
       textHeight(0),
       textColor(color),
       textSize(size),
-      completed(false) {
+      completed(false),
+      loopCount(0),      // Default: infinito
+      currentLoop(0) {
 }
 
 void ScrollTextEffect::init() {
-    DEBUG_PRINTF("[ScrollTextEffect] Initializing: \"%s\"\n", text.c_str());
-    
+    DEBUG_PRINTF("[ScrollTextEffect] Initializing: \"%s\" (loops: %d)\n", text.c_str(), loopCount);
+
     scrollX = displayManager->getWidth();
     completed = false;
-    
+    currentLoop = 0;
+
     calculateTextWidth();
-    
+
     // IMPORTANTE: Reset al font di default
     displayManager->setFont(nullptr);  // nullptr = font default di Adafruit GFX
     displayManager->setTextSize(textSize);
     displayManager->setTextWrap(false);
     displayManager->setTextColor(textColor);
-    
+
     displayManager->fillScreen(0, 0, 0);
+}
+
+void ScrollTextEffect::resetScroll() {
+    scrollX = displayManager->getWidth();
+    currentLoop++;
+    DEBUG_PRINTF("[ScrollTextEffect] Loop %d/%d\n", currentLoop, loopCount);
 }
 
 void ScrollTextEffect::update() {
     scrollX -= scrollSpeed;
-    
+
     // Controlla se il testo è completamente uscito dallo schermo
     if (scrollX <= -textWidth) {
-        completed = true;
-        DEBUG_PRINTLN("[ScrollTextEffect] Completed!");
+        // Se loopCount è 0, loop infinito
+        if (loopCount == 0) {
+            resetScroll();
+        }
+        // Se abbiamo raggiunto il numero di loop, completa
+        else if (currentLoop >= loopCount) {
+            completed = true;
+            DEBUG_PRINTLN("[ScrollTextEffect] Completed!");
+        }
+        // Altrimenti, ricomincia
+        else {
+            resetScroll();
+        }
     }
 }
 

@@ -16,6 +16,7 @@
 #include "CommandHandler.h"
 #include "Discovery.h"
 #include "ImageManager.h"
+#include "TextScheduleManager.h"
 
 // Effects
 #include "effects/PongEffect.h"
@@ -52,6 +53,7 @@ WebSocketManager* wsManager = nullptr;
 CommandHandler commandHandler;
 DiscoveryService* discoveryService = nullptr;
 ImageManager* imageManager = nullptr;
+TextScheduleManager* scheduleManager = nullptr;
 DynamicImageEffect* dynamicImageEffect = nullptr;
 ScrollTextEffect* scrollTextEffect = nullptr;
 PongEffect* pongEffect = nullptr;
@@ -67,6 +69,11 @@ unsigned long wsCleanupTimer = 0;
 const unsigned long STATS_INTERVAL = 30000;      // Stats ogni 30 secondi
 const unsigned long BRIGHTNESS_INTERVAL = 60000; // Check brightness ogni minuto
 const unsigned long WS_CLEANUP_INTERVAL = 1000;  // Cleanup WS ogni secondo
+
+// ═══════════════════════════════════════════
+// Scheduled Text State
+// ═══════════════════════════════════════════
+int previousEffectIndex = -1;  // Indice dell'effetto prima della scritta programmata
 
 // ═══════════════════════════════════════════
 // Serial Buffer
@@ -133,7 +140,7 @@ void setup() {
     // Aggiungi effetti
     effectManager->addEffect(new MarioClockEffect(displayManager, timeManager));
     effectManager->addEffect(new PacManClockEffect(displayManager, timeManager));
-    scrollTextEffect = new ScrollTextEffect(displayManager, settings.getScrollText());
+    scrollTextEffect = new ScrollTextEffect(displayManager, settings.getScrollText(), 3, settings.getScrollTextColor());
     effectManager->addEffect(scrollTextEffect);
     //effectManager->addEffect(new PlasmaEffect(displayManager));
     pongEffect = new PongEffect(displayManager);
@@ -181,9 +188,17 @@ void setup() {
     }
 
     // ─────────────────────────────────────────
-    // 7. Command Handler
+    // 7. Text Schedule Manager
     // ─────────────────────────────────────────
-    commandHandler.init(timeManager, effectManager, displayManager, &settings, wifiManager, imageManager);
+    DEBUG_PRINTLN(F("[Setup] Initializing TextScheduleManager..."));
+    scheduleManager = new TextScheduleManager();
+    scheduleManager->begin();
+    DEBUG_PRINTLN(F("[Setup] ✓ TextScheduleManager OK"));
+
+    // ─────────────────────────────────────────
+    // 8. Command Handler
+    // ─────────────────────────────────────────
+    commandHandler.init(timeManager, effectManager, displayManager, &settings, wifiManager, imageManager, scheduleManager);
     commandHandler.setScrollTextEffect(scrollTextEffect);
     commandHandler.setPongEffect(pongEffect);
     commandHandler.setSnakeEffect(snakeEffect);
@@ -211,6 +226,36 @@ void setup() {
     timeManager->addOnMinuteChange([](int h, int m, int s) {
         // Aggiorna luminosità ogni minuto se necessario
         commandHandler.updateBrightness();
+    });
+
+    // Callback per scritte programmate
+    timeManager->addOnMinuteChange([](int h, int m, int s) {
+        if (scheduleManager && scrollTextEffect && effectManager) {
+            // Ottieni data e giorno della settimana correnti
+            int year = timeManager->getYear();
+            int month = timeManager->getMonth();
+            int day = timeManager->getDay();
+            int weekDay = timeManager->getWeekday();
+
+            // Controlla se c'è una scritta programmata per questo momento
+            ScheduledText* scheduled = scheduleManager->getActiveScheduledText(h, m, year, month, day, weekDay);
+            if (scheduled) {
+                DEBUG_PRINTF("[Schedule] Activating scheduled text ID %d: %s (loops: %d)\n",
+                            scheduled->id, scheduled->text, scheduled->loopCount);
+
+                // Salva l'indice dell'effetto corrente per poterci tornare dopo
+                previousEffectIndex = effectManager->getCurrentEffectIndex();
+                DEBUG_PRINTF("[Schedule] Saving previous effect index: %d\n", previousEffectIndex);
+
+                // Configura il testo, colore e numero di loop
+                scrollTextEffect->setText(scheduled->text);
+                scrollTextEffect->setColor(scheduled->color);
+                scrollTextEffect->setLoopCount(scheduled->loopCount);
+
+                // Attiva l'effetto scroll text
+                effectManager->switchToEffect("Scroll Text");
+            }
+        }
     });
 
     // ─────────────────────────────────────────
@@ -272,6 +317,16 @@ void loop() {
     // Effect Manager update
     // ─────────────────────────────────────────
     effectManager->update();
+
+    // ─────────────────────────────────────────
+    // Scheduled Text: ritorna all'effetto precedente
+    // ─────────────────────────────────────────
+    if (previousEffectIndex >= 0 && scrollTextEffect && scrollTextEffect->isComplete()) {
+        DEBUG_PRINTF("[Schedule] Scroll text completed, returning to effect %d\n", previousEffectIndex);
+        effectManager->switchToEffect(previousEffectIndex);
+        scrollTextEffect->setLoopCount(0);  // Reset a infinito per uso manuale
+        previousEffectIndex = -1;  // Reset
+    }
 
     // ─────────────────────────────────────────
     // WiFi check

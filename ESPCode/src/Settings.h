@@ -29,6 +29,7 @@ struct Config {
 
     // Scroll Text
     char scrollText[128];  // Testo scorrevole configurabile
+    uint16_t scrollTextColor;  // Colore RGB565
 
     // NTP/Timezone
     bool ntpEnabled;
@@ -103,7 +104,9 @@ public:
     // Scroll Text
     // ═══════════════════════════════════════════
     const char* getScrollText() const { return config.scrollText; }
+    uint16_t getScrollTextColor() const { return config.scrollTextColor; }
     void setScrollText(const char* text);
+    void setScrollTextColor(uint16_t color);
 
     // ═══════════════════════════════════════════
     // NTP/Timezone

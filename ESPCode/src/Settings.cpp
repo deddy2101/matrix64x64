@@ -26,6 +26,7 @@ void Settings::setDefaults() {
 
     // Scroll Text defaults
     strcpy(config.scrollText, "PROSSIMA FERMATA FIRENZE");
+    config.scrollTextColor = 0xFFE0;  // Giallo (RGB565)
 
     // NTP/Timezone defaults
     config.ntpEnabled = true;
@@ -63,6 +64,7 @@ void Settings::load() {
     // Scroll Text
     String scrollText = preferences.getString("scrollText", "PROSSIMA FERMATA FIRENZE");
     strncpy(config.scrollText, scrollText.c_str(), sizeof(config.scrollText) - 1);
+    config.scrollTextColor = preferences.getUShort("scrollColor", 0xFFE0);
 
     // NTP/Timezone
     config.ntpEnabled = preferences.getBool("ntpEnabled", true);
@@ -97,6 +99,7 @@ void Settings::save() {
 
     // Scroll Text
     preferences.putString("scrollText", config.scrollText);
+    preferences.putUShort("scrollColor", config.scrollTextColor);
 
     // NTP/Timezone
     preferences.putBool("ntpEnabled", config.ntpEnabled);
@@ -201,6 +204,11 @@ void Settings::setScrollText(const char* text) {
     dirty = true;
 }
 
+void Settings::setScrollTextColor(uint16_t color) {
+    config.scrollTextColor = color;
+    dirty = true;
+}
+
 // ═══════════════════════════════════════════
 // NTP/Timezone Setters
 // ═══════════════════════════════════════════
@@ -233,6 +241,7 @@ String Settings::toCSV() const {
     csv += "," + String(config.currentEffect);
     csv += "," + String(config.deviceName);
     csv += "," + String(config.scrollText);
+    csv += "," + String(config.scrollTextColor);
     csv += "," + String(config.ntpEnabled ? "1" : "0");
     csv += "," + String(config.timezone);
     return csv;

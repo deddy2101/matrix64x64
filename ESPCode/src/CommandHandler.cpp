@@ -15,6 +15,7 @@ CommandHandler::CommandHandler()
     , _wifiManager(nullptr)
     , _wsManager(nullptr)
     , _imageManager(nullptr)
+    , _scheduleManager(nullptr)
     , _scrollTextEffect(nullptr)
     , _pongEffect(nullptr)
     , _snakeEffect(nullptr)
@@ -27,13 +28,14 @@ CommandHandler::CommandHandler()
     , _otaLastActivity(0)
 {}
 
-void CommandHandler::init(TimeManager* time, EffectManager* effects, DisplayManager* display, Settings* settings, WiFiManager* wifi, ImageManager* imgMgr) {
+void CommandHandler::init(TimeManager* time, EffectManager* effects, DisplayManager* display, Settings* settings, WiFiManager* wifi, ImageManager* imgMgr, TextScheduleManager* schedMgr) {
     _timeManager = time;
     _effectManager = effects;
     _displayManager = display;
     _settings = settings;
     _wifiManager = wifi;
     _imageManager = imgMgr;
+    _scheduleManager = schedMgr;
 }
 
 void CommandHandler::setWebSocketManager(WebSocketManager* ws) {
@@ -279,6 +281,9 @@ String CommandHandler::processCommand(const String& command) {
     }
     if (mainCmd == "image") {
         return handleImage(parts);
+    }
+    if (mainCmd == "schedtext") {
+        return handleScheduledText(parts);
     }
     if (mainCmd == "wifiscan") {
         return handleWiFiScan();
@@ -799,21 +804,39 @@ String CommandHandler::handleScrollText(const ParsedCommand& parts) {
         return "ERR,scrolltext needs TEXT";
     }
 
+    // L'ultimo parametro potrebbe essere il colore (se è un numero)
+    int lastIdx = parts.size() - 1;
+    uint16_t color = _settings ? _settings->getScrollTextColor() : 0xFFE0;  // Default giallo
+    bool hasColor = false;
+
+    // Check se l'ultimo parametro è un numero (colore RGB565)
+    if (parts[lastIdx].length() > 0 && parts[lastIdx].toInt() != 0) {
+        color = (uint16_t)parts[lastIdx].toInt();
+        hasColor = true;
+        lastIdx--;  // Escludi il colore dal testo
+    }
+
     // Ricostruisci il testo completo (potrebbe contenere virgole)
     String text = parts[1];
-    for (int i = 2; i < parts.size(); i++) {
+    for (int i = 2; i <= lastIdx; i++) {
         text += "," + parts[i];
     }
 
     // Salva nelle settings
     if (_settings) {
         _settings->setScrollText(text.c_str());
+        if (hasColor) {
+            _settings->setScrollTextColor(color);
+        }
     }
 
     // Aggiorna l'effetto in tempo reale se disponibile
     if (_scrollTextEffect) {
         _scrollTextEffect->setText(text);
-        DEBUG_PRINTF("[CMD] Scroll text updated: %s\n", text.c_str());
+        if (hasColor) {
+            _scrollTextEffect->setColor(color);
+        }
+        DEBUG_PRINTF("[CMD] Scroll text updated: %s (color: 0x%04X)\n", text.c_str(), color);
     }
 
     return "OK,scrolltext set";
@@ -1480,6 +1503,125 @@ String CommandHandler::handleImage(const ParsedCommand& parts) {
     }
 
     return "ERR,Unknown image subcommand: " + subCmd;
+}
+
+// ═══════════════════════════════════════════
+// Scheduled Text Handler
+// ═══════════════════════════════════════════
+
+String CommandHandler::handleScheduledText(const ParsedCommand& parts) {
+    if (!_scheduleManager) {
+        return "ERR,Schedule manager not available";
+    }
+
+    if (parts.size() < 2) {
+        return "ERR,schedtext requires subcommand";
+    }
+
+    String subCmd = parts[1];
+    subCmd.toLowerCase();
+
+    // schedtext,list
+    if (subCmd == "list") {
+        return _scheduleManager->toCSV();
+    }
+
+    // schedtext,add,TEXT,COLOR,HH,MM[,REPEATDAYS,YEAR,MONTH,DAY,LOOPCOUNT]
+    else if (subCmd == "add") {
+        if (parts.size() < 6) {
+            return "ERR,Add requires: schedtext,add,TEXT,COLOR,HH,MM[,REPEATDAYS,YEAR,MONTH,DAY,LOOPCOUNT]";
+        }
+
+        String text = parts[2];
+        uint16_t color = (uint16_t)parts[3].toInt();
+        uint8_t hour = (uint8_t)parts[4].toInt();
+        uint8_t minute = (uint8_t)parts[5].toInt();
+        uint8_t repeatDays = (parts.size() > 6) ? (uint8_t)parts[6].toInt() : 0xFF;
+        uint16_t year = (parts.size() > 7) ? (uint16_t)parts[7].toInt() : 0;
+        uint8_t month = (parts.size() > 8) ? (uint8_t)parts[8].toInt() : 0;
+        uint8_t day = (parts.size() > 9) ? (uint8_t)parts[9].toInt() : 0;
+        uint8_t loopCount = (parts.size() > 10) ? (uint8_t)parts[10].toInt() : 1;
+
+        uint8_t id = _scheduleManager->addScheduledText(text.c_str(), color, hour, minute,
+                                                        repeatDays, year, month, day, loopCount);
+        if (id > 0) {
+            return "OK,Scheduled text added with ID: " + String(id);
+        } else {
+            return "ERR,Failed to add scheduled text";
+        }
+    }
+
+    // schedtext,update,ID,TEXT,COLOR,HH,MM[,REPEATDAYS,YEAR,MONTH,DAY,LOOPCOUNT]
+    else if (subCmd == "update") {
+        if (parts.size() < 7) {
+            return "ERR,Update requires: schedtext,update,ID,TEXT,COLOR,HH,MM[,REPEATDAYS,YEAR,MONTH,DAY,LOOPCOUNT]";
+        }
+
+        uint8_t id = (uint8_t)parts[2].toInt();
+        String text = parts[3];
+        uint16_t color = (uint16_t)parts[4].toInt();
+        uint8_t hour = (uint8_t)parts[5].toInt();
+        uint8_t minute = (uint8_t)parts[6].toInt();
+        uint8_t repeatDays = (parts.size() > 7) ? (uint8_t)parts[7].toInt() : 0xFF;
+        uint16_t year = (parts.size() > 8) ? (uint16_t)parts[8].toInt() : 0;
+        uint8_t month = (parts.size() > 9) ? (uint8_t)parts[9].toInt() : 0;
+        uint8_t day = (parts.size() > 10) ? (uint8_t)parts[10].toInt() : 0;
+        uint8_t loopCount = (parts.size() > 11) ? (uint8_t)parts[11].toInt() : 1;
+
+        DEBUG_PRINTF("[ScheduledText] Update command - parts.size()=%d, loopCount=%d (from parts[11]='%s')\n",
+                     parts.size(), loopCount, parts.size() > 11 ? parts[11].c_str() : "N/A");
+
+        if (_scheduleManager->updateScheduledText(id, text.c_str(), color, hour, minute,
+                                                   repeatDays, year, month, day, loopCount)) {
+            return "OK,Scheduled text updated: " + String(id);
+        } else {
+            return "ERR,Failed to update scheduled text";
+        }
+    }
+
+    // schedtext,delete,ID
+    else if (subCmd == "delete") {
+        if (parts.size() < 3) {
+            return "ERR,Delete requires: schedtext,delete,ID";
+        }
+
+        uint8_t id = (uint8_t)parts[2].toInt();
+        if (_scheduleManager->deleteScheduledText(id)) {
+            return "OK,Scheduled text deleted: " + String(id);
+        } else {
+            return "ERR,Failed to delete scheduled text";
+        }
+    }
+
+    // schedtext,enable,ID
+    else if (subCmd == "enable") {
+        if (parts.size() < 3) {
+            return "ERR,Enable requires: schedtext,enable,ID";
+        }
+
+        uint8_t id = (uint8_t)parts[2].toInt();
+        if (_scheduleManager->enableScheduledText(id, true)) {
+            return "OK,Scheduled text enabled: " + String(id);
+        } else {
+            return "ERR,Failed to enable scheduled text";
+        }
+    }
+
+    // schedtext,disable,ID
+    else if (subCmd == "disable") {
+        if (parts.size() < 3) {
+            return "ERR,Disable requires: schedtext,disable,ID";
+        }
+
+        uint8_t id = (uint8_t)parts[2].toInt();
+        if (_scheduleManager->enableScheduledText(id, false)) {
+            return "OK,Scheduled text disabled: " + String(id);
+        } else {
+            return "ERR,Failed to disable scheduled text";
+        }
+    }
+
+    return "ERR,Unknown schedtext subcommand: " + subCmd;
 }
 
 // ═══════════════════════════════════════════

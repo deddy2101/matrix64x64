@@ -9,6 +9,7 @@
 #include "Settings.h"
 #include "WiFiManager.h"
 #include "ImageManager.h"
+#include "TextScheduleManager.h"
 #include "Debug.h"
 
 // Struttura per parsing comandi senza allocazioni dinamiche
@@ -66,7 +67,7 @@ class SnakeEffect;
  *   autoswitch,0|1                 - Auto-switch on/off
  *   wifi,SSID,PASSWORD,AP_MODE     - Configura WiFi (AP_MODE: 0=STA, 1=AP)
  *   devicename,NAME                - Nome dispositivo
- *   scrolltext,TEXT                - Imposta testo scorrevole
+ *   scrolltext,TEXT[,COLOR]        - Imposta testo scorrevole (COLOR opzionale RGB565)
  *   pong,join,1|2                  - Giocatore si unisce (1=sinistra, 2=destra)
  *   pong,leave,1|2                 - Giocatore esce
  *   pong,move,1|2,up|down|stop     - Muovi paddle
@@ -102,6 +103,12 @@ class SnakeEffect;
  *   image,next                     - Prossima immagine nello slideshow
  *   image,prev                     - Immagine precedente nello slideshow
  *   image,slideshow,0|1            - Abilita/disabilita slideshow automatico
+ *   schedtext,list                 - Lista scritte programmate
+ *   schedtext,add,TEXT,COLOR,HH,MM[,REPEATDAYS,YEAR,MONTH,DAY,LOOPCOUNT] - Aggiungi scritta programmata
+ *   schedtext,update,ID,TEXT,COLOR,HH,MM[,REPEATDAYS,YEAR,MONTH,DAY,LOOPCOUNT] - Aggiorna scritta programmata
+ *   schedtext,delete,ID            - Elimina scritta programmata
+ *   schedtext,enable,ID            - Abilita scritta programmata
+ *   schedtext,disable,ID           - Disabilita scritta programmata
  *
  * Risposte (ESP32 → App):
  *   OK,comando                     - Comando eseguito
@@ -118,12 +125,13 @@ class SnakeEffect;
  *   TIME,HH:MM:SS                  - Notifica cambio ora
  *   PONG_STATE,state,score1,score2,p1Mode,p2Mode,ballX,ballY - Stato gioco Pong
  *   SNAKE_STATE,state,score,highScore,level,length,foodX,foodY,foodType,direction,playerJoined - Stato gioco Snake
+ *   SCHEDULED_TEXTS,count,id1,text1,color1,hour1,min1,repeat1,year1,month1,day1,loop1,enabled1,... - Lista scritte programmate
  */
 class CommandHandler {
 public:
     CommandHandler();
 
-    void init(TimeManager* time, EffectManager* effects, DisplayManager* display, Settings* settings, WiFiManager* wifi, ImageManager* imgMgr = nullptr);
+    void init(TimeManager* time, EffectManager* effects, DisplayManager* display, Settings* settings, WiFiManager* wifi, ImageManager* imgMgr = nullptr, TextScheduleManager* schedMgr = nullptr);
     void setWebSocketManager(WebSocketManager* ws);
     void setScrollTextEffect(ScrollTextEffect* scrollText);
     void setPongEffect(PongEffect* pong);
@@ -161,6 +169,7 @@ private:
     WiFiManager* _wifiManager;
     WebSocketManager* _wsManager;
     ImageManager* _imageManager;
+    TextScheduleManager* _scheduleManager;
     ScrollTextEffect* _scrollTextEffect;
     PongEffect* _pongEffect;
     SnakeEffect* _snakeEffect;
@@ -188,6 +197,7 @@ private:
     String handleRestart();
     String handleOTA(const ParsedCommand& parts);
     String handleImage(const ParsedCommand& parts);
+    String handleScheduledText(const ParsedCommand& parts);
     String handleWiFiScan();
 
     // OTA state
