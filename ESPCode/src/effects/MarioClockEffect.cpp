@@ -12,6 +12,10 @@ MarioClockEffect::MarioClockEffect(DisplayManager* dm, TimeManager* tm)
       minuteBlock(new MarioBlock()),
       marioSprite(new MarioSprite()),
       isDayTheme(true),
+      transitionState(TRANSITION_NONE),
+      transitionProgress(0.0f),
+      lastTransitionUpdate(0),
+      transitionNeedsRedraw(false),
       marioState(IDLE),
       currentJumpTarget(NONE),
       marioTargetX(23),
@@ -322,25 +326,68 @@ void MarioClockEffect::updateTheme() {
     // Use TimeManager which uses Settings for dynamic night hours
     bool shouldBeDayTheme = timeManager->isDayTheme();
 
-    if (isDayTheme != shouldBeDayTheme) {
-        isDayTheme = shouldBeDayTheme;
+    // Only start transition if not already transitioning
+    if (isDayTheme != shouldBeDayTheme && transitionState == TRANSITION_NONE) {
+        // Start transition animation
+        transitionState = shouldBeDayTheme ? TRANSITION_NIGHT_TO_DAY : TRANSITION_DAY_TO_NIGHT;
+        transitionProgress = 0.0f;
+        lastTransitionUpdate = millis();
+        transitionNeedsRedraw = true;  // Draw first frame immediately
+        DEBUG_PRINTF("[MarioClockEffect] Starting transition to: %s\n",
+                     shouldBeDayTheme ? "DAY" : "NIGHT");
+    }
+}
+
+void MarioClockEffect::updateTransition() {
+    if (transitionState == TRANSITION_NONE) return;
+
+    unsigned long now = millis();
+    unsigned long elapsed = now - lastTransitionUpdate;
+
+    // Limit transition frame rate to reduce flickering (target ~20 FPS)
+    if (elapsed < 50) return;
+
+    lastTransitionUpdate = now;
+    transitionNeedsRedraw = true;  // Mark for redraw
+
+    // Update progress
+    transitionProgress += (float)elapsed / TRANSITION_DURATION_MS;
+
+    if (transitionProgress >= 1.0f) {
+        transitionProgress = 1.0f;
+
+        // Transition complete - update theme
+        if (transitionState == TRANSITION_DAY_TO_NIGHT) {
+            isDayTheme = false;
+        } else {
+            isDayTheme = true;
+        }
+
+        transitionState = TRANSITION_NONE;
+        transitionNeedsRedraw = false;
         needsRedraw = true;
-        DEBUG_PRINTF("[MarioClockEffect] Theme changed to: %s\n",
+        DEBUG_PRINTF("[MarioClockEffect] Transition complete. Theme is now: %s\n",
                      isDayTheme ? "DAY" : "NIGHT");
     }
 }
 
 void MarioClockEffect::onThemeChange(bool isDay) {
-    if (isDayTheme != isDay) {
-        isDayTheme = isDay;
-        needsRedraw = true;
-        DEBUG_PRINTF("[MarioClockEffect] Theme switched via callback to: %s\n", isDay ? "DAY" : "NIGHT");
+    if (isDayTheme != isDay && transitionState == TRANSITION_NONE) {
+        // Start transition animation
+        transitionState = isDay ? TRANSITION_NIGHT_TO_DAY : TRANSITION_DAY_TO_NIGHT;
+        transitionProgress = 0.0f;
+        lastTransitionUpdate = millis();
+        transitionNeedsRedraw = true;  // Draw first frame immediately
+        DEBUG_PRINTF("[MarioClockEffect] Theme transition started via callback to: %s\n", isDay ? "DAY" : "NIGHT");
     }
 }
 
 void MarioClockEffect::update() {
     // Check for theme changes every update
     updateTheme();
+
+    // Update transition animation
+    updateTransition();
 
     updateMario();
 
@@ -356,7 +403,16 @@ void MarioClockEffect::update() {
 }
 
 void MarioClockEffect::draw() {
-    if (needsRedraw && marioState == IDLE && !waitingForNextJump && 
+    // During transition, only redraw when updateTransition() says so
+    if (transitionState != TRANSITION_NONE) {
+        if (transitionNeedsRedraw) {
+            drawTransition();
+            transitionNeedsRedraw = false;
+        }
+        return;
+    }
+
+    if (needsRedraw && marioState == IDLE && !waitingForNextJump &&
         !hourBlock->isHit && !minuteBlock->isHit) {
         drawScene();
         needsRedraw = false;
@@ -579,16 +635,25 @@ void MarioClockEffect::drawMoon(int x, int y) {
 }
 
 void MarioClockEffect::drawStars() {
-    // Draw small stars scattered across the sky
+    drawStarsWithAlpha(255);  // Full brightness
+}
+
+void MarioClockEffect::drawStarsWithAlpha(uint8_t alpha) {
+    // Draw small stars scattered across the sky with alpha blending
     // Stars are just 1-2 pixel bright dots
-    const uint8_t starR = 255, starG = 255, starB = 255;
 
     // Fixed star positions for consistency
-    int starPositions[][2] = {
+    const int starPositions[][2] = {
         {5, 5}, {15, 8}, {25, 3}, {35, 10},
         {8, 15}, {20, 18}, {45, 15}, {58, 12},
         {12, 25}, {40, 22}, {55, 20}
     };
+
+    // Blend star color with night sky based on alpha
+    // Night sky: RGB(10, 20, 50)
+    uint8_t starR = (255 * alpha + 10 * (255 - alpha)) / 255;
+    uint8_t starG = (255 * alpha + 20 * (255 - alpha)) / 255;
+    uint8_t starB = (255 * alpha + 50 * (255 - alpha)) / 255;
 
     for (int i = 0; i < 11; i++) {
         int sx = starPositions[i][0];
@@ -601,6 +666,124 @@ void MarioClockEffect::drawStars() {
             displayManager->drawPixel(sx+1, sy, starR, starG, starB);
             displayManager->drawPixel(sx, sy-1, starR, starG, starB);
             displayManager->drawPixel(sx, sy+1, starR, starG, starB);
+        }
+    }
+}
+
+void MarioClockEffect::drawTransition() {
+    // Calculate interpolated sky color
+    // Day: RGB(0, 145, 206), Night: RGB(10, 20, 50)
+    float p = transitionProgress;
+
+    uint8_t skyR, skyG, skyB;
+    if (transitionState == TRANSITION_DAY_TO_NIGHT) {
+        // Day -> Night: interpolate from day to night
+        skyR = (uint8_t)(0 + p * (10 - 0));
+        skyG = (uint8_t)(145 + p * (20 - 145));
+        skyB = (uint8_t)(206 + p * (50 - 206));
+    } else {
+        // Night -> Day: interpolate from night to day
+        skyR = (uint8_t)(10 + p * (0 - 10));
+        skyG = (uint8_t)(20 + p * (145 - 20));
+        skyB = (uint8_t)(50 + p * (206 - 50));
+    }
+
+    displayManager->fillScreen(skyR, skyG, skyB);
+    displayManager->setTextSize(1);
+    displayManager->setFont(&Super_Mario_Bros__24pt7b);
+
+    // Draw static elements (hill, bush)
+    spriteRenderer->drawSprite(HILL, 0, 34, 20, 22);
+    spriteRenderer->drawSprite(BUSH, 43, 47, 21, 9);
+
+    // Animated elements based on transition direction
+    if (transitionState == TRANSITION_DAY_TO_NIGHT) {
+        // Day -> Night: Clouds slide out to the left, stars fade in
+
+        // Clouds exit animation: slide left
+        int cloudOffset = (int)(p * 70);  // Slide 70 pixels left (off screen)
+        int cloud1X = 0 - cloudOffset;
+        int cloud2X = 51 - cloudOffset;
+
+        // Only draw clouds if they're still partially visible
+        if (cloud1X > -13) {
+            spriteRenderer->drawSprite(CLOUD1, cloud1X, 21, 13, 12);
+        }
+        if (cloud2X > -13) {
+            spriteRenderer->drawSprite(CLOUD2, cloud2X, 7, 13, 12);
+        }
+
+        // Stars fade in (appear after clouds start leaving)
+        if (p > 0.3f) {
+            float starAlpha = (p - 0.3f) / 0.7f;  // 0 to 1 for the last 70%
+            drawStarsWithAlpha((uint8_t)(starAlpha * 255));
+        }
+
+        // Moon fades in
+        if (p > 0.4f) {
+            float moonAlpha = (p - 0.4f) / 0.6f;
+            drawMoonWithAlpha(51, 7, (uint8_t)(moonAlpha * 255));
+        }
+
+    } else {
+        // Night -> Day: Stars fade out, clouds slide in from left
+
+        // Stars fade out
+        if (p < 0.6f) {
+            float starAlpha = 1.0f - (p / 0.6f);
+            drawStarsWithAlpha((uint8_t)(starAlpha * 255));
+        }
+
+        // Moon fades out
+        if (p < 0.5f) {
+            float moonAlpha = 1.0f - (p / 0.5f);
+            drawMoonWithAlpha(51, 7, (uint8_t)(moonAlpha * 255));
+        }
+
+        // Clouds slide in from left (after stars start fading)
+        if (p > 0.3f) {
+            float cloudProgress = (p - 0.3f) / 0.7f;  // 0 to 1 for the last 70%
+            int cloudOffset = (int)((1.0f - cloudProgress) * 70);  // Start at -70, end at 0
+            int cloud1X = 0 - cloudOffset;
+            int cloud2X = 51 - cloudOffset;
+
+            spriteRenderer->drawSprite(CLOUD1, cloud1X, 21, 13, 12);
+            spriteRenderer->drawSprite(CLOUD2, cloud2X, 7, 13, 12);
+        }
+    }
+
+    // Draw ground
+    drawGround();
+
+    // Draw blocks
+    drawBlock(*hourBlock);
+    drawBlock(*minuteBlock);
+
+    // Draw Mario
+    spriteRenderer->drawSpriteFlipped(MARIO_IDLE, marioSprite->x, marioSprite->y,
+                                     MARIO_IDLE_SIZE[0], MARIO_IDLE_SIZE[1],
+                                     !marioFacingRight);
+}
+
+void MarioClockEffect::drawMoonWithAlpha(int x, int y, uint8_t alpha) {
+    // Simple moon with alpha blending against night sky
+    const int moonRadius = 4;
+
+    // Night sky: RGB(10, 20, 50), Moon: RGB(255, 250, 200)
+    uint8_t moonR = (255 * alpha + 10 * (255 - alpha)) / 255;
+    uint8_t moonG = (250 * alpha + 20 * (255 - alpha)) / 255;
+    uint8_t moonB = (200 * alpha + 50 * (255 - alpha)) / 255;
+
+    for (int dy = -moonRadius; dy <= moonRadius; dy++) {
+        for (int dx = -moonRadius; dx <= moonRadius; dx++) {
+            if (dx*dx + dy*dy <= moonRadius*moonRadius) {
+                int px = x + dx + moonRadius;
+                int py = y + dy + moonRadius;
+                if (px >= 0 && px < displayManager->getWidth() &&
+                    py >= 0 && py < displayManager->getHeight()) {
+                    displayManager->drawPixel(px, py, moonR, moonG, moonB);
+                }
+            }
         }
     }
 }

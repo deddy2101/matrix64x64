@@ -51,6 +51,21 @@ private:
     // Theme support
     bool isDayTheme;
     void updateTheme();
+
+    // Theme transition animation
+    enum TransitionState {
+        TRANSITION_NONE,
+        TRANSITION_DAY_TO_NIGHT,  // Clouds exit, stars enter
+        TRANSITION_NIGHT_TO_DAY   // Stars exit, clouds enter
+    };
+    TransitionState transitionState;
+    float transitionProgress;  // 0.0 to 1.0
+    unsigned long lastTransitionUpdate;
+    bool transitionNeedsRedraw;  // Flag to control redraw rate
+    static const int TRANSITION_DURATION_MS = 1500;  // 1.5 seconds for full transition
+
+    void updateTransition();
+    void drawTransition();
     
     // State
     MarioState marioState;
@@ -108,7 +123,9 @@ private:
     void drawBlock(MarioBlock& block);
     void redrawBackground(int x, int y, int width, int height);
     void drawMoon(int x, int y);
+    void drawMoonWithAlpha(int x, int y, uint8_t alpha);
     void drawStars();
+    void drawStarsWithAlpha(uint8_t alpha);
     
     bool checkCollision(MarioSprite& mario, MarioBlock& block);
     void startJump();
