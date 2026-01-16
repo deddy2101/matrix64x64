@@ -840,74 +840,76 @@ class _GameControllerScreenState extends State<GameControllerScreen>
               ),
             ],
           ),
-          const SizedBox(height: 24),
-          // D-Pad per controllo direzione
-          SizedBox(
-            height: 200,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Pulsante UP
-                _buildDirectionButton(
-                  Icons.keyboard_arrow_up,
-                  'up',
-                  direction == 'up',
-                  isPlaying,
-                ),
-                const SizedBox(height: 8),
-                // Riga centrale: LEFT - indicatore - RIGHT
-                Row(
+          const SizedBox(height: 16),
+          // D-Pad GRANDE per controllo direzione - occupa quasi tutto lo schermo
+          LayoutBuilder(
+            builder: (context, constraints) {
+              // Calcola dimensione pulsanti in base allo spazio disponibile
+              final availableWidth = constraints.maxWidth;
+              // Altezza pulsanti UP/DOWN
+              final verticalButtonHeight = 120.0;
+              // Altezza pulsanti LEFT/RIGHT - stessa altezza di UP/DOWN per essere grandi
+              final horizontalButtonHeight = 120.0;
+              // Larghezza pulsanti LEFT/RIGHT
+              final horizontalButtonWidth = (availableWidth - 16) / 2; // -16 per il gap
+
+              return SizedBox(
+                height: verticalButtonHeight * 2 + horizontalButtonHeight + 16, // UP + CENTER + DOWN + gaps
+                child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
+                    // Pulsante UP - occupa tutta la larghezza
                     _buildDirectionButton(
-                      Icons.keyboard_arrow_left,
-                      'left',
-                      direction == 'left',
+                      Icons.keyboard_arrow_up,
+                      'up',
+                      direction == 'up',
                       isPlaying,
+                      width: availableWidth,
+                      height: verticalButtonHeight,
                     ),
-                    const SizedBox(width: 8),
-                    // Indicatore centrale direzione
-                    Container(
-                      width: 60,
-                      height: 60,
-                      decoration: BoxDecoration(
-                        color: Colors.lime.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: Colors.lime.withValues(alpha: 0.4),
-                          width: 2,
+                    const SizedBox(height: 8),
+                    // Riga centrale: LEFT - RIGHT (senza indicatore per più spazio)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _buildDirectionButton(
+                          Icons.keyboard_arrow_left,
+                          'left',
+                          direction == 'left',
+                          isPlaying,
+                          width: horizontalButtonWidth,
+                          height: horizontalButtonHeight,
                         ),
-                      ),
-                      child: Icon(
-                        _getDirectionIcon(direction),
-                        color: Colors.lime,
-                        size: 32,
-                      ),
+                        const SizedBox(width: 16),
+                        _buildDirectionButton(
+                          Icons.keyboard_arrow_right,
+                          'right',
+                          direction == 'right',
+                          isPlaying,
+                          width: horizontalButtonWidth,
+                          height: horizontalButtonHeight,
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(height: 8),
+                    // Pulsante DOWN - occupa tutta la larghezza
                     _buildDirectionButton(
-                      Icons.keyboard_arrow_right,
-                      'right',
-                      direction == 'right',
+                      Icons.keyboard_arrow_down,
+                      'down',
+                      direction == 'down',
                       isPlaying,
+                      width: availableWidth,
+                      height: verticalButtonHeight,
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                // Pulsante DOWN
-                _buildDirectionButton(
-                  Icons.keyboard_arrow_down,
-                  'down',
-                  direction == 'down',
-                  isPlaying,
-                ),
-              ],
-            ),
+              );
+            },
           ),
           const SizedBox(height: 8),
           Text(
             isPlaying
-                ? 'Usa le frecce per cambiare direzione'
+                ? 'Tocca per cambiare direzione'
                 : 'Attendi inizio partita',
             style: TextStyle(
               color: Colors.grey[500],
@@ -923,34 +925,36 @@ class _GameControllerScreenState extends State<GameControllerScreen>
     IconData icon,
     String direction,
     bool isActive,
-    bool enabled,
-  ) {
+    bool enabled, {
+    required double width,
+    required double height,
+  }) {
     final color = Colors.lime;
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: enabled ? () => _onSnakeDirectionTap(direction) : null,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         child: Container(
-          width: 60,
-          height: 60,
+          width: width,
+          height: height,
           decoration: BoxDecoration(
             color: isActive
                 ? color.withValues(alpha: 0.4)
                 : color.withValues(alpha: enabled ? 0.15 : 0.05),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: isActive
                   ? color
                   : color.withValues(alpha: enabled ? 0.3 : 0.1),
-              width: isActive ? 3 : 1,
+              width: isActive ? 4 : 2,
             ),
             boxShadow: isActive
                 ? [
                     BoxShadow(
                       color: color.withValues(alpha: 0.4),
-                      blurRadius: 8,
-                      spreadRadius: 1,
+                      blurRadius: 12,
+                      spreadRadius: 2,
                     ),
                   ]
                 : null,
@@ -958,26 +962,11 @@ class _GameControllerScreenState extends State<GameControllerScreen>
           child: Icon(
             icon,
             color: enabled ? color : Colors.grey[600],
-            size: 36,
+            size: height * 0.6, // Icona proporzionale al pulsante
           ),
         ),
       ),
     );
-  }
-
-  IconData _getDirectionIcon(String direction) {
-    switch (direction) {
-      case 'up':
-        return Icons.north;
-      case 'down':
-        return Icons.south;
-      case 'left':
-        return Icons.west;
-      case 'right':
-        return Icons.east;
-      default:
-        return Icons.east;
-    }
   }
 
   Widget _buildSnakeControlsCard() {
