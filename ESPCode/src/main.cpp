@@ -30,6 +30,7 @@
 //#include "effects/StarFieldEffect.h"
 #include "effects/ImageEffect.h"
 #include "effects/DynamicImageEffect.h"
+#include "effects/SpaceInvadersClockEffect.h"
 
 
 // ═══════════════════════════════════════════
@@ -141,6 +142,7 @@ void setup() {
     // Aggiungi effetti
     effectManager->addEffect(new MarioClockEffect(displayManager, timeManager));
     effectManager->addEffect(new PacManClockEffect(displayManager, timeManager));
+    effectManager->addEffect(new SpaceInvadersClockEffect(displayManager, timeManager));
     scrollTextEffect = new ScrollTextEffect(displayManager, settings.getScrollText(), 3, settings.getScrollTextColor());
     effectManager->addEffect(scrollTextEffect);
     //effectManager->addEffect(new PlasmaEffect(displayManager));
