@@ -420,12 +420,12 @@ void MarioClockEffect::draw() {
 }
 
 void MarioClockEffect::drawScene() {
+    displayManager->beginFrame();
+
     // Theme-dependent sky color
     if (isDayTheme) {
-        // Day: light blue sky
         displayManager->fillScreen(0, 145, 206);
     } else {
-        // Night: dark blue/purple sky
         displayManager->fillScreen(10, 20, 50);
     }
 
@@ -435,15 +435,11 @@ void MarioClockEffect::drawScene() {
     spriteRenderer->drawSprite(HILL, 0, 34, 20, 22);
     spriteRenderer->drawSprite(BUSH, 43, 47, 21, 9);
 
-    // Day: clouds, Night: stars/moon
     if (isDayTheme) {
         spriteRenderer->drawSprite(CLOUD1, 0, 21, 13, 12);
         spriteRenderer->drawSprite(CLOUD2, 51, 7, 13, 12);
     } else {
-        // Draw moon and stars for night theme
-        // Moon at position of CLOUD2
         drawMoon(51, 7);
-        // Stars scattered
         drawStars();
     }
 
@@ -453,7 +449,6 @@ void MarioClockEffect::drawScene() {
     drawBlock(*minuteBlock);
 
 #if ENABLE_PIPE_ANIMATION
-    // Disegna tubo se visibile
     if (pipe->state != PIPE_HIDDEN) {
         drawPipe();
     }
@@ -462,6 +457,8 @@ void MarioClockEffect::drawScene() {
     spriteRenderer->drawSpriteFlipped(MARIO_IDLE, marioSprite->x, marioSprite->y,
                                      MARIO_IDLE_SIZE[0], MARIO_IDLE_SIZE[1],
                                      !marioFacingRight);
+
+    displayManager->endFrame();
 }
 
 void MarioClockEffect::drawGround() {
@@ -671,18 +668,16 @@ void MarioClockEffect::drawStarsWithAlpha(uint8_t alpha) {
 }
 
 void MarioClockEffect::drawTransition() {
-    // Calculate interpolated sky color
-    // Day: RGB(0, 145, 206), Night: RGB(10, 20, 50)
+    displayManager->beginFrame();
+
     float p = transitionProgress;
 
     uint8_t skyR, skyG, skyB;
     if (transitionState == TRANSITION_DAY_TO_NIGHT) {
-        // Day -> Night: interpolate from day to night
         skyR = (uint8_t)(0 + p * (10 - 0));
         skyG = (uint8_t)(145 + p * (20 - 145));
         skyB = (uint8_t)(206 + p * (50 - 206));
     } else {
-        // Night -> Day: interpolate from night to day
         skyR = (uint8_t)(10 + p * (0 - 10));
         skyG = (uint8_t)(20 + p * (145 - 20));
         skyB = (uint8_t)(50 + p * (206 - 50));
@@ -692,20 +687,14 @@ void MarioClockEffect::drawTransition() {
     displayManager->setTextSize(1);
     displayManager->setFont(&Super_Mario_Bros__24pt7b);
 
-    // Draw static elements (hill, bush)
     spriteRenderer->drawSprite(HILL, 0, 34, 20, 22);
     spriteRenderer->drawSprite(BUSH, 43, 47, 21, 9);
 
-    // Animated elements based on transition direction
     if (transitionState == TRANSITION_DAY_TO_NIGHT) {
-        // Day -> Night: Clouds slide out to the left, stars fade in
-
-        // Clouds exit animation: slide left
-        int cloudOffset = (int)(p * 70);  // Slide 70 pixels left (off screen)
+        int cloudOffset = (int)(p * 70);
         int cloud1X = 0 - cloudOffset;
         int cloud2X = 51 - cloudOffset;
 
-        // Only draw clouds if they're still partially visible
         if (cloud1X > -13) {
             spriteRenderer->drawSprite(CLOUD1, cloud1X, 21, 13, 12);
         }
@@ -713,37 +702,30 @@ void MarioClockEffect::drawTransition() {
             spriteRenderer->drawSprite(CLOUD2, cloud2X, 7, 13, 12);
         }
 
-        // Stars fade in (appear after clouds start leaving)
         if (p > 0.3f) {
-            float starAlpha = (p - 0.3f) / 0.7f;  // 0 to 1 for the last 70%
+            float starAlpha = (p - 0.3f) / 0.7f;
             drawStarsWithAlpha((uint8_t)(starAlpha * 255));
         }
 
-        // Moon fades in
         if (p > 0.4f) {
             float moonAlpha = (p - 0.4f) / 0.6f;
             drawMoonWithAlpha(51, 7, (uint8_t)(moonAlpha * 255));
         }
 
     } else {
-        // Night -> Day: Stars fade out, clouds slide in from left
-
-        // Stars fade out
         if (p < 0.6f) {
             float starAlpha = 1.0f - (p / 0.6f);
             drawStarsWithAlpha((uint8_t)(starAlpha * 255));
         }
 
-        // Moon fades out
         if (p < 0.5f) {
             float moonAlpha = 1.0f - (p / 0.5f);
             drawMoonWithAlpha(51, 7, (uint8_t)(moonAlpha * 255));
         }
 
-        // Clouds slide in from left (after stars start fading)
         if (p > 0.3f) {
-            float cloudProgress = (p - 0.3f) / 0.7f;  // 0 to 1 for the last 70%
-            int cloudOffset = (int)((1.0f - cloudProgress) * 70);  // Start at -70, end at 0
+            float cloudProgress = (p - 0.3f) / 0.7f;
+            int cloudOffset = (int)((1.0f - cloudProgress) * 70);
             int cloud1X = 0 - cloudOffset;
             int cloud2X = 51 - cloudOffset;
 
@@ -752,17 +734,16 @@ void MarioClockEffect::drawTransition() {
         }
     }
 
-    // Draw ground
     drawGround();
 
-    // Draw blocks
     drawBlock(*hourBlock);
     drawBlock(*minuteBlock);
 
-    // Draw Mario
     spriteRenderer->drawSpriteFlipped(MARIO_IDLE, marioSprite->x, marioSprite->y,
                                      MARIO_IDLE_SIZE[0], MARIO_IDLE_SIZE[1],
                                      !marioFacingRight);
+
+    displayManager->endFrame();
 }
 
 void MarioClockEffect::drawMoonWithAlpha(int x, int y, uint8_t alpha) {

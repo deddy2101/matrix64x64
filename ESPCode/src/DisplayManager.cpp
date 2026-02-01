@@ -1,20 +1,27 @@
 #include "DisplayManager.h"
 
-DisplayManager::DisplayManager(uint16_t panelWidth, uint16_t panelHeight, 
+DisplayManager::DisplayManager(uint16_t panelWidth, uint16_t panelHeight,
                                uint8_t panelsNumber, uint8_t pinE)
-    : width(panelWidth * panelsNumber), height(panelHeight), brightness(200) {
-    
+    : width(panelWidth * panelsNumber), height(panelHeight), brightness(200),
+      frameBuffer(nullptr), bufferingEnabled(false),
+      bufCursorX(0), bufCursorY(0), currentFont(nullptr),
+      currentTextColor(0xFFFF), currentTextSize(1) {
+
     HUB75_I2S_CFG mxconfig;
     mxconfig.mx_height = panelHeight;
     mxconfig.chain_length = panelsNumber;
     mxconfig.gpio.e = pinE;
     mxconfig.clkphase = false;
     mxconfig.latch_blanking = 4;
-    
+
     display = new MatrixPanel_I2S_DMA(mxconfig);
+
+    // Allocate framebuffer (RGB565, ~8KB for 64x64)
+    frameBuffer = new uint16_t[width * height];
 }
 
 DisplayManager::~DisplayManager() {
+    delete[] frameBuffer;
     if (display) {
         delete display;
     }
@@ -36,33 +43,84 @@ void DisplayManager::setBrightness(uint8_t level) {
     }
 }
 
+// ═══════════════════════════════════════════
+// Framebuffer control
+// ═══════════════════════════════════════════
+
+void DisplayManager::beginFrame() {
+    bufferingEnabled = true;
+}
+
+void DisplayManager::endFrame() {
+    if (!bufferingEnabled || !display) {
+        bufferingEnabled = false;
+        return;
+    }
+
+    // Flush entire buffer to display in one pass
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            uint16_t c = frameBuffer[y * width + x];
+            uint8_t r = (c >> 11) << 3;
+            uint8_t g = ((c >> 5) & 0x3F) << 2;
+            uint8_t b = (c & 0x1F) << 3;
+            display->drawPixelRGB888(x, y, r, g, b);
+        }
+    }
+
+    bufferingEnabled = false;
+}
+
+// ═══════════════════════════════════════════
+// Drawing methods (buffer-aware)
+// ═══════════════════════════════════════════
+
 void DisplayManager::fillScreen(uint8_t r, uint8_t g, uint8_t b) {
-    if (display) {
+    if (bufferingEnabled) {
+        uint16_t c = color565(r, g, b);
+        int total = width * height;
+        for (int i = 0; i < total; i++) {
+            frameBuffer[i] = c;
+        }
+    } else if (display) {
         display->fillScreenRGB888(r, g, b);
     }
 }
 
 void DisplayManager::drawPixel(int16_t x, int16_t y, uint8_t r, uint8_t g, uint8_t b) {
-    if (display && x >= 0 && x < width && y >= 0 && y < height) {
+    if (x < 0 || x >= width || y < 0 || y >= height) return;
+
+    if (bufferingEnabled) {
+        frameBuffer[y * width + x] = color565(r, g, b);
+    } else if (display) {
         display->drawPixelRGB888(x, y, r, g, b);
     }
 }
 
-void DisplayManager::drawPixel(int16_t x, int16_t y, uint16_t color565) {
-    uint8_t r, g, b;
-    rgb565ToRgb888(color565, r, g, b);
-    drawPixel(x, y, r, g, b);
+void DisplayManager::drawPixel(int16_t x, int16_t y, uint16_t col565) {
+    if (x < 0 || x >= width || y < 0 || y >= height) return;
+
+    if (bufferingEnabled) {
+        frameBuffer[y * width + x] = col565;
+    } else {
+        uint8_t r, g, b;
+        rgb565ToRgb888(col565, r, g, b);
+        if (display) display->drawPixelRGB888(x, y, r, g, b);
+    }
 }
 
 void DisplayManager::setFont(const GFXfont* font) {
+    currentFont = font;
     if (display) display->setFont(font);
 }
 
 void DisplayManager::setTextColor(uint16_t color) {
+    currentTextColor = color;
     if (display) display->setTextColor(color);
 }
 
 void DisplayManager::setTextSize(uint8_t size) {
+    currentTextSize = size;
     if (display) display->setTextSize(size);
 }
 
@@ -71,11 +129,71 @@ void DisplayManager::setTextWrap(bool wrap) {
 }
 
 void DisplayManager::setCursor(int16_t x, int16_t y) {
+    bufCursorX = x;
+    bufCursorY = y;
     if (display) display->setCursor(x, y);
 }
 
 void DisplayManager::print(const String& text) {
-    if (display) display->print(text);
+    if (bufferingEnabled && currentFont) {
+        // Render GFX font directly into framebuffer
+        for (unsigned int i = 0; i < text.length(); i++) {
+            bufferRenderChar(text.charAt(i));
+        }
+    } else if (display) {
+        display->print(text);
+    }
+}
+
+void DisplayManager::bufferRenderChar(char c) {
+    if (!currentFont) return;
+
+    uint8_t first = pgm_read_byte(&currentFont->first);
+    uint8_t last = pgm_read_byte(&currentFont->last);
+
+    if (c < first || c > last) return;
+
+    GFXglyph* glyphTable = (GFXglyph*)pgm_read_ptr(&currentFont->glyph);
+    GFXglyph glyph;
+    memcpy_P(&glyph, &glyphTable[c - first], sizeof(GFXglyph));
+
+    uint8_t* bitmapData = (uint8_t*)pgm_read_ptr(&currentFont->bitmap);
+
+    uint16_t bitmapOffset = glyph.bitmapOffset;
+    uint8_t gw = glyph.width;
+    uint8_t gh = glyph.height;
+    uint8_t xAdvance = glyph.xAdvance;
+    int8_t xo = glyph.xOffset;
+    int8_t yo = glyph.yOffset;
+
+    uint8_t bit = 0;
+    uint8_t bits = 0;
+
+    for (int yy = 0; yy < gh; yy++) {
+        for (int xx = 0; xx < gw; xx++) {
+            if (!(bit & 7)) {
+                bits = pgm_read_byte(&bitmapData[bitmapOffset++]);
+            }
+            if (bits & 0x80) {
+                int px = bufCursorX + (xo + xx) * currentTextSize;
+                int py = bufCursorY + (yo + yy) * currentTextSize;
+                // Draw scaled pixel
+                for (int sy = 0; sy < currentTextSize; sy++) {
+                    for (int sx = 0; sx < currentTextSize; sx++) {
+                        int fx = px + sx;
+                        int fy = py + sy;
+                        if (fx >= 0 && fx < width && fy >= 0 && fy < height) {
+                            frameBuffer[fy * width + fx] = currentTextColor;
+                        }
+                    }
+                }
+            }
+            bits <<= 1;
+            bit++;
+        }
+    }
+
+    bufCursorX += xAdvance * currentTextSize;
 }
 
 uint16_t DisplayManager::color565(uint8_t r, uint8_t g, uint8_t b) {
