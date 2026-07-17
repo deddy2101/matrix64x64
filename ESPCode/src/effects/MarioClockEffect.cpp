@@ -4,13 +4,14 @@
 #include "pipeSprite.h"
 #endif
 
-MarioClockEffect::MarioClockEffect(DisplayManager* dm, TimeManager* tm)
+MarioClockEffect::MarioClockEffect(DisplayManager* dm, TimeManager* tm, MarioCharacter character)
     : Effect(dm),
       spriteRenderer(new SpriteRenderer(dm)),
       timeManager(tm),
       hourBlock(new MarioBlock()),
       minuteBlock(new MarioBlock()),
       marioSprite(new MarioSprite()),
+      character(character),
       isDayTheme(true),
       transitionState(TRANSITION_NONE),
       transitionProgress(0.0f),
@@ -35,6 +36,21 @@ MarioClockEffect::MarioClockEffect(DisplayManager* dm, TimeManager* tm)
       pipeVisibleUntil(0)
 #endif
 {
+    if (character == CHARACTER_PEACH) {
+        idleSprite = PEACH_IDLE;
+        jumpSprite = PEACH_JUMP;
+        idleWidth  = PEACH_IDLE_SIZE[0];
+        idleHeight = PEACH_IDLE_SIZE[1];
+        jumpWidth  = PEACH_JUMP_SIZE[0];
+        jumpHeight = PEACH_JUMP_SIZE[1];
+    } else {
+        idleSprite = MARIO_IDLE;
+        jumpSprite = MARIO_JUMP;
+        idleWidth  = MARIO_IDLE_SIZE[0];
+        idleHeight = MARIO_IDLE_SIZE[1];
+        jumpWidth  = MARIO_JUMP_SIZE[0];
+        jumpHeight = MARIO_JUMP_SIZE[1];
+    }
 }
 
 MarioClockEffect::~MarioClockEffect() {
@@ -108,15 +124,17 @@ void MarioClockEffect::cleanup() {
 }
 
 void MarioClockEffect::initMario() {
+    // I piedi poggiano sul terreno (top del terreno a height-8)
+    int groundTop = displayManager->getHeight() - 8;
     marioSprite->x = 23;
-    marioSprite->y = 40;
-    marioSprite->firstY = 40;
-    marioSprite->width = MARIO_IDLE_SIZE[0];
-    marioSprite->height = MARIO_IDLE_SIZE[1];
-    marioSprite->sprite = MARIO_IDLE;
+    marioSprite->y = groundTop - idleHeight;
+    marioSprite->firstY = marioSprite->y;
+    marioSprite->width = idleWidth;
+    marioSprite->height = idleHeight;
+    marioSprite->sprite = idleSprite;
     marioSprite->collisionDetected = false;
     marioSprite->direction = 1;
-    marioSprite->lastY = 40;
+    marioSprite->lastY = marioSprite->y;
     
     marioState = IDLE;
     marioTargetX = 23;
@@ -454,8 +472,8 @@ void MarioClockEffect::drawScene() {
     }
 #endif
 
-    spriteRenderer->drawSpriteFlipped(MARIO_IDLE, marioSprite->x, marioSprite->y,
-                                     MARIO_IDLE_SIZE[0], MARIO_IDLE_SIZE[1],
+    spriteRenderer->drawSpriteFlipped(idleSprite, marioSprite->x, marioSprite->y,
+                                     idleWidth, idleHeight,
                                      !marioFacingRight);
 
     displayManager->endFrame();
@@ -739,8 +757,8 @@ void MarioClockEffect::drawTransition() {
     drawBlock(*hourBlock);
     drawBlock(*minuteBlock);
 
-    spriteRenderer->drawSpriteFlipped(MARIO_IDLE, marioSprite->x, marioSprite->y,
-                                     MARIO_IDLE_SIZE[0], MARIO_IDLE_SIZE[1],
+    spriteRenderer->drawSpriteFlipped(idleSprite, marioSprite->x, marioSprite->y,
+                                     idleWidth, idleHeight,
                                      !marioFacingRight);
 
     displayManager->endFrame();
@@ -773,9 +791,9 @@ void MarioClockEffect::startJump() {
     marioState = JUMPING;
     marioSprite->direction = 1;
     marioSprite->lastY = marioSprite->y;
-    marioSprite->width = MARIO_JUMP_SIZE[0];
-    marioSprite->height = MARIO_JUMP_SIZE[1];
-    marioSprite->sprite = MARIO_JUMP;
+    marioSprite->width = jumpWidth;
+    marioSprite->height = jumpHeight;
+    marioSprite->sprite = jumpSprite;
     marioSprite->collisionDetected = false;
 }
 
@@ -810,9 +828,9 @@ void MarioClockEffect::marioJump(JumpTarget target) {
             walkingToJump = false;
         } else {
             marioState = WALKING;
-            marioSprite->width = MARIO_IDLE_SIZE[0];
-            marioSprite->height = MARIO_IDLE_SIZE[1];
-            marioSprite->sprite = MARIO_IDLE;
+            marioSprite->width = idleWidth;
+            marioSprite->height = idleHeight;
+            marioSprite->sprite = idleSprite;
         }
     }
 }
@@ -878,9 +896,9 @@ void MarioClockEffect::updateMario() {
             walkingToJump = false;
         } else {
             marioState = WALKING;
-            marioSprite->width = MARIO_IDLE_SIZE[0];
-            marioSprite->height = MARIO_IDLE_SIZE[1];
-            marioSprite->sprite = MARIO_IDLE;
+            marioSprite->width = idleWidth;
+            marioSprite->height = idleHeight;
+            marioSprite->sprite = idleSprite;
         }
     }
     
@@ -928,9 +946,9 @@ void MarioClockEffect::updateMario() {
                 
                 marioSprite->y = marioSprite->firstY;
                 marioState = IDLE;
-                marioSprite->width = MARIO_IDLE_SIZE[0];
-                marioSprite->height = MARIO_IDLE_SIZE[1];
-                marioSprite->sprite = MARIO_IDLE;
+                marioSprite->width = idleWidth;
+                marioSprite->height = idleHeight;
+                marioSprite->sprite = idleSprite;
                 
                 if (currentJumpTarget == BOTH_BLOCKS) {
                     DEBUG_PRINTLN("[MarioClockEffect] Preparing for second jump...");

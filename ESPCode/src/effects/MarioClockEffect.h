@@ -23,6 +23,12 @@ enum MarioState {
     JUMPING
 };
 
+// Personaggio selezionabile (stesso sfondo, sprite diverso)
+enum MarioCharacter {
+    CHARACTER_MARIO,
+    CHARACTER_PEACH
+};
+
 enum JumpTarget {
     NONE,
     HOUR_BLOCK,
@@ -47,6 +53,13 @@ private:
     MarioBlock* hourBlock;
     MarioBlock* minuteBlock;
     MarioSprite* marioSprite;
+
+    // Sprite del personaggio (Mario o Peach)
+    MarioCharacter character;
+    const uint16_t* idleSprite;
+    const uint16_t* jumpSprite;
+    int idleWidth, idleHeight;
+    int jumpWidth, jumpHeight;
 
     // Theme support
     bool isDayTheme;
@@ -132,14 +145,14 @@ private:
     void marioJump(JumpTarget target);
     
 public:
-    MarioClockEffect(DisplayManager* dm, TimeManager* tm);
+    MarioClockEffect(DisplayManager* dm, TimeManager* tm, MarioCharacter character = CHARACTER_MARIO);
     ~MarioClockEffect();
-    
+
     void init() override;
     void update() override;
     void draw() override;
     void cleanup() override;
-    const char* getName() override { return "Mario Clock"; }
+    const char* getName() override { return character == CHARACTER_PEACH ? "Peach Clock" : "Mario Clock"; }
     void reset() override;
     void onThemeChange(bool isDay) override;
 };

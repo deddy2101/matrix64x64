@@ -151,6 +151,7 @@ void setup() {
     snakeEffect = new SnakeEffect(displayManager);
     effectManager->addEffect(snakeEffect);
     effectManager->addEffect(new MatrixRainEffect(displayManager));
+    effectManager->addEffect(new MarioClockEffect(displayManager, timeManager, CHARACTER_PEACH));
     
     DEBUG_PRINTF("[Setup] ✓ Loaded %d effects\n", effectManager->getEffectCount());
     

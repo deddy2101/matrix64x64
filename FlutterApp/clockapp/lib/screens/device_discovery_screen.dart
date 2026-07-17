@@ -170,6 +170,16 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen> {
     }
   }
 
+  /// Connetti direttamente all'IP di default AP (192.168.4.1)
+  Future<void> _connectToDefaultAP() async {
+    final device = DiscoveredDevice(
+      name: 'ESP32 (AP Mode)',
+      ip: '192.168.4.1',
+      port: 80,
+    );
+    await _connectToDevice(device);
+  }
+
   Future<void> _connectToDevice(DiscoveredDevice device) async {
     setState(() {
       _error = null;
@@ -269,6 +279,12 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen> {
         backgroundColor: const Color(0xFF121218),
         title: const Text('Trova Dispositivi'),
         actions: [
+          // Bottone connessione diretta AP
+          IconButton(
+            icon: const Icon(Icons.router),
+            onPressed: _connectToDefaultAP,
+            tooltip: 'Connetti a 192.168.4.1 (AP Mode)',
+          ),
           IconButton(
             icon: const Icon(Icons.help_outline),
             onPressed: () => Navigator.push(
@@ -502,11 +518,77 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 48),
+            const SizedBox(height: 24),
+            // Bottone connessione diretta AP
+            _buildDirectAPSection(),
+            const SizedBox(height: 24),
             // Sezione Demo
             _buildDemoSection(),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildDirectAPSection() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1a1a2e),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.blue.withOpacity(0.3),
+        ),
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.router,
+                color: Colors.blue[400],
+                size: 24,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Connessione Diretta (AP Mode)',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.blue[400],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Se sei connesso alla rete WiFi dell\'ESP32,\npremi qui per connetterti direttamente.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.grey[400],
+            ),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton.icon(
+            onPressed: _connectToDefaultAP,
+            icon: const Icon(Icons.link),
+            label: const Text('192.168.4.1'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue[700],
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 32,
+                vertical: 14,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
