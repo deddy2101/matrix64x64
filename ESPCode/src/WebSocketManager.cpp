@@ -6,8 +6,6 @@ WebSocketManager::WebSocketManager()
     , _messagesReceived(0)
     , _messagesSent(0)
     , _lastCleanup(0)
-    , _fragmentBuffer("")
-    , _fragmentClientId(0)
 {}
 
 void WebSocketManager::init(AsyncWebServer* server, CommandHandler* cmdHandler) {
@@ -76,6 +74,7 @@ void WebSocketManager::onEvent(AsyncWebSocket* server, AsyncWebSocketClient* cli
             
         case WS_EVT_DISCONNECT:
             DEBUG_PRINTF("[WS] Client #%u disconnected\n", client->id());
+            _fragmentBuffers.erase(client->id());
             break;
             
         case WS_EVT_DATA: {
@@ -103,34 +102,39 @@ void WebSocketManager::onEvent(AsyncWebSocket* server, AsyncWebSocketClient* cli
 }
 
 void WebSocketManager::handleFragmentedMessage(AsyncWebSocketClient* client, AwsFrameInfo* info, uint8_t* data, size_t len) {
+    // Messaggi oltre il limite: scarta e avvisa il client invece di
+    // esaurire l'heap silenziosamente
+    if (info->len > MAX_FRAGMENT_SIZE) {
+        if (info->index == 0) {
+            DEBUG_PRINTF("[WS] Fragmented message from #%u too big (%u bytes), dropping\n",
+                         client->id(), (unsigned)info->len);
+            client->text("ERR,message too large");
+        }
+        _fragmentBuffers.erase(client->id());
+        return;
+    }
+
+    String& buffer = _fragmentBuffers[client->id()];
+
     // Primo frame - inizializza buffer
     if (info->index == 0) {
-        _fragmentBuffer = "";
-        _fragmentBuffer.reserve(info->len);
-        _fragmentClientId = client->id();
+        buffer = "";
+        buffer.reserve(info->len);
         DEBUG_PRINTF("[WS] Starting fragmented message from #%u: total=%u bytes\n",
                      client->id(), info->len);
     }
 
-    // Verifica che sia lo stesso client
-    if (_fragmentClientId != client->id()) {
-        DEBUG_PRINTF("[WS] Fragment from wrong client! Expected #%u, got #%u\n",
-                     _fragmentClientId, client->id());
-        return;
-    }
-
     // Aggiungi frammento al buffer
     for (size_t i = 0; i < len; i++) {
-        _fragmentBuffer += (char)data[i];
+        buffer += (char)data[i];
     }
 
     // Ultimo frame - processa messaggio completo
     if (info->final && (info->index + len) == info->len) {
-        DEBUG_PRINTF("[WS] Fragmented message complete: %u bytes\n", _fragmentBuffer.length());
+        DEBUG_PRINTF("[WS] Fragmented message complete: %u bytes\n", buffer.length());
 
-        String message = _fragmentBuffer;
-        _fragmentBuffer = "";
-        _fragmentClientId = 0;
+        String message = buffer;
+        _fragmentBuffers.erase(client->id());
 
         // Processa come messaggio normale
         message.trim();

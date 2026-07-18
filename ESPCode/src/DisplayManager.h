@@ -53,6 +53,7 @@ public:
     // Getters
     uint16_t getWidth() const { return width; }
     uint16_t getHeight() const { return height; }
+    uint8_t getBrightness() const { return brightness; }
     MatrixPanel_I2S_DMA* getDisplay() { return display; }
 
     // Conversione colori

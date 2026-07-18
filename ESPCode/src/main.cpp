@@ -312,6 +312,9 @@ void loop() {
     // ─────────────────────────────────────────
     commandHandler.checkOTAWatchdog();
 
+    // Riavvio differito (da comando restart o fine OTA)
+    commandHandler.checkPendingRestart();
+
     // ─────────────────────────────────────────
     // Time Manager update
     // ─────────────────────────────────────────

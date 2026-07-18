@@ -13,7 +13,9 @@
 #include "Debug.h"
 
 // Struttura per parsing comandi senza allocazioni dinamiche
-#define MAX_CMD_PARTS 10
+// NB: l'ultima parte assorbe il resto del comando (virgole incluse),
+// quindi nessun campo viene mai scartato silenziosamente.
+#define MAX_CMD_PARTS 16
 struct ParsedCommand {
     String parts[MAX_CMD_PARTS];
     int count;
@@ -61,7 +63,10 @@ class SnakeEffect;
  *   effect,name,NAME               - Seleziona per nome
  *   brightness,day,VALUE           - Luminosità giorno (0-255)
  *   brightness,night,VALUE         - Luminosità notte (0-255)
- *   brightness,VALUE               - Luminosità immediata
+ *   brightness,VALUE               - Override luminosità immediata (0=display spento,
+ *                                    persiste finché non si invia brightness,auto o si
+ *                                    toccano i valori day/night)
+ *   brightness,auto                - Rimuove l'override, torna a day/night
  *   nighttime,START,END            - Orari notte (0-23)
  *   duration,MS                    - Durata effetti in ms
  *   autoswitch,0|1                 - Auto-switch on/off
@@ -161,6 +166,9 @@ public:
     void checkOTAWatchdog();              // Chiamare nel loop per monitorare timeout
     static void checkOTABootStatus();     // Chiamare nel setup per verificare boot dopo OTA
 
+    // Riavvio differito (gestito nel loop, dopo che la risposta è partita)
+    void checkPendingRestart();
+
 private:
     TimeManager* _timeManager;
     EffectManager* _effectManager;
@@ -199,6 +207,13 @@ private:
     String handleImage(const ParsedCommand& parts);
     String handleScheduledText(const ParsedCommand& parts);
     String handleWiFiScan();
+
+    // Override manuale luminosità (-1 = segui day/night)
+    int _brightnessOverride;
+
+    // Riavvio differito (0 = nessuno): permette di inviare la risposta
+    // WebSocket prima che l'ESP si riavvii
+    unsigned long _restartAt;
 
     // OTA state
     bool _otaInProgress;

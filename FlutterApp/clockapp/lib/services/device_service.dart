@@ -92,12 +92,13 @@ class DeviceStatus {
     this.ntpSynced = false,
   });
 
-  /// Parse STATUS response
+  /// Parse STATUS response, null se malformata (mai emettere valori
+  /// di default al posto di dati reali: resetterebbe la UI)
   /// STATUS,time,date,mode,ds3231,temp,effect,idx,fps,auto,count,bright,night,wifi,ip,ssid,rssi,uptime,heap,ntpSynced
-  factory DeviceStatus.fromResponse(String response) {
+  static DeviceStatus? tryParse(String response) {
     final parts = response.split(',');
     if (parts.length < 19 || parts[0] != 'STATUS') {
-      return DeviceStatus();
+      return null;
     }
 
     return DeviceStatus(
@@ -287,12 +288,12 @@ class DeviceSettings {
     this.timezone = 'CET-1CEST,M3.5.0,M10.5.0/3',
   });
 
-  /// Parse SETTINGS response
+  /// Parse SETTINGS response, null se malformata
   /// SETTINGS,ssid,apMode,brightDay,brightNight,nightStart,nightEnd,duration,auto,effect,deviceName,scrollText,ntpEnabled,timezone
-  factory DeviceSettings.fromResponse(String response) {
+  static DeviceSettings? tryParse(String response) {
     final parts = response.split(',');
     if (parts.length < 11 || parts[0] != 'SETTINGS') {
-      return DeviceSettings();
+      return null;
     }
 
     return DeviceSettings(
@@ -308,7 +309,11 @@ class DeviceSettings {
       deviceName: parts[10],
       scrollText: parts.length > 11 ? parts[11] : '',
       ntpEnabled: parts.length > 12 ? parts[12] == '1' : true,
-      timezone: parts.length > 13 ? parts[13] : 'CET-1CEST,M3.5.0,M10.5.0/3',
+      // Il timezone è l'ultimo campo e contiene virgole
+      // (es. CET-1CEST,M3.5.0,M10.5.0/3): va ricomposto, non troncato
+      timezone: parts.length > 13
+          ? parts.sublist(13).join(',')
+          : 'CET-1CEST,M3.5.0,M10.5.0/3',
     );
   }
 }
@@ -339,6 +344,13 @@ class DeviceService implements IPongDevice {
   Timer? _pingTimer;
   String? _wsHost;
   int? _wsPort;
+
+  // Watchdog connessione: su mobile una WebSocket può morire senza
+  // errori né onDone. Il ping (getStatus ogni 30s) genera sempre una
+  // risposta, quindi se non riceviamo nulla per troppo tempo la
+  // connessione è zombie e va riaperta.
+  DateTime? _lastRxTime;
+  static const Duration _rxStaleTimeout = Duration(seconds: 75);
 
   // WiFi scan state - durante la scansione la connessione può cadere temporaneamente
   bool _isWifiScanning = false;
@@ -579,8 +591,24 @@ class DeviceService implements IPongDevice {
 
   void _startPing() {
     _pingTimer?.cancel();
+    _lastRxTime = DateTime.now();
     _pingTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (isConnected) getStatus();
+      if (!isConnected) return;
+
+      // Connessione zombie: nessun dato ricevuto nonostante i ping
+      final lastRx = _lastRxTime;
+      if (lastRx != null &&
+          DateTime.now().difference(lastRx) > _rxStaleTimeout) {
+        print('WebSocket stale (no data for ${_rxStaleTimeout.inSeconds}s) '
+            '- forcing reconnect');
+        _wsSubscription?.cancel();
+        _wsChannel?.sink.close();
+        _wsChannel = null;
+        _handleWebSocketDisconnect();
+        return;
+      }
+
+      getStatus();
     });
   }
 
@@ -604,6 +632,7 @@ class DeviceService implements IPongDevice {
   }
 
   void _onWebSocketMessage(dynamic message) {
+    _lastRxTime = DateTime.now();
     final line = (message as String).trim();
     if (line.isNotEmpty) {
       _dataController.add(line);
@@ -613,14 +642,26 @@ class DeviceService implements IPongDevice {
 
   void _parseResponse(String response) {
     if (response.startsWith('STATUS,')) {
-      _lastStatus = DeviceStatus.fromResponse(response);
-      _statusController.add(_lastStatus!);
+      // Messaggi malformati vengono scartati: emettere un oggetto di
+      // default farebbe "saltare" la UI a valori finti
+      final status = DeviceStatus.tryParse(response);
+      if (status == null) {
+        print('Malformed STATUS dropped: $response');
+        return;
+      }
+      _lastStatus = status;
+      _statusController.add(status);
     } else if (response.startsWith('EFFECTS,')) {
       _lastEffects = _parseEffects(response);
       _effectsController.add(_lastEffects!);
     } else if (response.startsWith('SETTINGS,')) {
-      _lastSettings = DeviceSettings.fromResponse(response);
-      _settingsController.add(_lastSettings!);
+      final settings = DeviceSettings.tryParse(response);
+      if (settings == null) {
+        print('Malformed SETTINGS dropped: $response');
+        return;
+      }
+      _lastSettings = settings;
+      _settingsController.add(settings);
     } else if (response.startsWith('EFFECT,')) {
       // Notifica cambio effetto: EFFECT,index,name
       getStatus();
@@ -698,7 +739,11 @@ class DeviceService implements IPongDevice {
 
   /// Invia comando stringa
   void send(String command) {
-    if (!isConnected) return;
+    if (!isConnected) {
+      // Non c'è coda/retry: rendi almeno visibile che il comando è perso
+      print('Command dropped (not connected): $command');
+      return;
+    }
 
     if (_connectionType == ConnectionType.websocket && _wsChannel != null) {
       _wsChannel!.sink.add(command);
@@ -761,6 +806,17 @@ class DeviceService implements IPongDevice {
       send('brightness,night,$night');
     }
   }
+
+  /// Override immediato: lato ESP persiste (anche contro il refresh
+  /// periodico day/night) finché non si invia setBrightnessAuto()
+  void setBrightnessImmediate(int value) => send('brightness,$value');
+
+  /// Rimuove l'override e torna alla gestione automatica day/night
+  void setBrightnessAuto() => send('brightness,auto');
+
+  /// Accende/spegne il display (off = override a 0)
+  void setDisplayPower(bool on) =>
+      on ? setBrightnessAuto() : setBrightnessImmediate(0);
 
   void setNightTime(int startHour, int endHour) {
     send('nighttime,$startHour,$endHour');

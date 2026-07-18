@@ -19,6 +19,8 @@ CommandHandler::CommandHandler()
     , _scrollTextEffect(nullptr)
     , _pongEffect(nullptr)
     , _snakeEffect(nullptr)
+    , _brightnessOverride(-1)
+    , _restartAt(0)
     , _otaInProgress(false)
     , _otaSize(0)
     , _otaWritten(0)
@@ -175,15 +177,16 @@ ParsedCommand CommandHandler::splitCommand(const String& cmd, char delimiter) {
     int start = 0;
     int end = cmd.indexOf(delimiter);
 
-    while (end != -1 && result.count < MAX_CMD_PARTS) {
+    // L'ultimo slot è riservato al resto del comando: se le parti superano
+    // MAX_CMD_PARTS il testo residuo (virgole incluse) finisce lì invece
+    // di essere scartato.
+    while (end != -1 && result.count < MAX_CMD_PARTS - 1) {
         result.parts[result.count++] = cmd.substring(start, end);
         start = end + 1;
         end = cmd.indexOf(delimiter, start);
     }
 
-    if (result.count < MAX_CMD_PARTS) {
-        result.parts[result.count++] = cmd.substring(start);
-    }
+    result.parts[result.count++] = cmd.substring(start);
 
     return result;
 }
@@ -422,13 +425,19 @@ String CommandHandler::getStatusResponse() {
         response += ",none,-1,0,0,0";
     }
     
-    // Brightness
+    // Brightness: riporta il valore realmente applicato al display
+    // (include eventuale override manuale), non quello derivato dalle settings
+    if (_displayManager) {
+        response += "," + String(_displayManager->getBrightness());
+    } else if (_settings && _timeManager) {
+        response += "," + String(_settings->getCurrentBrightness(_timeManager->getHour()));
+    } else {
+        response += ",0";
+    }
     if (_settings && _timeManager) {
-        int currentBright = _settings->getCurrentBrightness(_timeManager->getHour());
-        response += "," + String(currentBright);
         response += "," + String(_settings->isNightTime(_timeManager->getHour()) ? "1" : "0");
     } else {
-        response += ",0,0";
+        response += ",0";
     }
     
     // WiFi
@@ -662,40 +671,55 @@ String CommandHandler::handleBrightness(const ParsedCommand& parts) {
     
     String type = parts[1];
     type.toLowerCase();
-    
+
     if (type == "day" && parts.size() >= 3) {
         int value = parts[2].toInt();
         if (value >= 0 && value <= 255) {
             if (_settings) {
                 _settings->setBrightnessDay(value);
+                _brightnessOverride = -1;  // Il cambio esplicito day/night annulla l'override
                 updateBrightness();
             }
             return "OK,brightness day " + String(value);
         }
         return "ERR,value must be 0-255";
     }
-    
+
     if (type == "night" && parts.size() >= 3) {
         int value = parts[2].toInt();
         if (value >= 0 && value <= 255) {
             if (_settings) {
                 _settings->setBrightnessNight(value);
+                _brightnessOverride = -1;
                 updateBrightness();
             }
             return "OK,brightness night " + String(value);
         }
         return "ERR,value must be 0-255";
     }
-    
-    // Immediate brightness change
-    int value = parts[1].toInt();
-    if (value >= 0 && value <= 255) {
-        if (_displayManager) {
-            _displayManager->setBrightness(value);
-        }
-        return "OK,brightness " + String(value);
+
+    // brightness,auto - torna a seguire day/night
+    if (type == "auto") {
+        _brightnessOverride = -1;
+        updateBrightness();
+        return "OK,brightness auto";
     }
-    
+
+    // Override immediato: persiste (contro il refresh periodico day/night)
+    // finché non arriva brightness,auto o un nuovo valore day/night.
+    // Con 0 il display resta spento davvero.
+    if (type.length() > 0 && isDigit(type.charAt(0))) {
+        int value = type.toInt();
+        if (value >= 0 && value <= 255) {
+            _brightnessOverride = value;
+            if (_displayManager) {
+                _displayManager->setBrightness(value);
+            }
+            return "OK,brightness " + String(value);
+        }
+        return "ERR,value must be 0-255";
+    }
+
     return "ERR,invalid brightness command";
 }
 
@@ -1135,10 +1159,19 @@ String CommandHandler::handleRestart() {
     if (_settings) {
         _settings->save();
     }
+    // Riavvio differito: la risposta deve partire prima del restart
+    // (delay+restart qui bloccherebbero il task AsyncTCP e la risposta
+    // non verrebbe mai inviata)
     DEBUG_PRINTLN(F("[CMD] Restarting in 2 seconds..."));
-    delay(2000);
-    ESP.restart();
+    _restartAt = millis() + 2000;
     return "OK,restarting";
+}
+
+void CommandHandler::checkPendingRestart() {
+    if (_restartAt != 0 && millis() >= _restartAt) {
+        DEBUG_PRINTLN(F("[CMD] Deferred restart now"));
+        ESP.restart();
+    }
 }
 
 // ═══════════════════════════════════════════
@@ -1146,12 +1179,21 @@ String CommandHandler::handleRestart() {
 // ═══════════════════════════════════════════
 
 void CommandHandler::updateBrightness() {
-    if (_settings && _timeManager && _displayManager) {
+    if (!_displayManager) return;
+
+    // Un override manuale (es. display spento con brightness,0) ha priorità
+    // sullo schedule day/night e non viene sovrascritto dal timer periodico
+    if (_brightnessOverride >= 0) {
+        _displayManager->setBrightness((uint8_t)_brightnessOverride);
+        return;
+    }
+
+    if (_settings && _timeManager) {
         int hour = _timeManager->getHour();
         uint8_t brightness = _settings->getCurrentBrightness(hour);
         _displayManager->setBrightness(brightness);
-        
-        DEBUG_PRINTF("[Brightness] Updated to %d (hour=%d, night=%s)\n", 
+
+        DEBUG_PRINTF("[Brightness] Updated to %d (hour=%d, night=%s)\n",
                      brightness, hour, _settings->isNightTime(hour) ? "yes" : "no");
     }
 }
@@ -1405,9 +1447,10 @@ String CommandHandler::handleOTA(const ParsedCommand& parts) {
         DEBUG_PRINTLN(F("[OTA] Next boot will validate the new firmware"));
         DEBUG_PRINTLN(F("[OTA] If boot fails, automatic rollback will occur"));
 
-        // Riavvia dopo 3 secondi
-        delay(3000);
-        ESP.restart();
+        // Riavvio differito: così OTA_SUCCESS arriva davvero al client
+        // (prima delay+restart giravano nel task AsyncTCP e la risposta
+        // non veniva mai inviata)
+        _restartAt = millis() + 3000;
 
         return "OTA_SUCCESS";
     }

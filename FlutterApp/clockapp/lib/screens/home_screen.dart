@@ -38,6 +38,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool _isLoadingVersions = false;
 
   // UI State
+  bool _displayOff = false;
   final List<String> _consoleLog = [];
   final ScrollController _consoleScroll = ScrollController();
   final TextEditingController _scrollTextController = TextEditingController();
@@ -84,7 +85,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       }),
 
       _device.statusStream.listen((status) {
-        setState(() => _status = status);
+        setState(() {
+          _status = status;
+          // STATUS riporta la luminosità reale applicata al display
+          _displayOff = status.brightness == 0;
+        });
       }),
 
       _device.effectsStream.listen((effects) {
@@ -773,6 +778,42 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ],
           ),
           const SizedBox(height: 16),
+
+          // Accensione/spegnimento display (override immediato lato ESP:
+          // brightness,0 per spegnere, brightness,auto per tornare a day/night)
+          Row(
+            children: [
+              Icon(
+                Icons.power_settings_new,
+                size: 20,
+                color: _displayOff ? Colors.red[300] : Colors.grey[400],
+              ),
+              const SizedBox(width: 12),
+              Text(
+                _displayOff ? 'Display spento' : 'Display acceso',
+                style: TextStyle(
+                  color: _displayOff ? Colors.red[300] : Colors.grey[400],
+                ),
+              ),
+              const Spacer(),
+              Switch(
+                value: !_displayOff,
+                onChanged: (on) {
+                  setState(() => _displayOff = !on);
+                  _device.setDisplayPower(on);
+                  _addLog(on
+                      ? '→ Display acceso (luminosità automatica)'
+                      : '→ Display spento');
+                  HapticFeedback.lightImpact();
+                  Future.delayed(
+                    const Duration(milliseconds: 500),
+                    _device.getStatus,
+                  );
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
 
           // Slider luminosità giorno
           BrightnessSlider(

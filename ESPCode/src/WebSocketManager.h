@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <ESPAsyncWebServer.h>
+#include <map>
 #include "CommandHandler.h"
 #include "Debug.h"
 
@@ -36,9 +37,14 @@ private:
     uint32_t _messagesSent;
     uint32_t _lastCleanup;
 
-    // Buffer per messaggi frammentati
-    String _fragmentBuffer;
-    uint32_t _fragmentClientId;
+    // Buffer per messaggi frammentati, uno per client: con più client
+    // connessi i frammenti possono interlacciarsi e un buffer condiviso
+    // corromperebbe entrambi i messaggi
+    std::map<uint32_t, String> _fragmentBuffers;
+
+    // Limite dimensione messaggio riassemblato (l'upload immagini è ~11KB
+    // base64; 64KB lascia margine senza rischiare di esaurire l'heap)
+    static constexpr size_t MAX_FRAGMENT_SIZE = 65536;
 
     void onEvent(AsyncWebSocket* server, AsyncWebSocketClient* client,
                  AwsEventType type, void* arg, uint8_t* data, size_t len);
