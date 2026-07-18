@@ -122,13 +122,48 @@ class _OTACardState extends State<OTACard> {
               ],
             ),
           ] else ...[
-            // Installa da server
-            if (widget.manifest?.latestRelease != null && _hasNewerVersion()) ...[
+            // Installa da server: sempre disponibile quando il manifest è
+            // caricato (anche a parità di versione, come reinstallazione)
+            if (widget.manifest?.latestRelease != null) ...[
               ActionButton(
                 icon: Icons.cloud_download,
-                label: 'Installa ${widget.manifest!.latestRelease!.fullVersion}',
-                color: Colors.green[400],
+                label: _hasNewerVersion()
+                    ? 'Installa ${widget.manifest!.latestRelease!.fullVersion}'
+                    : 'Reinstalla ${widget.manifest!.latestRelease!.fullVersion}',
+                color: _hasNewerVersion() ? Colors.green[400] : Colors.blue[400],
                 onTap: () => _downloadAndInstall(context),
+              ),
+              const SizedBox(height: 12),
+            ] else ...[
+              // Manifest non caricato (es. connessi all'AP del display e
+              // server non ancora raggiungibile): dillo e offri il retry
+              // invece di nascondere silenziosamente l'opzione server
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.cloud_off, size: 16, color: Colors.orange[300]),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Lista firmware dal server non disponibile',
+                        style: TextStyle(color: Colors.orange[300], fontSize: 12),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        widget.onRefreshManifest();
+                        widget.onLog('→ Ricarico manifest...');
+                      },
+                      child: const Text('Riprova'),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 12),
             ],

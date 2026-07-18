@@ -358,10 +358,12 @@ class DeviceService implements IPongDevice {
   static const Duration _wifiScanTimeout = Duration(seconds: 15);
 
   // OTA update state - durante l'OTA l'ESP si riavvia e dobbiamo riconnetterci
+  // (timeout allineato alla finestra di _waitForReconnection di OtaService,
+  // larga per coprire il ritorno dell'AP dopo il riavvio)
   bool _isOtaUpdating = false;
   Timer? _otaReconnectTimer;
   String? _otaExpectedVersion;
-  static const Duration _otaRebootTimeout = Duration(seconds: 60);
+  static const Duration _otaRebootTimeout = Duration(seconds: 120);
 
   // Controllers
   final _connectionController =

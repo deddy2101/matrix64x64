@@ -279,10 +279,17 @@ class OtaService extends ChangeNotifier {
       final reconnected = await _waitForReconnection();
 
       if (!reconnected) {
-        _updateState(status: 'Errore: timeout riconnessione');
-        print('[OTA] Reconnection timeout');
+        // A questo punto il firmware è già stato scritto e verificato
+        // (MD5) lato ESP: la mancata riconnessione NON è un fallimento
+        // dell'update. Tipico in modalità AP: al riavvio l'access point
+        // sparisce e il telefono non torna da solo sulla sua WiFi.
+        print('[OTA] Reconnection timeout (firmware flashed successfully)');
         _device.endOtaUpdate();
-        return false;
+        _updateState(
+            status: 'Firmware installato, ma non riesco a riconnettermi. '
+                'Se il display era in modalità AP, riconnetti il telefono '
+                'alla sua WiFi e ricollegati per verificare la versione.');
+        return true;
       }
 
       // Verifica la nuova versione
@@ -309,13 +316,24 @@ class OtaService extends ChangeNotifier {
     }
   }
 
-  /// Aspetta che il dispositivo si riconnetta dopo il riavvio OTA
+  /// Aspetta che il dispositivo si riconnetta dopo il riavvio OTA.
+  /// La finestra è larga (90s) perché in modalità AP l'access point
+  /// sparisce durante il riavvio e Android può metterci parecchio a
+  /// ritrovare la rete (o richiedere una riconnessione manuale).
   Future<bool> _waitForReconnection() async {
-    const maxAttempts = 20;
+    const maxAttempts = 45;
     const delayBetweenAttempts = Duration(seconds: 2);
 
     for (int i = 0; i < maxAttempts; i++) {
       print('[OTA] Reconnection attempt ${i + 1}/$maxAttempts...');
+
+      // Dopo ~20s senza riconnessione, probabilmente il telefono ha
+      // perso la WiFi dell'AP: suggerisci il ricollegamento manuale
+      if (i == 10) {
+        _updateState(
+            status: 'Attendo riconnessione... Se il display è in modalità '
+                'AP, controlla che il telefono sia ancora sulla sua WiFi');
+      }
 
       // Aspetta un po'
       await Future.delayed(delayBetweenAttempts);

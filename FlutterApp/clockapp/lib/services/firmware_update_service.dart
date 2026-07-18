@@ -6,50 +6,66 @@ import 'package:path_provider/path_provider.dart';
 import '../models/firmware_version.dart';
 
 class FirmwareUpdateService {
-  static const String defaultManifestUrl =
-      'https://binaries.server21.it/api/manifest';
-  static const String defaultBaseUrl =
-      'https://binaries.server21.it';
+  /// Sorgenti firmware provate in ordine: prima il server pubblico,
+  /// poi quello locale in LAN (nginx su :8080, stessi endpoint
+  /// /api/manifest e /binaries/...). Così la lista si carica anche
+  /// quando il telefono non ha accesso a internet (es. AP del display
+  /// o rete solo locale).
+  static const List<String> defaultBaseUrls = [
+    'https://binaries.server21.it',
+    'http://10.0.100.117:8080',
+  ];
 
-  final String manifestUrl;
-  final String baseUrl;
+  final List<String> baseUrls;
+
+  /// Base URL della sorgente che ha servito l'ultimo manifest:
+  /// i download devono partire dalla stessa sorgente
+  String? _activeBaseUrl;
+  String? get activeBaseUrl => _activeBaseUrl;
 
   // Download progress callback
   void Function(int received, int total)? onDownloadProgress;
 
-  FirmwareUpdateService({
-    this.manifestUrl = defaultManifestUrl,
-    this.baseUrl = defaultBaseUrl,
-  });
+  FirmwareUpdateService({List<String>? baseUrls})
+      : baseUrls = baseUrls ?? defaultBaseUrls;
 
-  /// Converte URL relativo in assoluto
+  /// Converte URL relativo in assoluto usando la sorgente attiva
   String _resolveUrl(String url) {
     if (url.startsWith('http://') || url.startsWith('https://')) {
       return url;
     }
+    final base = _activeBaseUrl ?? baseUrls.first;
     // URL relativo - aggiungi base URL
     if (url.startsWith('/')) {
-      return '$baseUrl$url';
+      return '$base$url';
     }
-    return '$baseUrl/$url';
+    return '$base/$url';
   }
 
-  /// Fetch firmware manifest from server
+  /// Fetch firmware manifest: prova le sorgenti in ordine e usa la
+  /// prima che risponde
   Future<FirmwareManifest> fetchManifest() async {
-    try {
-      final response = await http
-          .get(Uri.parse(manifestUrl))
-          .timeout(const Duration(seconds: 10));
+    final errors = <String>[];
 
-      if (response.statusCode == 200) {
-        final json = jsonDecode(response.body) as Map<String, dynamic>;
-        return FirmwareManifest.fromJson(json);
-      } else {
-        throw Exception('Failed to load manifest: ${response.statusCode}');
+    for (final base in baseUrls) {
+      try {
+        final response = await http
+            .get(Uri.parse('$base/api/manifest'))
+            .timeout(const Duration(seconds: 5));
+
+        if (response.statusCode == 200) {
+          final json = jsonDecode(response.body) as Map<String, dynamic>;
+          _activeBaseUrl = base;
+          return FirmwareManifest.fromJson(json);
+        }
+        errors.add('$base: HTTP ${response.statusCode}');
+      } catch (e) {
+        errors.add('$base: $e');
       }
-    } catch (e) {
-      throw Exception('Failed to fetch manifest: $e');
     }
+
+    throw Exception(
+        'Failed to fetch manifest from all sources: ${errors.join('; ')}');
   }
 
   /// Check if an update is available

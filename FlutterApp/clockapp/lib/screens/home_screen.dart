@@ -163,7 +163,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     });
   }
 
-  Future<void> _loadFirmwareManifest() async {
+  Future<void> _loadFirmwareManifest({bool retryOnFail = true}) async {
     if (_isLoadingVersions) return;
 
     setState(() => _isLoadingVersions = true);
@@ -175,12 +175,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           _firmwareManifest = manifest;
           _isLoadingVersions = false;
         });
-        _addLog('✓ Manifest caricato: ${manifest.releases.length} versioni disponibili');
+        _addLog(
+            '✓ Manifest caricato: ${manifest.releases.length} versioni disponibili '
+            '(${_firmwareUpdateService.activeBaseUrl})');
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isLoadingVersions = false);
         _addLog('⚠ Errore caricamento manifest: $e');
+        // Su AP/reti senza internet il primo tentativo spesso fallisce
+        // mentre Android decide di instradare via dati mobili: riprova
+        // una volta dopo qualche secondo prima di arrendersi
+        if (retryOnFail) {
+          _addLog('→ Nuovo tentativo tra 5 secondi...');
+          Future.delayed(const Duration(seconds: 5), () {
+            if (mounted && _firmwareManifest == null) {
+              _loadFirmwareManifest(retryOnFail: false);
+            }
+          });
+        }
       }
     }
   }
