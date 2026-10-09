@@ -1,6 +1,6 @@
 /*
  * LED Matrix Effects - Full Featured Version
- * With WiFi, WebSocket, mDNS, and persistent settings
+ * With Bluetooth LE and persistent settings
  * CSV Protocol
  */
 
@@ -10,11 +10,8 @@
 #include "EffectManager.h"
 #include "TimeManager.h"
 #include "Settings.h"
-#include "WiFiManager.h"
-#include "WebServerManager.h"
-#include "WebSocketManager.h"
 #include "CommandHandler.h"
-#include "Discovery.h"
+#include "BleManager.h"
 #include "ImageManager.h"
 #include "TextScheduleManager.h"
 
@@ -48,11 +45,8 @@ Settings settings;
 DisplayManager* displayManager = nullptr;
 EffectManager* effectManager = nullptr;
 TimeManager* timeManager = nullptr;
-WiFiManager* wifiManager = nullptr;
-WebServerManager* webServer = nullptr;
-WebSocketManager* wsManager = nullptr;
 CommandHandler commandHandler;
-DiscoveryService* discoveryService = nullptr;
+BleManager* bleManager = nullptr;
 ImageManager* imageManager = nullptr;
 TextScheduleManager* scheduleManager = nullptr;
 DynamicImageEffect* dynamicImageEffect = nullptr;
@@ -65,15 +59,17 @@ SnakeEffect* snakeEffect = nullptr;
 // ═══════════════════════════════════════════
 unsigned long statsTimer = 0;
 unsigned long brightnessTimer = 0;
-unsigned long wsCleanupTimer = 0;
 
 const unsigned long STATS_INTERVAL = 30000;      // Stats ogni 30 secondi
 const unsigned long BRIGHTNESS_INTERVAL = 60000; // Check brightness ogni minuto
-const unsigned long WS_CLEANUP_INTERVAL = 1000;  // Cleanup WS ogni secondo
 
 // ═══════════════════════════════════════════
 // Scheduled Text State
 // ═══════════════════════════════════════════
+// Pairing BLE: PIN attualmente mostrato sulla matrice
+bool pinShown = false;
+uint32_t shownPin = 0;
+
 int previousEffectIndex = -1;  // Indice dell'effetto prima della scritta programmata
 
 // ═══════════════════════════════════════════
@@ -91,7 +87,7 @@ void setup() {
     DEBUG_PRINTLN(F(""));
     DEBUG_PRINTLN(F("╔══════════════════════════════════════════════════════╗"));
     DEBUG_PRINTLN(F("║     ESP32 LED Matrix - CSV Protocol Version         ║"));
-    DEBUG_PRINTLN(F("║     WiFi + WebSocket + mDNS + Persistent Settings    ║"));
+    DEBUG_PRINTLN(F("║     Bluetooth LE + Persistent Settings               ║"));
     DEBUG_PRINTLN(F("╚══════════════════════════════════════════════════════╝"));
     DEBUG_PRINTLN(F(""));
 
@@ -128,7 +124,6 @@ void setup() {
     DEBUG_PRINTLN(F("[Setup] Initializing TimeManager..."));
     timeManager = new TimeManager;  // RTC mode
     timeManager->setSettings(&settings);  // Set settings for dynamic night hours
-    timeManager->enableNTP(settings.isNTPEnabled());
     timeManager->begin();
     timeManager->setTimezone(settings.getTimezone());
     DEBUG_PRINTLN(F("[Setup] ✓ TimeManager OK"));
@@ -167,15 +162,7 @@ void setup() {
     }
     
     // ─────────────────────────────────────────
-    // 5. WiFi
-    // ─────────────────────────────────────────
-    DEBUG_PRINTLN(F("[Setup] Initializing WiFi..."));
-    wifiManager = new WiFiManager(&settings);
-    wifiManager->begin();
-    DEBUG_PRINTLN(F("[Setup] ✓ WiFi OK"));
-
-    // ─────────────────────────────────────────
-    // 6. Image Manager
+    // 5. Image Manager
     // ─────────────────────────────────────────
     DEBUG_PRINTLN(F("[Setup] Initializing ImageManager..."));
     imageManager = new ImageManager();
@@ -192,7 +179,7 @@ void setup() {
     }
 
     // ─────────────────────────────────────────
-    // 7. Text Schedule Manager
+    // 6. Text Schedule Manager
     // ─────────────────────────────────────────
     DEBUG_PRINTLN(F("[Setup] Initializing TextScheduleManager..."));
     scheduleManager = new TextScheduleManager();
@@ -200,32 +187,15 @@ void setup() {
     DEBUG_PRINTLN(F("[Setup] ✓ TextScheduleManager OK"));
 
     // ─────────────────────────────────────────
-    // 8. Command Handler
+    // 7. Command Handler
     // ─────────────────────────────────────────
-    commandHandler.init(timeManager, effectManager, displayManager, &settings, wifiManager, imageManager, scheduleManager);
+    commandHandler.init(timeManager, effectManager, displayManager, &settings, imageManager, scheduleManager);
     commandHandler.setScrollTextEffect(scrollTextEffect);
     commandHandler.setPongEffect(pongEffect);
     commandHandler.setSnakeEffect(snakeEffect);
     
     // ─────────────────────────────────────────
-    // 8. Web Server
-    // ─────────────────────────────────────────
-    DEBUG_PRINTLN(F("[Setup] Initializing WebServer..."));
-    webServer = new WebServerManager(80);
-    webServer->init(&commandHandler);
-    DEBUG_PRINTLN(F("[Setup] ✓ WebServer OK"));
-
-    // ─────────────────────────────────────────
-    // 9. WebSocket
-    // ─────────────────────────────────────────
-    DEBUG_PRINTLN(F("[Setup] Initializing WebSocket..."));
-    wsManager = new WebSocketManager();
-    wsManager->init(webServer->getServer(), &commandHandler);
-    commandHandler.setWebSocketManager(wsManager);
-    DEBUG_PRINTLN(F("[Setup] ✓ WebSocket OK"));
-
-    // ─────────────────────────────────────────
-    // 10. Callbacks per notifiche
+    // 8. Callbacks per notifiche
     // ─────────────────────────────────────────
     timeManager->addOnMinuteChange([](int h, int m, int s) {
         // Aggiorna luminosità ogni minuto se necessario
@@ -262,14 +232,15 @@ void setup() {
         }
     });
 
-    // ─────────────────────────────────────────
-    // 11. Discovery Service
-    // ─────────────────────────────────────────
-    DEBUG_PRINTLN(F("[Setup] Initializing Discovery Service..."));
-    discoveryService = new DiscoveryService(&settings, 80);
-    discoveryService->begin();
-    DEBUG_PRINTLN(F("[Setup] ✓ Discovery Service OK"));
 
+    // ─────────────────────────────────────────
+    // 9. Bluetooth LE
+    // ─────────────────────────────────────────
+    DEBUG_PRINTLN(F("[Setup] Initializing Bluetooth LE..."));
+    bleManager = new BleManager();
+    bleManager->begin(&settings, &commandHandler);
+    commandHandler.setNotifier(bleManager);
+    DEBUG_PRINTLN(F("[Setup] ✓ Bluetooth LE OK"));
 
     // ─────────────────────────────────────────
     // Setup complete
@@ -278,11 +249,7 @@ void setup() {
     DEBUG_PRINTLN(F("╔══════════════════════════════════════════════════════╗"));
     DEBUG_PRINTLN(F("║                   Setup Complete!                    ║"));
     DEBUG_PRINTLN(F("╠══════════════════════════════════════════════════════╣"));
-    DEBUG_PRINTF("║  IP Address: %-39s ║\n", wifiManager->getIP().c_str());
-    DEBUG_PRINTF("║  mDNS: %-45s ║\n", 
-                 (String(settings.getDeviceName()) + ".local").c_str());
-    DEBUG_PRINTF("║  WebSocket: ws://%s/ws                        ║\n", 
-                 wifiManager->getIP().c_str());
+    DEBUG_PRINTF("║  BLE name: %-41s ║\n", settings.getDeviceName());
     DEBUG_PRINTLN(F("╠══════════════════════════════════════════════════════╣"));
     DEBUG_PRINTLN(F("║  Serial Commands: T, D, E, M, S, ?, p, r, n, 0-9     ║"));
     DEBUG_PRINTLN(F("║  CSV Commands: getStatus, effect,next, etc.          ║"));
@@ -292,13 +259,15 @@ void setup() {
     // Inizializza timer
     statsTimer = millis();
     brightnessTimer = millis();
-    wsCleanupTimer = millis();
     
     // Imposta luminosità iniziale
     commandHandler.updateBrightness();
     
     // Start effects
     effectManager->start();
+
+    DEBUG_PRINTF("[Setup] Heap after setup: free %u bytes | largest block %u bytes\n",
+                 ESP.getFreeHeap(), heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
 }
 
 // ═══════════════════════════════════════════
@@ -323,7 +292,32 @@ void loop() {
     // ─────────────────────────────────────────
     // Effect Manager update
     // ─────────────────────────────────────────
+    // Pairing BLE: il PIN compare in sovrimpressione sopra l'effetto in corso
+    if (bleManager->isPairingActive()) {
+        uint32_t code = bleManager->getPairingCode();
+        if (!pinShown || code != shownPin) {
+            if (!pinShown) {
+                // PIN sempre leggibile, anche con display spento o poco luminoso
+                commandHandler.lockBrightness(true);
+                displayManager->setBrightness(255);
+            }
+            displayManager->setPairingOverlay(true, code);
+            shownPin = code;
+            pinShown = true;
+        }
+    } else if (pinShown) {
+        // Fine pairing: via il PIN, luminosità normale
+        pinShown = false;
+        displayManager->setPairingOverlay(false);
+        commandHandler.lockBrightness(false);
+        commandHandler.updateBrightness();
+    }
+
     effectManager->update();
+
+    // Per gli effetti che disegnano direttamente sul pannello il PIN va
+    // ridisegnato dopo ogni aggiornamento (no-op se non attivo)
+    displayManager->drawPairingOverlay();
 
     // ─────────────────────────────────────────
     // Scheduled Text: ritorna all'effetto precedente
@@ -336,23 +330,10 @@ void loop() {
     }
 
     // ─────────────────────────────────────────
-    // WiFi check
+    // Bluetooth LE: comandi ricevuti e invii in coda
     // ─────────────────────────────────────────
-    wifiManager->update();
+    bleManager->update();
 
-    // ─────────────────────────────────────────
-    // Discovery Service update
-    // ─────────────────────────────────────────
-    discoveryService->update();
-    
-    // ─────────────────────────────────────────
-    // WebSocket cleanup
-    // ─────────────────────────────────────────
-    if (now - wsCleanupTimer >= WS_CLEANUP_INTERVAL) {
-        wsManager->cleanupClients();
-        wsCleanupTimer = now;
-    }
-    
     // ─────────────────────────────────────────
     // Brightness check (ogni minuto)
     // ─────────────────────────────────────────
@@ -366,9 +347,10 @@ void loop() {
     // ─────────────────────────────────────────
     if (now - statsTimer >= STATS_INTERVAL) {
         effectManager->printStats();
-        DEBUG_PRINTF("[Stats] Heap: %u bytes | WS Clients: %u\n", 
-                     ESP.getFreeHeap(), 
-                     wsManager->getClientsConnected());
+        DEBUG_PRINTF("[Stats] Heap: %u bytes | Largest block: %u bytes | Min free: %u bytes\n",
+                     ESP.getFreeHeap(),
+                     heap_caps_get_largest_free_block(MALLOC_CAP_8BIT),
+                     ESP.getMinFreeHeap());
         statsTimer = now;
     }
     

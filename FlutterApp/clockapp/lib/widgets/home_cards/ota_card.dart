@@ -230,7 +230,7 @@ class _OTACardState extends State<OTACard> {
       widget.onLog('✓ Download completato (${bytes.length} bytes)');
       widget.onLog('→ Inizio OTA update...');
 
-      final success = await widget.otaService.updateFirmwareFromBytes(Uint8List.fromList(bytes), expectedMd5: release.md5);
+      final success = await widget.otaService.updateFirmwareFromBytes(Uint8List.fromList(bytes), expectedMd5: release.md5, targetVersion: release.version);
 
       if (success) {
         widget.onLog('✓ ${widget.otaService.status}');

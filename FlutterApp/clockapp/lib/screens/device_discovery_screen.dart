@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'dart:async';
 import 'dart:io';
+import '../services/ble_link.dart';
 import '../services/discovery_service.dart';
 import '../services/device_service.dart';
 import '../services/permission_service.dart';
@@ -26,6 +29,14 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen> {
   bool _showSerialFallback = false;
   String? _error;
 
+  // Bluetooth LE
+  final Map<String, BleScanResult> _bleDevices = {};
+  StreamSubscription<BleScanResult>? _bleSub;
+  Timer? _bleStopTimer;
+  bool _bleScanning = false;
+  String? _bleError;
+  static const Duration _bleScanDuration = Duration(seconds: 20);
+
   @override
   void initState() {
     super.initState();
@@ -48,10 +59,46 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen> {
       }
     });
 
+    // Dispositivi Bluetooth trovati
+    _bleSub = _deviceService.ble.scanResults.listen((device) {
+      if (mounted) setState(() => _bleDevices[device.id] = device);
+    });
+
     // Richiedi permessi e avvia scansione con protezione da errori
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _startBleScan();
       _requestPermissionsAndScan();
     });
+  }
+
+  /// Scansione Bluetooth (principale). Si ferma da sola dopo qualche secondo
+  /// per non consumare batteria.
+  Future<void> _startBleScan() async {
+    _bleStopTimer?.cancel();
+    setState(() {
+      _bleDevices.clear();
+      _bleError = null;
+      _bleScanning = true;
+    });
+
+    final ok = await _deviceService.ble.startScan();
+    if (!mounted) return;
+
+    if (!ok) {
+      setState(() {
+        _bleScanning = false;
+        _bleError = _deviceService.ble.lastError;
+      });
+      return;
+    }
+
+    _bleStopTimer = Timer(_bleScanDuration, _stopBleScan);
+  }
+
+  Future<void> _stopBleScan() async {
+    _bleStopTimer?.cancel();
+    await _deviceService.ble.stopScan();
+    if (mounted) setState(() => _bleScanning = false);
   }
 
   /// Richiede permessi Android (se necessario) e avvia scansione
@@ -120,6 +167,9 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen> {
 
   @override
   void dispose() {
+    _bleStopTimer?.cancel();
+    _bleSub?.cancel();
+    _deviceService.ble.stopScan();
     _discoveryService.dispose();
     super.dispose();
   }
@@ -227,6 +277,128 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen> {
     }
   }
 
+  Future<void> _connectToBle(BleScanResult device) async {
+    setState(() {
+      _error = null;
+    });
+
+    // Il primo collegamento richiede il PIN mostrato sul display
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Connessione in corso...'),
+                SizedBox(height: 8),
+                Text(
+                  'Al primo collegamento serviranno due PIN:\nquello di accesso e poi quello che compare\nin alto a destra sul display',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await _stopBleScan();
+    final success = await _deviceService.connectBle(
+      device.id,
+      device.name,
+      askPin: _askStaticPin,
+    );
+
+    if (mounted) {
+      Navigator.of(context).pop(); // Chiudi loading dialog
+
+      if (success) {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const HomeScreen()),
+        );
+      } else {
+        setState(() {
+          _error = _deviceService.bleError ??
+              'Impossibile connettersi a ${device.name}';
+        });
+      }
+    }
+  }
+
+  /// Chiede all'utente il PIN statico di accesso del display
+  Future<String?> _askStaticPin(bool retry) async {
+    if (!mounted) return null;
+    final controller = TextEditingController();
+    final pin = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1a1a2e),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.lock_outline, color: Color(0xFF8B5CF6)),
+            SizedBox(width: 12),
+            Text('PIN di accesso'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              retry
+                  ? 'PIN errato, riprova.'
+                  : 'Inserisci il PIN di accesso del display (quello di '
+                      'fabbrica o l\'ultimo che hai impostato). Solo dopo '
+                      'comparirà il PIN da digitare sul telefono.',
+              style: TextStyle(color: retry ? Colors.red[300] : null),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'PIN (6 cifre)',
+                counterText: '',
+              ),
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annulla'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (controller.text.length == 6) {
+                Navigator.pop(context, controller.text);
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF8B5CF6),
+            ),
+            child: const Text('Continua'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return pin;
+  }
+
   Future<void> _connectToSerial(SerialDevice device) async {
     setState(() {
       _error = null;
@@ -294,60 +466,62 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen> {
             tooltip: 'FAQ',
           ),
           IconButton(
-            icon: _isScanning
+            icon: (_isScanning || _bleScanning)
                 ? const SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.refresh),
-            onPressed: _isScanning ? null : _startScan,
+            onPressed: (_isScanning || _bleScanning) ? null : _refresh,
             tooltip: 'Aggiorna',
           ),
         ],
       ),
-      body: _buildBody(),
+      body: Column(
+        children: [
+          _buildNoticeBanner(),
+          Expanded(child: _buildBody()),
+        ],
+      ),
     );
   }
 
-  Widget _buildBody() {
-    // Mostra dispositivi trovati via WiFi
-    if (_discoveredDevices.isNotEmpty) {
-      return _buildDeviceList();
-    }
+  Future<void> _refresh() async {
+    _startBleScan();
+    _startScan();
+  }
 
-    // Mostra seriale su desktop se disponibile
-    if (_showSerialFallback && _serialDevices.isNotEmpty) {
-      return _buildSerialList();
+  Widget _buildBody() {
+    final hasSerial = _showSerialFallback && _serialDevices.isNotEmpty;
+    final hasAny = _bleDevices.isNotEmpty ||
+        _discoveredDevices.isNotEmpty ||
+        hasSerial;
+
+    if (hasAny) {
+      return _buildResults(hasSerial);
     }
 
     // Mostra stato scanning o empty
-    if (_isScanning) {
+    if (_isScanning || _bleScanning) {
       return _buildScanningState();
     }
 
     return _buildEmptyState();
   }
 
-  Widget _buildDeviceList() {
-    return Column(
-      children: [
-        // Header
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: const Color(0xFF121218),
-            border: Border(
-              bottom: BorderSide(color: Colors.grey.withOpacity(0.2)),
-            ),
-          ),
-          child: Row(
+  Widget _sectionHeader(IconData icon, String title, {String? subtitle}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12, top: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              const Icon(Icons.router, color: Color(0xFF8B5CF6), size: 20),
+              Icon(icon, color: const Color(0xFF8B5CF6), size: 20),
               const SizedBox(width: 12),
               Text(
-                'Dispositivi trovati (${_discoveredDevices.length})',
+                title,
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -355,20 +529,61 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen> {
               ),
             ],
           ),
-        ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              subtitle,
+              style: TextStyle(fontSize: 12, color: Colors.grey[400]),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 
-        // Lista dispositivi
+  Widget _buildResults(bool hasSerial) {
+    final bleList = _bleDevices.values.toList()
+      ..sort((a, b) => (b.rssi ?? -127).compareTo(a.rssi ?? -127));
+
+    return Column(
+      children: [
         Expanded(
-          child: ListView.builder(
+          child: ListView(
             padding: const EdgeInsets.all(16),
-            itemCount: _discoveredDevices.length,
-            itemBuilder: (context, index) {
-              final device = _discoveredDevices[index];
-              return DeviceCard(
-                device: device,
-                onTap: () => _connectToDevice(device),
-              );
-            },
+            children: [
+              if (bleList.isNotEmpty) ...[
+                _sectionHeader(
+                  Icons.bluetooth,
+                  'Dispositivi Bluetooth (${bleList.length})',
+                ),
+                for (final device in bleList)
+                  BleDeviceCard(
+                    device: device,
+                    onTap: () => _connectToBle(device),
+                  ),
+              ],
+              if (_discoveredDevices.isNotEmpty) ...[
+                _sectionHeader(
+                  Icons.router,
+                  'Dispositivi WiFi (${_discoveredDevices.length})',
+                  subtitle: 'Firmware precedente',
+                ),
+                for (final device in _discoveredDevices)
+                  DeviceCard(
+                    device: device,
+                    onTap: () => _connectToDevice(device),
+                  ),
+              ],
+              if (hasSerial) ...[
+                _sectionHeader(Icons.usb, 'Dispositivi Seriali'),
+                for (final device in _serialDevices)
+                  SerialCard(
+                    device: device,
+                    onTap: () => _connectToSerial(device),
+                  ),
+              ],
+              if (_bleError != null) _buildBleNotice(),
+            ],
           ),
         ),
 
@@ -378,59 +593,57 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen> {
     );
   }
 
-  Widget _buildSerialList() {
-    return Column(
-      children: [
-        // Header
-        Container(
+  /// Messaggio persistente (es. dopo la migrazione al firmware Bluetooth)
+  Widget _buildNoticeBanner() {
+    return ValueListenableBuilder<String?>(
+      valueListenable: _deviceService.notice,
+      builder: (context, notice, _) {
+        if (notice == null) return const SizedBox.shrink();
+        return Container(
           width: double.infinity,
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: const Color(0xFF121218),
+            color: const Color(0xFF8B5CF6).withOpacity(0.12),
             border: Border(
-              bottom: BorderSide(color: Colors.grey.withOpacity(0.2)),
+              bottom: BorderSide(
+                color: const Color(0xFF8B5CF6).withOpacity(0.4),
+              ),
             ),
           ),
-          child: Column(
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Row(
-                children: [
-                  Icon(Icons.usb, color: Color(0xFF8B5CF6), size: 20),
-                  SizedBox(width: 12),
-                  Text(
-                    'Dispositivi Seriali',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Nessun dispositivo trovato via WiFi',
-                style: TextStyle(fontSize: 12, color: Colors.grey[400]),
+              const Icon(Icons.bluetooth, color: Color(0xFF8B5CF6), size: 20),
+              const SizedBox(width: 12),
+              Expanded(child: Text(notice, style: const TextStyle(fontSize: 13))),
+              IconButton(
+                icon: const Icon(Icons.close, size: 20),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                onPressed: () => _deviceService.notice.value = null,
               ),
             ],
           ),
-        ),
+        );
+      },
+    );
+  }
 
-        // Lista seriali
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: _serialDevices.length,
-            itemBuilder: (context, index) {
-              final device = _serialDevices[index];
-              return SerialCard(
-                device: device,
-                onTap: () => _connectToSerial(device),
-              );
-            },
+  Widget _buildBleNotice() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        children: [
+          const Icon(Icons.bluetooth_disabled, color: Colors.orange, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _bleError!,
+              style: const TextStyle(color: Colors.orange, fontSize: 13),
+            ),
           ),
-        ),
-
-        // Error message
-        if (_error != null) _buildErrorBanner(),
-      ],
+        ],
+      ),
     );
   }
 
@@ -471,7 +684,7 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Scansione delle reti WiFi ed Ethernet',
+            'Scansione Bluetooth e reti WiFi',
             style: TextStyle(fontSize: 14, color: Colors.grey[400]),
           ),
         ],
@@ -498,13 +711,18 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen> {
               style: TextStyle(fontSize: 14, color: Colors.grey[400]),
             ),
             const SizedBox(height: 12),
-            _buildCheckItem('• L\'ESP32 sia acceso e connesso al WiFi'),
-            _buildCheckItem('• Il dispositivo sia sulla stessa rete'),
+            _buildCheckItem('• Il display sia acceso'),
+            _buildCheckItem('• Il Bluetooth del telefono sia attivo'),
+            _buildCheckItem('• Se ha il firmware precedente, sia sulla stessa rete WiFi'),
             if (_isDesktop)
               _buildCheckItem('• Se via USB, controlla la porta seriale'),
+            if (_bleError != null) ...[
+              const SizedBox(height: 12),
+              _buildBleNotice(),
+            ],
             const SizedBox(height: 32),
             ElevatedButton.icon(
-              onPressed: _startScan,
+              onPressed: _refresh,
               icon: const Icon(Icons.refresh),
               label: const Text('Riprova'),
               style: ElevatedButton.styleFrom(

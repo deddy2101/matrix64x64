@@ -1,14 +1,17 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 // Serial support (cross-platform, no external dependencies)
 import 'serial_native.dart' as serial;
 import 'pong_device_interface.dart';
+import 'ble_link.dart';
 
 /// Tipo di connessione
-enum ConnectionType { none, serial, websocket }
+enum ConnectionType { none, serial, websocket, ble }
 
 /// Stato connessione
 enum DeviceConnectionState { disconnected, connecting, connected }
@@ -319,7 +322,7 @@ class DeviceSettings {
 }
 
 /// Servizio unificato per comunicazione con LED Matrix
-/// Supporta sia connessione Seriale che WebSocket
+/// Supporta connessione Seriale, WebSocket e Bluetooth LE
 /// Protocollo: Stringhe CSV-like (no JSON)
 class DeviceService implements IPongDevice {
   static final DeviceService _instance = DeviceService._internal();
@@ -344,6 +347,18 @@ class DeviceService implements IPongDevice {
   Timer? _pingTimer;
   String? _wsHost;
   int? _wsPort;
+
+  /// Messaggio da mostrare nella schermata di ricerca (es. dopo la migrazione
+  /// del display al firmware Bluetooth)
+  final ValueNotifier<String?> notice = ValueNotifier(null);
+
+  // Bluetooth LE
+  final BleLink _ble = BleLink();
+  StreamSubscription? _bleLinesSub;
+  StreamSubscription? _bleConnSub;
+  Timer? _blePollTimer;
+  String? _bleId;
+  String? _bleName;
 
   // Watchdog connessione: su mobile una WebSocket può morire senza
   // errori né onDone. Il ping (getStatus ogni 30s) genera sempre una
@@ -524,6 +539,193 @@ class DeviceService implements IPongDevice {
     }
   }
 
+  // ═══════════════════════════════════════════
+  // Bluetooth LE
+  // ═══════════════════════════════════════════
+
+  /// Livello BLE (scansione, stato del Bluetooth) per la schermata di ricerca
+  BleLink get ble => _ble;
+
+  /// Ultimo errore di connessione BLE, da mostrare all'utente
+  String? get bleError => _ble.lastError;
+
+  /// Chiave in cui è salvato il PIN statico di un display
+  static String _blePinKey(String deviceId) => 'ble_pin_$deviceId';
+
+  String? _bleTriedPin;
+
+  /// Fornisce il PIN statico al collegamento: prima quello salvato per questo
+  /// display, poi (se serve) quello chiesto all'utente tramite [ui].
+  Future<String?> Function(bool retry) _blePinProvider(
+    String deviceId,
+    Future<String?> Function(bool retry)? ui,
+  ) {
+    return (bool retry) async {
+      final prefs = await SharedPreferences.getInstance();
+      final key = _blePinKey(deviceId);
+
+      if (!retry) {
+        final saved = prefs.getString(key);
+        if (saved != null) {
+          _bleTriedPin = saved;
+          return saved;
+        }
+      } else {
+        await prefs.remove(key); // quello salvato era sbagliato
+      }
+
+      if (ui == null) return null;
+      final pin = await ui(retry);
+      _bleTriedPin = pin;
+      return pin;
+    };
+  }
+
+  /// Salva il PIN che ha funzionato, così le prossime volte non lo chiede
+  Future<void> _saveBlePin(String deviceId) async {
+    final pin = _bleTriedPin;
+    _bleTriedPin = null;
+    if (pin == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_blePinKey(deviceId), pin);
+  }
+
+  /// Cambia il PIN statico del display collegato (6 cifre).
+  /// Ritorna true se il display ha accettato il nuovo PIN.
+  Future<bool> changeBlePin(String newPin) async {
+    final id = _bleId;
+    if (!isConnected || _connectionType != ConnectionType.ble || id == null) {
+      return false;
+    }
+
+    final reply = Completer<String>();
+    final sub = rawDataStream.listen((line) {
+      if ((line.startsWith('OK,pin') || line.startsWith('ERR,pin')) &&
+          !reply.isCompleted) {
+        reply.complete(line);
+      }
+    });
+
+    send('ble,setpin,$newPin');
+    try {
+      final line = await reply.future.timeout(const Duration(seconds: 5));
+      if (!line.startsWith('OK')) return false;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_blePinKey(id), newPin);
+      return true;
+    } on TimeoutException {
+      return false;
+    } finally {
+      sub.cancel();
+    }
+  }
+
+  /// Connetti via Bluetooth LE.
+  ///
+  /// Un telefono nuovo deve dare il PIN statico (chiesto con [askPin]; per i
+  /// display già usati è salvato) e poi digitare il PIN dinamico mostrato dal
+  /// display: l'attesa può durare fino a 90 secondi.
+  Future<bool> connectBle(
+    String deviceId,
+    String name, {
+    Future<String?> Function(bool retry)? askPin,
+  }) async {
+    disconnect();
+
+    _setState(DeviceConnectionState.connecting);
+    _connectionType = ConnectionType.ble;
+    _bleId = deviceId;
+    _bleName = name;
+
+    _bleLinesSub = _ble.lines.listen(_onBleLine);
+    _bleConnSub = _ble.connectionState.listen((ready) {
+      if (!ready) _handleBleDisconnect();
+    });
+
+    final ok = await _ble.connect(
+      deviceId,
+      providePin: _blePinProvider(deviceId, askPin),
+    );
+    if (!ok) {
+      disconnect();
+      return false;
+    }
+
+    await _saveBlePin(deviceId);
+    _onBleReady();
+    return true;
+  }
+
+  /// Collegamento pronto (prima connessione o riconnessione)
+  void _onBleReady() {
+    _connectedName = _bleName;
+    _lastRxTime = DateTime.now();
+    _setState(DeviceConnectionState.connected);
+
+    // Allinea l'orologio del display a quello del telefono ad ogni connessione
+    syncNow();
+    getStatus();
+    getEffects();
+    getSettings();
+
+    _blePollTimer?.cancel();
+    _blePollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (isConnected) getStatus();
+    });
+  }
+
+  void _onBleLine(String line) {
+    _lastRxTime = DateTime.now();
+    _dataController.add(line);
+    _parseResponse(line);
+  }
+
+  void _handleBleDisconnect() {
+    if (_connectionType != ConnectionType.ble) return;
+    print('BLE disconnected');
+    _blePollTimer?.cancel();
+    _setState(DeviceConnectionState.disconnected);
+    // Durante l'OTA l'ESP si riavvia: dai tempo prima di riprovare
+    _scheduleBleReconnect(
+      delay: _isOtaUpdating
+          ? const Duration(seconds: 5)
+          : const Duration(seconds: 3),
+    );
+  }
+
+  void _scheduleBleReconnect({required Duration delay}) {
+    if (_bleId == null) return;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = Timer(delay, () async {
+      final id = _bleId;
+      if (id == null || _connectionType != ConnectionType.ble) return;
+      if (isConnected) return;
+
+      _setState(DeviceConnectionState.connecting);
+      // Riconnessione automatica: usa il PIN salvato, senza interfaccia
+      final ok = await _ble.connect(id, providePin: _blePinProvider(id, null));
+      if (_bleId != id || _connectionType != ConnectionType.ble) return;
+
+      if (ok) {
+        _onBleReady();
+      } else {
+        _setState(DeviceConnectionState.disconnected);
+        _scheduleBleReconnect(delay: const Duration(seconds: 5));
+      }
+    });
+  }
+
+  /// Chiave per i comandi a raffica (posizione racchetta, direzione): in coda
+  /// tiene solo l'ultimo valore invece di accumularli.
+  String? _coalesceKey(String command) {
+    if (command.startsWith('pong,setpos,') || command.startsWith('pong,move,')) {
+      final parts = command.split(',');
+      if (parts.length >= 3) return '${parts[0]},${parts[1]},${parts[2]}';
+    }
+    if (command.startsWith('snake,dir,')) return 'snake,dir';
+    return null;
+  }
+
   /// Gestisce disconnessione WebSocket - tiene conto dello stato WiFi scan e OTA update
   void _handleWebSocketDisconnect() {
     if (_isWifiScanning) {
@@ -559,6 +761,17 @@ class DeviceService implements IPongDevice {
     _wsSubscription?.cancel();
     _wsChannel?.sink.close();
     _wsChannel = null;
+
+    // Bluetooth LE
+    _blePollTimer?.cancel();
+    _blePollTimer = null;
+    _bleLinesSub?.cancel();
+    _bleLinesSub = null;
+    _bleConnSub?.cancel();
+    _bleConnSub = null;
+    _bleId = null;
+    _bleName = null;
+    _ble.disconnect();
 
     _connectedName = null;
     _connectionType = ConnectionType.none;
@@ -749,6 +962,8 @@ class DeviceService implements IPongDevice {
 
     if (_connectionType == ConnectionType.websocket && _wsChannel != null) {
       _wsChannel!.sink.add(command);
+    } else if (_connectionType == ConnectionType.ble) {
+      _ble.sendLine(command, coalesceKey: _coalesceKey(command));
     } else if (_connectionType == ConnectionType.serial &&
         _serialPort != null) {
       serial.write(_serialPort, '$command\n');
@@ -873,6 +1088,9 @@ class DeviceService implements IPongDevice {
     return version;
   }
 
+  /// Cancella i telefoni associati (bond) sul display
+  void forgetBluetoothBonds() => send('ble,forget');
+
   void setDeviceName(String name) => send('devicename,$name');
 
   // Scroll Text
@@ -935,5 +1153,6 @@ class DeviceService implements IPongDevice {
     _snakeController.close();
     _dataController.close();
     _wifiScanController.close();
+    _ble.dispose();
   }
 }

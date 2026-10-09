@@ -7,7 +7,6 @@
 #include <sys/time.h>
 #include <Wire.h>
 #include <RTClib.h>
-#include <WiFi.h>
 #include <vector>
 #include "Debug.h"
 
@@ -70,18 +69,6 @@ private:
     void syncFromDS3231();
     void syncToDS3231();
 
-    // NTP
-    bool ntpEnabled;
-    bool ntpSynced;
-    unsigned long lastNtpSync;
-    unsigned long ntpSyncInterval;  // ms tra sync NTP (default 1 ora)
-    static constexpr const char* NTP_SERVER1 = "pool.ntp.org";
-    static constexpr const char* NTP_SERVER2 = "time.google.com";
-    static constexpr const char* NTP_SERVER3 = "time.windows.com";
-
-    bool syncFromNTP();
-    void checkNtpSync();
-
     // Timezone
     char currentTimezone[48];  // Timezone string corrente (es: "CET-1CEST,M3.5.0,M10.5.0/3")
     void applyTimezone(struct tm* timeinfo);
@@ -135,13 +122,6 @@ public:
     bool isDS3231Available() const { return ds3231Available; }
     float getDS3231Temperature();
 
-    // NTP
-    void enableNTP(bool enable = true) { ntpEnabled = enable; }
-    bool isNTPEnabled() const { return ntpEnabled; }
-    bool isNTPSynced() const { return ntpSynced; }
-    void forceNTPSync();
-    void setNTPSyncInterval(unsigned long intervalMs) { ntpSyncInterval = intervalMs; }
-    
     // ✅ Callbacks (pattern Observer) - NUOVI METODI CON SUPPORTO MULTIPLO
     // void addOnSecondChange(TimeCallback callback) { 
     //     if (callback) {

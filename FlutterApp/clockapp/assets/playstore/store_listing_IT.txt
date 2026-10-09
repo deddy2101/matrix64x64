@@ -7,7 +7,7 @@ NOME APP: Matrix Clock
 --------------------------------------------
 DESCRIZIONE BREVE (max 80 caratteri):
 --------------------------------------------
-Controlla la tua matrice LED 64x64: orologio, effetti e luminosità via WiFi
+Controlla la tua matrice LED 64x64: orologio, effetti e luminosità via Bluetooth
 
 --------------------------------------------
 DESCRIZIONE COMPLETA (max 4000 caratteri):
@@ -16,11 +16,11 @@ Matrix Clock è l'app companion per controllare la tua matrice LED 64x64 basata 
 
 🎮 FUNZIONALITÀ PRINCIPALI
 
-• Connessione WiFi automatica - Trova automaticamente il dispositivo nella tua rete locale
+• Connessione Bluetooth - Trova il display vicino a te e si associa con un PIN mostrato sulla matrice; l'ora si sincronizza col telefono ad ogni collegamento
 • Controllo orologio - Sincronizza l'ora, imposta manualmente o usa il modulo RTC DS3231
 • 14+ effetti visivi - Scroll Text, Plasma, Pong, Matrix Rain, Fire, Starfield e molti altri
 • Luminosità intelligente - Regolazione automatica giorno/notte con orari personalizzabili
-• Configurazione WiFi - Configura la rete WiFi dell'ESP32 direttamente dall'app
+• Aggiornamenti firmware via Bluetooth - Senza collegarti alla rete WiFi del display
 • Console di debug - Monitora in tempo reale la comunicazione con il dispositivo
 
 ⚙️ CONTROLLI DISPONIBILI
@@ -34,13 +34,13 @@ Matrix Clock è l'app companion per controllare la tua matrice LED 64x64 basata 
 
 📡 CONNETTIVITÀ
 
-L'app si connette al tuo dispositivo ESP32 tramite WebSocket su rete WiFi locale. Supporta sia la modalità Station (connesso al router) che Access Point (rete propria dell'ESP32).
+L'app si connette al tuo dispositivo ESP32 tramite Bluetooth Low Energy (firmware 3.x). I dispositivi con il firmware precedente restano supportati via WiFi locale (WebSocket).
 
 🔧 REQUISITI
 
 • Matrice LED 64x64 con controller ESP32
 • Firmware compatibile installato sul dispositivo
-• Connessione alla stessa rete WiFi del dispositivo
+• Bluetooth attivo sul telefono (o stessa rete WiFi per i dispositivi con il firmware precedente)
 
 💡 PERFETTO PER
 

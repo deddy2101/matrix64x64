@@ -7,7 +7,7 @@ APP NAME: Matrix Clock
 --------------------------------------------
 SHORT DESCRIPTION (max 80 characters):
 --------------------------------------------
-Control your 64x64 LED matrix: clock, effects and brightness via WiFi
+Control your 64x64 LED matrix: clock, effects and brightness via Bluetooth
 
 --------------------------------------------
 FULL DESCRIPTION (max 4000 characters):
@@ -16,11 +16,11 @@ Matrix Clock is the companion app to control your ESP32-based 64x64 LED matrix.
 
 🎮 MAIN FEATURES
 
-• Automatic WiFi connection - Automatically finds your device on the local network
+• Bluetooth connection - Finds your display nearby and pairs with a PIN shown on the matrix; the clock syncs with your phone every time you connect
 • Clock control - Sync time, set manually or use the DS3231 RTC module
 • 14+ visual effects - Scroll Text, Plasma, Pong, Matrix Rain, Fire, Starfield and more
 • Smart brightness - Automatic day/night adjustment with customizable schedules
-• WiFi configuration - Configure ESP32's WiFi network directly from the app
+• Firmware updates over Bluetooth - No need to join the display's WiFi network
 • Debug console - Real-time monitoring of device communication
 
 ⚙️ AVAILABLE CONTROLS
@@ -34,13 +34,13 @@ Matrix Clock is the companion app to control your ESP32-based 64x64 LED matrix.
 
 📡 CONNECTIVITY
 
-The app connects to your ESP32 device via WebSocket over local WiFi. Supports both Station mode (connected to router) and Access Point mode (ESP32's own network).
+The app connects to your ESP32 device via Bluetooth Low Energy (firmware 3.x). Devices with the previous firmware are still supported over local WiFi (WebSocket).
 
 🔧 REQUIREMENTS
 
 • 64x64 LED matrix with ESP32 controller
 • Compatible firmware installed on device
-• Connection to the same WiFi network as the device
+• Bluetooth enabled on your phone (or the same WiFi network for devices with the previous firmware)
 
 💡 PERFECT FOR
 

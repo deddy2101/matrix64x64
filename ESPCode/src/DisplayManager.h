@@ -15,6 +15,8 @@ private:
     // Framebuffer for flicker-free rendering
     uint16_t* frameBuffer;
     bool bufferingEnabled;
+    bool pairingOverlayActive;
+    uint32_t pairingOverlayCode;
 
     // Local state for buffered text rendering
     int16_t bufCursorX, bufCursorY;
@@ -63,6 +65,13 @@ public:
     // OTA Progress Display
     void showOTAProgress(int percent);
     void showOTASuccess();
+
+    // Pairing BLE: PIN a 6 cifre in sovrimpressione (alto a destra, sfondo nero).
+    // Si ridisegna sopra l'effetto in corso: nei frame con buffer da endFrame(),
+    // per gli effetti che disegnano direttamente da drawPairingOverlay()
+    // (da chiamare dopo ogni aggiornamento degli effetti).
+    void setPairingOverlay(bool active, uint32_t code = 0);
+    void drawPairingOverlay();
 };
 
 #endif

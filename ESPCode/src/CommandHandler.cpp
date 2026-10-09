@@ -1,25 +1,25 @@
 #include "CommandHandler.h"
-#include "WebSocketManager.h"
 #include "Version.h"
 #include "effects/ScrollTextEffect.h"
 #include "effects/PongEffect.h"
 #include "effects/SnakeEffect.h"
 #include <esp_ota_ops.h>
 #include <Preferences.h>
+#include <NimBLEDevice.h>
 
 CommandHandler::CommandHandler()
     : _timeManager(nullptr)
     , _effectManager(nullptr)
     , _displayManager(nullptr)
     , _settings(nullptr)
-    , _wifiManager(nullptr)
-    , _wsManager(nullptr)
+    , _notifier(nullptr)
     , _imageManager(nullptr)
     , _scheduleManager(nullptr)
     , _scrollTextEffect(nullptr)
     , _pongEffect(nullptr)
     , _snakeEffect(nullptr)
     , _brightnessOverride(-1)
+    , _brightnessLocked(false)
     , _restartAt(0)
     , _otaInProgress(false)
     , _otaSize(0)
@@ -30,18 +30,17 @@ CommandHandler::CommandHandler()
     , _otaLastActivity(0)
 {}
 
-void CommandHandler::init(TimeManager* time, EffectManager* effects, DisplayManager* display, Settings* settings, WiFiManager* wifi, ImageManager* imgMgr, TextScheduleManager* schedMgr) {
+void CommandHandler::init(TimeManager* time, EffectManager* effects, DisplayManager* display, Settings* settings, ImageManager* imgMgr, TextScheduleManager* schedMgr) {
     _timeManager = time;
     _effectManager = effects;
     _displayManager = display;
     _settings = settings;
-    _wifiManager = wifi;
     _imageManager = imgMgr;
     _scheduleManager = schedMgr;
 }
 
-void CommandHandler::setWebSocketManager(WebSocketManager* ws) {
-    _wsManager = ws;
+void CommandHandler::setNotifier(Notifier* notifier) {
+    _notifier = notifier;
 }
 
 void CommandHandler::setScrollTextEffect(ScrollTextEffect* scrollText) {
@@ -252,8 +251,21 @@ String CommandHandler::processCommand(const String& command) {
     if (mainCmd == "autoswitch") {
         return handleAutoSwitch(parts);
     }
-    if (mainCmd == "wifi") {
-        return handleWiFi(parts);
+    if (mainCmd == "wifi" || mainCmd == "wifiscan" || mainCmd == "ntp") {
+        return "ERR,not supported on BLE firmware";
+    }
+    if (mainCmd == "ble") {
+        if (parts.size() >= 2 && parts[1] == "forget") {
+            NimBLEDevice::deleteAllBonds();
+            return "OK,bonds cleared";
+        }
+        if (parts.size() >= 3 && parts[1] == "setpin") {
+            if (_notifier && _notifier->setPairingPin(parts[2])) {
+                return "OK,pin changed";
+            }
+            return "ERR,pin must be 6 digits";
+        }
+        return "ERR,unknown ble subcommand";
     }
     if (mainCmd == "devicename") {
         return handleDeviceName(parts);
@@ -266,9 +278,6 @@ String CommandHandler::processCommand(const String& command) {
     }
     if (mainCmd == "snake") {
         return handleSnake(parts);
-    }
-    if (mainCmd == "ntp") {
-        return handleNTP(parts);
     }
     if (mainCmd == "timezone") {
         return handleTimezone(parts);
@@ -287,9 +296,6 @@ String CommandHandler::processCommand(const String& command) {
     }
     if (mainCmd == "schedtext") {
         return handleScheduledText(parts);
-    }
-    if (mainCmd == "wifiscan") {
-        return handleWiFiScan();
     }
 
     return "ERR,unknown command: " + mainCmd;
@@ -440,26 +446,15 @@ String CommandHandler::getStatusResponse() {
         response += ",0";
     }
     
-    // WiFi
-    if (_wifiManager) {
-        response += "," + _wifiManager->getStatusString();
-        response += "," + _wifiManager->getIP();
-        response += "," + _wifiManager->getSSID();
-        response += "," + String(_wifiManager->getRSSI());
-    } else {
-        response += ",disconnected,0.0.0.0,none,0";
-    }
-    
+    // Campi wifi,ip,ssid,rssi: mantenuti in posizione per compatibilità app
+    response += ",BLE,,,0";
+
     // System
     response += "," + String(millis() / 1000);
     response += "," + String(ESP.getFreeHeap());
 
-    // NTP status
-    if (_timeManager) {
-        response += "," + String(_timeManager->isNTPSynced() ? "1" : "0");
-    } else {
-        response += ",0";
-    }
+    // ntpSynced: sempre 0 (niente NTP nel firmware BLE)
+    response += ",0";
 
     return response;
 }
@@ -481,8 +476,8 @@ String CommandHandler::getSettingsResponse() {
     String response = "SETTINGS";
 
     if (_settings) {
-        response += "," + String(_settings->getSSID());
-        response += "," + String(_settings->isAPMode() ? "1" : "0");
+        // ssid,apMode: mantenuti in posizione per compatibilità app
+        response += ",,0";
         response += "," + String(_settings->getBrightnessDay());
         response += "," + String(_settings->getBrightnessNight());
         response += "," + String(_settings->getNightStartHour());
@@ -492,7 +487,7 @@ String CommandHandler::getSettingsResponse() {
         response += "," + String(_settings->getCurrentEffect());
         response += "," + String(_settings->getDeviceName());
         response += "," + String(_settings->getScrollText());
-        response += "," + String(_settings->isNTPEnabled() ? "1" : "0");
+        response += ",0";  // ntpEnabled
         response += "," + String(_settings->getTimezone());
     }
 
@@ -544,8 +539,8 @@ String CommandHandler::handleSetTime(const ParsedCommand& parts) {
     
     if (_timeManager) {
         _timeManager->setTime(h, m, s);
-        if (_wsManager) {
-            _wsManager->notifyTimeChange();
+        if (_notifier) {
+            _notifier->broadcast(getTimeChangeNotification());
         }
         return "OK,time set";
     }
@@ -567,8 +562,8 @@ String CommandHandler::handleSetDateTime(const ParsedCommand& parts) {
     
     if (_timeManager) {
         _timeManager->setDateTime(year, month, day, h, m, s);
-        if (_wsManager) {
-            _wsManager->notifyTimeChange();
+        if (_notifier) {
+            _notifier->broadcast(getTimeChangeNotification());
         }
         return "OK,datetime set";
     }
@@ -611,8 +606,8 @@ String CommandHandler::handleEffect(const ParsedCommand& parts) {
     
     if (action == "next") {
         _effectManager->nextEffect();
-        if (_wsManager) {
-            _wsManager->notifyEffectChange();
+        if (_notifier) {
+            _notifier->broadcast(getEffectChangeNotification());
         }
         return "OK,next effect";
     }
@@ -641,8 +636,8 @@ String CommandHandler::handleEffect(const ParsedCommand& parts) {
                 _settings->setCurrentEffect(index);
                 _settings->save();  // Salva immediatamente per renderlo permanente
             }
-            if (_wsManager) {
-                _wsManager->notifyEffectChange();
+            if (_notifier) {
+                _notifier->broadcast(getEffectChangeNotification());
             }
             return "OK,effect " + String(index);
         }
@@ -655,8 +650,8 @@ String CommandHandler::handleEffect(const ParsedCommand& parts) {
             name += "," + parts[i];
         }
         _effectManager->switchToEffect(name.c_str());
-        if (_wsManager) {
-            _wsManager->notifyEffectChange();
+        if (_notifier) {
+            _notifier->broadcast(getEffectChangeNotification());
         }
         return "OK,effect " + name;
     }
@@ -782,32 +777,6 @@ String CommandHandler::handleAutoSwitch(const ParsedCommand& parts) {
     return enabled ? "OK,autoswitch on" : "OK,autoswitch off";
 }
 
-String CommandHandler::handleWiFi(const ParsedCommand& parts) {
-    if (parts.size() < 4) {
-        return "ERR,wifi needs SSID,PASSWORD,AP_MODE";
-    }
-    
-    String ssid = parts[1];
-    String password = parts[2];
-    bool apMode = parts[3].toInt() != 0;
-    
-    if (_settings) {
-        _settings->setSSID(ssid.c_str());
-        _settings->setPassword(password.c_str());
-        _settings->setAPMode(apMode);
-    }
-    
-    if (_wifiManager) {
-        if (apMode) {
-            _wifiManager->switchToAP();
-        } else {
-            _wifiManager->switchToSTA(ssid.c_str(), password.c_str());
-        }
-    }
-    
-    return "OK,wifi configured (restart to apply)";
-}
-
 String CommandHandler::handleDeviceName(const ParsedCommand& parts) {
     if (parts.size() < 2) {
         return "ERR,devicename needs NAME";
@@ -889,8 +858,8 @@ String CommandHandler::handlePong(const ParsedCommand& parts) {
         }
         if (_pongEffect->joinPlayer(player)) {
             // Broadcast stato a tutti
-            if (_wsManager) {
-                _wsManager->broadcast(_pongEffect->getStateString());
+            if (_notifier) {
+                _notifier->broadcast(_pongEffect->getStateString());
             }
             return "OK,joined as player " + String(player);
         }
@@ -904,8 +873,8 @@ String CommandHandler::handlePong(const ParsedCommand& parts) {
         }
         int player = parts[2].toInt();
         if (_pongEffect->leavePlayer(player)) {
-            if (_wsManager) {
-                _wsManager->broadcast(_pongEffect->getStateString());
+            if (_notifier) {
+                _notifier->broadcast(_pongEffect->getStateString());
             }
             return "OK,player " + String(player) + " left";
         }
@@ -953,8 +922,8 @@ String CommandHandler::handlePong(const ParsedCommand& parts) {
     // pong,start
     if (subCmd == "start") {
         _pongEffect->startGame();
-        if (_wsManager) {
-            _wsManager->broadcast(_pongEffect->getStateString());
+        if (_notifier) {
+            _notifier->broadcast(_pongEffect->getStateString());
         }
         return "OK,game started";
     }
@@ -962,8 +931,8 @@ String CommandHandler::handlePong(const ParsedCommand& parts) {
     // pong,pause
     if (subCmd == "pause") {
         _pongEffect->pauseGame();
-        if (_wsManager) {
-            _wsManager->broadcast(_pongEffect->getStateString());
+        if (_notifier) {
+            _notifier->broadcast(_pongEffect->getStateString());
         }
         return "OK,game paused";
     }
@@ -971,8 +940,8 @@ String CommandHandler::handlePong(const ParsedCommand& parts) {
     // pong,resume
     if (subCmd == "resume") {
         _pongEffect->resumeGame();
-        if (_wsManager) {
-            _wsManager->broadcast(_pongEffect->getStateString());
+        if (_notifier) {
+            _notifier->broadcast(_pongEffect->getStateString());
         }
         return "OK,game resumed";
     }
@@ -980,8 +949,8 @@ String CommandHandler::handlePong(const ParsedCommand& parts) {
     // pong,reset
     if (subCmd == "reset") {
         _pongEffect->resetGame();
-        if (_wsManager) {
-            _wsManager->broadcast(_pongEffect->getStateString());
+        if (_notifier) {
+            _notifier->broadcast(_pongEffect->getStateString());
         }
         return "OK,game reset";
     }
@@ -1009,8 +978,8 @@ String CommandHandler::handleSnake(const ParsedCommand& parts) {
     // snake,join
     if (subCmd == "join") {
         if (_snakeEffect->joinGame()) {
-            if (_wsManager) {
-                _wsManager->broadcast(_snakeEffect->getStateString());
+            if (_notifier) {
+                _notifier->broadcast(_snakeEffect->getStateString());
             }
             return "OK,joined snake game";
         }
@@ -1020,8 +989,8 @@ String CommandHandler::handleSnake(const ParsedCommand& parts) {
     // snake,leave
     if (subCmd == "leave") {
         if (_snakeEffect->leaveGame()) {
-            if (_wsManager) {
-                _wsManager->broadcast(_snakeEffect->getStateString());
+            if (_notifier) {
+                _notifier->broadcast(_snakeEffect->getStateString());
             }
             return "OK,left snake game";
         }
@@ -1040,8 +1009,8 @@ String CommandHandler::handleSnake(const ParsedCommand& parts) {
     // snake,start
     if (subCmd == "start") {
         _snakeEffect->startGame();
-        if (_wsManager) {
-            _wsManager->broadcast(_snakeEffect->getStateString());
+        if (_notifier) {
+            _notifier->broadcast(_snakeEffect->getStateString());
         }
         return "OK,snake game started";
     }
@@ -1049,8 +1018,8 @@ String CommandHandler::handleSnake(const ParsedCommand& parts) {
     // snake,pause
     if (subCmd == "pause") {
         _snakeEffect->pauseGame();
-        if (_wsManager) {
-            _wsManager->broadcast(_snakeEffect->getStateString());
+        if (_notifier) {
+            _notifier->broadcast(_snakeEffect->getStateString());
         }
         return "OK,snake game paused";
     }
@@ -1058,8 +1027,8 @@ String CommandHandler::handleSnake(const ParsedCommand& parts) {
     // snake,resume
     if (subCmd == "resume") {
         _snakeEffect->resumeGame();
-        if (_wsManager) {
-            _wsManager->broadcast(_snakeEffect->getStateString());
+        if (_notifier) {
+            _notifier->broadcast(_snakeEffect->getStateString());
         }
         return "OK,snake game resumed";
     }
@@ -1067,8 +1036,8 @@ String CommandHandler::handleSnake(const ParsedCommand& parts) {
     // snake,reset
     if (subCmd == "reset") {
         _snakeEffect->resetToWaiting();
-        if (_wsManager) {
-            _wsManager->broadcast(_snakeEffect->getStateString());
+        if (_notifier) {
+            _notifier->broadcast(_snakeEffect->getStateString());
         }
         return "OK,snake game reset";
     }
@@ -1079,45 +1048,6 @@ String CommandHandler::handleSnake(const ParsedCommand& parts) {
     }
 
     return "ERR,unknown snake subcommand: " + subCmd;
-}
-
-String CommandHandler::handleNTP(const ParsedCommand& parts) {
-    if (parts.size() < 2) {
-        return "ERR,ntp needs subcommand (enable/disable/sync)";
-    }
-
-    String subCmd = parts[1];
-    subCmd.toLowerCase();
-
-    if (subCmd == "enable") {
-        if (_settings) {
-            _settings->setNTPEnabled(true);
-        }
-        if (_timeManager) {
-            _timeManager->enableNTP(true);
-        }
-        return "OK,ntp enabled";
-    }
-
-    if (subCmd == "disable") {
-        if (_settings) {
-            _settings->setNTPEnabled(false);
-        }
-        if (_timeManager) {
-            _timeManager->enableNTP(false);
-        }
-        return "OK,ntp disabled";
-    }
-
-    if (subCmd == "sync") {
-        if (_timeManager) {
-            _timeManager->forceNTPSync();
-            return "OK,ntp sync requested";
-        }
-        return "ERR,time manager not available";
-    }
-
-    return "ERR,unknown ntp subcommand: " + subCmd;
 }
 
 String CommandHandler::handleTimezone(const ParsedCommand& parts) {
@@ -1136,12 +1066,11 @@ String CommandHandler::handleTimezone(const ParsedCommand& parts) {
     }
 
     // Applica subito il timezone
-    setenv("TZ", tz.c_str(), 1);
-    tzset();
-
-    // Forza NTP sync con nuovo timezone
     if (_timeManager) {
-        _timeManager->forceNTPSync();
+        _timeManager->setTimezone(tz.c_str());
+    } else {
+        setenv("TZ", tz.c_str(), 1);
+        tzset();
     }
 
     return "OK,timezone set to " + tz;
@@ -1180,6 +1109,7 @@ void CommandHandler::checkPendingRestart() {
 
 void CommandHandler::updateBrightness() {
     if (!_displayManager) return;
+    if (_brightnessLocked) return;
 
     // Un override manuale (es. display spento con brightness,0) ha priorità
     // sullo schedule day/night e non viene sovrascritto dal timer periodico
@@ -1665,16 +1595,4 @@ String CommandHandler::handleScheduledText(const ParsedCommand& parts) {
     }
 
     return "ERR,Unknown schedtext subcommand: " + subCmd;
-}
-
-// ═══════════════════════════════════════════
-// WiFi Scan Handler
-// ═══════════════════════════════════════════
-
-String CommandHandler::handleWiFiScan() {
-    if (!_wifiManager) {
-        return "ERR,WiFi manager not available";
-    }
-
-    return _wifiManager->scanNetworks();
 }

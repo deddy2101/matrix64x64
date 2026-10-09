@@ -30,7 +30,9 @@ class ConnectionCard extends StatelessWidget {
               Icon(
                 device.connectionType == ConnectionType.websocket
                     ? Icons.wifi
-                    : Icons.usb_rounded,
+                    : device.connectionType == ConnectionType.ble
+                        ? Icons.bluetooth
+                        : Icons.usb_rounded,
                 color: Theme.of(context).colorScheme.primary,
               ),
               const SizedBox(width: 12),

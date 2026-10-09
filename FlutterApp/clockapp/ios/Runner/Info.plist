@@ -52,5 +52,7 @@
 		<string>_http._tcp</string>
 		<string>_ledmatrix._tcp</string>
 	</array>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Questa app usa il Bluetooth per trovare e controllare il tuo display LED Matrix.</string>
 </dict>
 </plist>

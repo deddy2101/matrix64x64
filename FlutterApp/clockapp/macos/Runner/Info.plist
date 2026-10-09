@@ -28,5 +28,7 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Questa app usa il Bluetooth per trovare e controllare il tuo display LED Matrix.</string>
 </dict>
 </plist>

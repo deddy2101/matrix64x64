@@ -1,5 +1,11 @@
 # Matrix 64x64 LED Display System
 
+> **Firmware 3.0.0+: Bluetooth LE al posto del WiFi.** Il firmware non usa più WiFi, WebSocket,
+> UDP Discovery né NTP: il controllo avviene via Bluetooth LE (protocollo CSV a righe su un
+> servizio GATT, pairing con PIN mostrato sulla matrice). Le sezioni WiFi/WebSocket/Discovery
+> qui sotto valgono solo per il firmware 2.x. Dettagli e contratto del protocollo:
+> [docs/BLE_MIGRATION_PLAN.md](docs/BLE_MIGRATION_PLAN.md).
+
 ESP32-based LED matrix controller with Flutter mobile app and OTA firmware server.
 
 ## Overview

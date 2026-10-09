@@ -4,6 +4,7 @@ DisplayManager::DisplayManager(uint16_t panelWidth, uint16_t panelHeight,
                                uint8_t panelsNumber, uint8_t pinE)
     : width(panelWidth * panelsNumber), height(panelHeight), brightness(200),
       frameBuffer(nullptr), bufferingEnabled(false),
+      pairingOverlayActive(false), pairingOverlayCode(0),
       bufCursorX(0), bufCursorY(0), currentFont(nullptr),
       currentTextColor(0xFFFF), currentTextSize(1) {
 
@@ -56,6 +57,9 @@ void DisplayManager::endFrame() {
         bufferingEnabled = false;
         return;
     }
+
+    // Il PIN di pairing va dentro il frame, prima del flush
+    if (pairingOverlayActive) drawPairingOverlay();
 
     // Flush entire buffer to display in one pass
     for (int y = 0; y < height; y++) {
@@ -301,4 +305,59 @@ void DisplayManager::showOTASuccess() {
     display->setTextColor(color565(0, 255, 0)); // Verde
     display->setCursor(20, 45);
     display->print("OK!");
+}
+
+// ═══════════════════════════════════════════
+// Pairing BLE: PIN in sovrimpressione
+// ═══════════════════════════════════════════
+
+// Cifre 0-9, font 5x7 classico (5 colonne, bit0 = riga in alto)
+static const uint8_t PIN_FONT[10][5] = {
+    {0x3E, 0x51, 0x49, 0x45, 0x3E},  // 0
+    {0x00, 0x42, 0x7F, 0x40, 0x00},  // 1
+    {0x42, 0x61, 0x51, 0x49, 0x46},  // 2
+    {0x21, 0x41, 0x45, 0x4B, 0x31},  // 3
+    {0x18, 0x14, 0x12, 0x7F, 0x10},  // 4
+    {0x27, 0x45, 0x45, 0x45, 0x39},  // 5
+    {0x3C, 0x4A, 0x49, 0x49, 0x30},  // 6
+    {0x01, 0x71, 0x09, 0x05, 0x03},  // 7
+    {0x36, 0x49, 0x49, 0x49, 0x36},  // 8
+    {0x06, 0x49, 0x49, 0x29, 0x1E},  // 9
+};
+
+void DisplayManager::setPairingOverlay(bool active, uint32_t code) {
+    pairingOverlayActive = active;
+    pairingOverlayCode = code % 1000000;
+    if (active) drawPairingOverlay();
+}
+
+void DisplayManager::drawPairingOverlay() {
+    if (!pairingOverlayActive) return;
+
+    // 6 cifre da 5px + 1px di spazio, 3px di margine per lato, 2px sopra/sotto
+    const int boxW = 6 * 6 - 1 + 6;   // 41
+    const int boxH = 7 + 4;           // 11
+    const int x0 = width - boxW;
+    const int y0 = 0;
+
+    for (int y = 0; y < boxH; y++) {
+        for (int x = 0; x < boxW; x++) {
+            drawPixel(x0 + x, y0 + y, (uint16_t)0x0000);
+        }
+    }
+
+    uint32_t v = pairingOverlayCode;
+    for (int d = 5; d >= 0; d--) {
+        int digit = v % 10;
+        v /= 10;
+        int cx = x0 + 3 + d * 6;
+        for (int col = 0; col < 5; col++) {
+            uint8_t bits = PIN_FONT[digit][col];
+            for (int row = 0; row < 7; row++) {
+                if (bits & (1 << row)) {
+                    drawPixel(cx + col, y0 + 2 + row, (uint16_t)0xFFFF);
+                }
+            }
+        }
+    }
 }

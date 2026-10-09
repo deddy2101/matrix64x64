@@ -7,7 +7,7 @@
 #include "EffectManager.h"
 #include "DisplayManager.h"
 #include "Settings.h"
-#include "WiFiManager.h"
+#include "Notifier.h"
 #include "ImageManager.h"
 #include "TextScheduleManager.h"
 #include "Debug.h"
@@ -38,7 +38,6 @@ struct ParsedCommand {
 
 
 // Forward declaration
-class WebSocketManager;
 class ScrollTextEffect;
 class PongEffect;
 class SnakeEffect;
@@ -70,7 +69,6 @@ class SnakeEffect;
  *   nighttime,START,END            - Orari notte (0-23)
  *   duration,MS                    - Durata effetti in ms
  *   autoswitch,0|1                 - Auto-switch on/off
- *   wifi,SSID,PASSWORD,AP_MODE     - Configura WiFi (AP_MODE: 0=STA, 1=AP)
  *   devicename,NAME                - Nome dispositivo
  *   scrolltext,TEXT[,COLOR]        - Imposta testo scorrevole (COLOR opzionale RGB565)
  *   pong,join,1|2                  - Giocatore si unisce (1=sinistra, 2=destra)
@@ -90,10 +88,10 @@ class SnakeEffect;
  *   snake,resume                   - Riprendi partita
  *   snake,reset                    - Reset partita
  *   snake,state                    - Richiedi stato gioco
- *   ntp,enable                     - Abilita NTP sync
- *   ntp,disable                    - Disabilita NTP sync
- *   ntp,sync                       - Forza sync NTP ora
+ *   ble,forget                     - Cancella tutti i telefoni associati (bond)
+ *   ble,setpin,NNNNNN              - Cambia il PIN statico di accesso (6 cifre)
  *   timezone,TZ_STRING             - Imposta timezone (es: CET-1CEST,M3.5.0,M10.5.0/3)
+ *   (wifi, wifiscan, ntp           - non supportati: ERR,not supported on BLE firmware)
  *   save                           - Salva impostazioni
  *   restart                        - Riavvia ESP32
  *   ota,start,SIZE                 - Inizia OTA update (SIZE in bytes)
@@ -123,8 +121,10 @@ class SnakeEffect;
  *   OTA_SUCCESS                    - Update completato (riavvio imminente)
  *   OTA_ERROR,messaggio            - Errore durante OTA
  *   STATUS,time,date,mode,ds3231,temp,effect,idx,fps,auto,count,bright,night,wifi,ip,ssid,rssi,uptime,heap,ntpSynced
+ *                                  (wifi,ip,ssid,rssi = BLE,,,0 e ntpSynced = 0: campi legacy)
  *   EFFECTS,name1,name2,name3,...  - Lista nomi effetti
  *   SETTINGS,ssid,apMode,brightDay,brightNight,nightStart,nightEnd,duration,auto,effect,deviceName,scrollText,ntpEnabled,timezone
+ *                                  (ssid vuoto, apMode = 0, ntpEnabled = 0: campi legacy)
  *   VERSION,version,buildNumber,buildDate,buildTime - Versione firmware
  *   EFFECT,index,name              - Notifica cambio effetto
  *   TIME,HH:MM:SS                  - Notifica cambio ora
@@ -136,8 +136,8 @@ class CommandHandler {
 public:
     CommandHandler();
 
-    void init(TimeManager* time, EffectManager* effects, DisplayManager* display, Settings* settings, WiFiManager* wifi, ImageManager* imgMgr = nullptr, TextScheduleManager* schedMgr = nullptr);
-    void setWebSocketManager(WebSocketManager* ws);
+    void init(TimeManager* time, EffectManager* effects, DisplayManager* display, Settings* settings, ImageManager* imgMgr = nullptr, TextScheduleManager* schedMgr = nullptr);
+    void setNotifier(Notifier* notifier);
     void setScrollTextEffect(ScrollTextEffect* scrollText);
     void setPongEffect(PongEffect* pong);
     void setSnakeEffect(SnakeEffect* snake);
@@ -160,6 +160,10 @@ public:
     
     // Utility
     void updateBrightness();
+
+    // Blocca gli aggiornamenti automatici di luminosità (es. durante il
+    // pairing BLE, quando il display deve essere al massimo per mostrare il PIN)
+    void lockBrightness(bool locked) { _brightnessLocked = locked; }
     void processSerial(const String& cmd);
 
     // OTA Watchdog
@@ -174,8 +178,7 @@ private:
     EffectManager* _effectManager;
     DisplayManager* _displayManager;
     Settings* _settings;
-    WiFiManager* _wifiManager;
-    WebSocketManager* _wsManager;
+    Notifier* _notifier;
     ImageManager* _imageManager;
     TextScheduleManager* _scheduleManager;
     ScrollTextEffect* _scrollTextEffect;
@@ -194,25 +197,23 @@ private:
     String handleNightTime(const ParsedCommand& parts);
     String handleDuration(const ParsedCommand& parts);
     String handleAutoSwitch(const ParsedCommand& parts);
-    String handleWiFi(const ParsedCommand& parts);
     String handleDeviceName(const ParsedCommand& parts);
     String handleScrollText(const ParsedCommand& parts);
     String handlePong(const ParsedCommand& parts);
     String handleSnake(const ParsedCommand& parts);
-    String handleNTP(const ParsedCommand& parts);
     String handleTimezone(const ParsedCommand& parts);
     String handleSave();
     String handleRestart();
     String handleOTA(const ParsedCommand& parts);
     String handleImage(const ParsedCommand& parts);
     String handleScheduledText(const ParsedCommand& parts);
-    String handleWiFiScan();
 
     // Override manuale luminosità (-1 = segui day/night)
     int _brightnessOverride;
+    bool _brightnessLocked;
 
     // Riavvio differito (0 = nessuno): permette di inviare la risposta
-    // WebSocket prima che l'ESP si riavvii
+    // al client prima che l'ESP si riavvii
     unsigned long _restartAt;
 
     // OTA state

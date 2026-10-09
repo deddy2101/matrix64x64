@@ -14,10 +14,6 @@ TimeManager::TimeManager()
       lastMinute(-1),
       lastSecond(-1),
       lastUpdate(0),
-      ntpEnabled(true),
-      ntpSynced(false),
-      lastNtpSync(0),
-      ntpSyncInterval(3600000),  // 1 ora in ms
       mode(TimeMode::RTC) {
     // Pre-alloca spazio per i callback per evitare riallocazioni
     onSecondChangeCallbacks.reserve(5);
@@ -110,90 +106,9 @@ time_t TimeManager::getLocalEpoch(time_t utcEpoch) {
     return utcEpoch;  // L'epoch è sempre UTC, è la rappresentazione che cambia
 }
 
-// ═══════════════════════════════════════════
-// NTP Sync
-// ═══════════════════════════════════════════
-
-bool TimeManager::syncFromNTP() {
-    if (!ntpEnabled) {
-        DEBUG_PRINTLN(F("[TimeManager] NTP disabled"));
-        return false;
-    }
-
-    // Verifica connessione WiFi
-    if (WiFi.status() != WL_CONNECTED) {
-        DEBUG_PRINTLN(F("[TimeManager] NTP sync failed: WiFi not connected"));
-        return false;
-    }
-
-    DEBUG_PRINTLN(F("[TimeManager] Starting NTP sync..."));
-    DEBUG_PRINTF("[TimeManager] Using timezone: %s\n", currentTimezone);
-
-    // ✅ Configura NTP con timezone corrente (non più hardcoded!)
-    configTzTime(currentTimezone, NTP_SERVER1, NTP_SERVER2, NTP_SERVER3);
-
-    // Attendi sincronizzazione (max 10 secondi)
-    struct tm timeinfo;
-    int retries = 0;
-    while (!getLocalTime(&timeinfo, 1000) && retries < 10) {
-        DEBUG_PRINT(F("."));
-        retries++;
-    }
-    DEBUG_PRINTLN();
-
-    if (retries >= 10) {
-        DEBUG_PRINTLN(F("[TimeManager] NTP sync timeout"));
-        return false;
-    }
-
-    // Aggiorna valori correnti
-    currentYear = timeinfo.tm_year + 1900;
-    currentMonth = timeinfo.tm_mon + 1;
-    currentDay = timeinfo.tm_mday;
-    currentHour = timeinfo.tm_hour;
-    currentMinute = timeinfo.tm_min;
-    currentSecond = timeinfo.tm_sec;
-
-    // Aggiorna anche il DS3231 se disponibile
-    syncToDS3231();
-
-    ntpSynced = true;
-    lastNtpSync = millis();
-
-    DEBUG_PRINTF("[TimeManager] NTP sync OK: %04d/%02d/%02d %02d:%02d:%02d\n",
-                 currentYear, currentMonth, currentDay,
-                 currentHour, currentMinute, currentSecond);
-
-    return true;
-}
-
-void TimeManager::checkNtpSync() {
-    if (!ntpEnabled) return;
-
-    // Prima sync all'avvio (se WiFi connesso e non ancora sincronizzato)
-    if (!ntpSynced && WiFi.status() == WL_CONNECTED) {
-        syncFromNTP();
-        return;
-    }
-
-    // Sync periodico (ogni ntpSyncInterval ms, default 1 ora)
-    if (ntpSynced && (millis() - lastNtpSync >= ntpSyncInterval)) {
-        if (WiFi.status() == WL_CONNECTED) {
-            DEBUG_PRINTLN(F("[TimeManager] Periodic NTP sync..."));
-            syncFromNTP();
-        }
-    }
-}
-
-void TimeManager::forceNTPSync() {
-    DEBUG_PRINTLN(F("[TimeManager] Forced NTP sync requested"));
-    ntpSynced = false;  // Reset per forzare nuovo sync
-    syncFromNTP();
-}
-
 void TimeManager::setTimezone(const char* tz) {
     if (tz && strlen(tz) > 0) {
-        // ✅ Salva il timezone nel membro per uso futuro (NTP sync)
+        // Salva il timezone nel membro
         strncpy(currentTimezone, tz, sizeof(currentTimezone) - 1);
         currentTimezone[sizeof(currentTimezone) - 1] = '\0';
 
@@ -418,9 +333,6 @@ void TimeManager::removeCallback(int id) {
 
 // ✅ METODO UPDATE AGGIORNATO PER CHIAMARE TUTTI I CALLBACK
 void TimeManager::update() {
-    // Check NTP sync (all'avvio e ogni ora)
-    checkNtpSync();
-
     // Leggi tempo reale da RTC
     readRtcTime();
 
@@ -516,20 +428,6 @@ String TimeManager::getFullStatus() {
     if (ds3231Available) {
         sprintf(buf, "║  DS3231 Temp: %.1f°C                   ║\n",
                 getDS3231Temperature());
-        status += buf;
-    }
-
-    // NTP status
-    sprintf(buf, "║  NTP: %-30s  ║\n",
-            !ntpEnabled ? "Disabled" :
-            !ntpSynced ? "Not synced" :
-            "✓ Synced");
-    status += buf;
-
-    if (ntpSynced) {
-        unsigned long sinceSyncSec = (millis() - lastNtpSync) / 1000;
-        unsigned long mins = sinceSyncSec / 60;
-        sprintf(buf, "║  Last NTP sync: %lu min ago            ║\n", mins);
         status += buf;
     }
 

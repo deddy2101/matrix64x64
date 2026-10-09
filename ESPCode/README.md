@@ -1,5 +1,11 @@
 # ESP32 LED Matrix Firmware
 
+> **Firmware 3.0.0+: Bluetooth LE al posto del WiFi.** Il firmware non usa più WiFi, WebSocket,
+> UDP Discovery né NTP: il controllo avviene via Bluetooth LE (protocollo CSV a righe su un
+> servizio GATT, pairing con PIN mostrato sulla matrice). Le sezioni WiFi/WebSocket/Discovery
+> qui sotto valgono solo per il firmware 2.x. Dettagli e contratto del protocollo:
+> [docs/BLE_MIGRATION_PLAN.md](../docs/BLE_MIGRATION_PLAN.md).
+
 ESP32 firmware for HUB75 64x64 LED matrix with visual effects, WiFi control, and OTA updates.
 
 ## Features

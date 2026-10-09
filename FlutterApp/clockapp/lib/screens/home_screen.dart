@@ -224,10 +224,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     const SizedBox(height: 16),
                     _buildBrightnessCard(),
                     const SizedBox(height: 16),
-                    _buildWiFiCard(),
-                    const SizedBox(height: 16),
-                    _buildNTPCard(),
-                    const SizedBox(height: 16),
+                    if (_isBle) ...[
+                      _buildBluetoothCard(),
+                      const SizedBox(height: 16),
+                    ] else ...[
+                      _buildWiFiCard(),
+                      const SizedBox(height: 16),
+                      _buildNTPCard(),
+                      const SizedBox(height: 16),
+                    ],
                     _buildOTACard(),
                     const SizedBox(height: 16),
                   ],
@@ -392,7 +397,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             value:
                 '${_status!.brightness} ${_status!.isNight ? '(notte)' : '(giorno)'}',
           ),
-          if (_status!.wifiStatus.isNotEmpty)
+          if (_status!.wifiStatus.isNotEmpty && !_isBle)
             StatusRow(label: 'WiFi', value: _status!.wifiStatus),
         ],
       ),
@@ -949,6 +954,191 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _device.getSettings();
       _addLog('→ Night end: ${time.hour}:00');
       HapticFeedback.lightImpact();
+    }
+  }
+
+  bool get _isBle => _device.connectionType == ConnectionType.ble;
+
+  /// Collegamento Bluetooth: fuso orario (l'ora arriva dal telefono) e
+  /// gestione dei telefoni associati
+  Widget _buildBluetoothCard() {
+    final timezone = _settings?.timezone ?? 'CET-1CEST,M3.5.0,M10.5.0/3';
+
+    return GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.bluetooth, color: Theme.of(context).colorScheme.primary),
+              const SizedBox(width: 12),
+              const Text(
+                'Bluetooth e fuso orario',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'L\'ora del display si allinea a quella del telefono '
+            'ad ogni collegamento.',
+            style: TextStyle(color: Colors.grey[400], fontSize: 12),
+          ),
+          const SizedBox(height: 16),
+          StatusRow(
+            label: 'Fuso orario',
+            value: _getTimezoneDisplayName(timezone),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: ActionButton(
+                  icon: Icons.sync,
+                  label: 'Sincronizza ora',
+                  onTap: () {
+                    _device.syncNow();
+                    _addLog('→ Ora sincronizzata con il telefono');
+                    HapticFeedback.lightImpact();
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ActionButton(
+                  icon: Icons.public,
+                  label: 'Timezone',
+                  onTap: () => _showTimezoneDialog(),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: ActionButton(
+                  icon: Icons.save,
+                  label: 'Salva',
+                  onTap: () {
+                    _device.saveSettings();
+                    _addLog('→ Impostazioni salvate');
+                    HapticFeedback.lightImpact();
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ActionButton(
+                  icon: Icons.pin,
+                  label: 'Cambia PIN',
+                  onTap: _changeBlePin,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: ActionButton(
+                  icon: Icons.phonelink_erase,
+                  label: 'Dimentica telefoni',
+                  color: Colors.red[400],
+                  onTap: _confirmForgetBonds,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Cambia il PIN statico di accesso del display (6 cifre)
+  Future<void> _changeBlePin() async {
+    final controller = TextEditingController();
+    final newPin = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1a1a2e),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Cambia PIN di accesso'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Serve ai telefoni nuovi per far comparire il PIN sul display. '
+              'Chi è già associato non lo userà.',
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              decoration: const InputDecoration(
+                labelText: 'Nuovo PIN (6 cifre)',
+                counterText: '',
+              ),
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annulla'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (controller.text.length == 6) {
+                Navigator.pop(context, controller.text);
+              }
+            },
+            child: const Text('Salva'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (newPin == null) return;
+
+    final ok = await _device.changeBlePin(newPin);
+    _addLog(ok ? '→ PIN di accesso cambiato' : '✗ Cambio PIN non riuscito');
+    HapticFeedback.mediumImpact();
+  }
+
+  Future<void> _confirmForgetBonds() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1a1a2e),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Dimentica telefoni'),
+        content: const Text(
+          'Tutti i telefoni associati al display (anche questo) dovranno '
+          'inserire di nuovo il PIN al prossimo collegamento.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Annulla'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red[400]),
+            child: const Text('Dimentica'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      _device.forgetBluetoothBonds();
+      _addLog('→ Telefoni associati cancellati');
+      HapticFeedback.mediumImpact();
     }
   }
 

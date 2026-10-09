@@ -80,7 +80,7 @@ class OtaService extends ChangeNotifier {
   ///
   /// [firmwarePath] - Percorso del file .bin
   /// Returns true se l'update è completato con successo
-  Future<bool> updateFirmware(String firmwarePath) async {
+  Future<bool> updateFirmware(String firmwarePath, {String? targetVersion}) async {
     if (!_device.isConnected) {
       _updateState(status: 'Dispositivo non connesso');
       return false;
@@ -102,7 +102,7 @@ class OtaService extends ChangeNotifier {
       }
 
       final bytes = await file.readAsBytes();
-      return await _performOtaUpdate(Uint8List.fromList(bytes), null);
+      return await _performOtaUpdate(Uint8List.fromList(bytes), null, targetVersion);
 
     } catch (e) {
       _updateState(status: 'Errore: $e');
@@ -131,7 +131,7 @@ class OtaService extends ChangeNotifier {
   /// [bytes] - Contenuto del firmware
   /// [expectedMd5] - MD5 atteso per verifica (opzionale)
   /// Returns true se l'update è completato con successo
-  Future<bool> updateFirmwareFromBytes(Uint8List bytes, {String? expectedMd5}) async {
+  Future<bool> updateFirmwareFromBytes(Uint8List bytes, {String? expectedMd5, String? targetVersion}) async {
     if (!_device.isConnected) {
       _updateState(status: 'Dispositivo non connesso');
       return false;
@@ -144,7 +144,7 @@ class OtaService extends ChangeNotifier {
 
     try {
       _updateState(isUpdating: true, progress: 0);
-      return await _performOtaUpdate(bytes, expectedMd5);
+      return await _performOtaUpdate(bytes, expectedMd5, targetVersion);
     } catch (e) {
       _updateState(status: 'Errore: $e');
       print('[OTA] Error: $e');
@@ -156,8 +156,13 @@ class OtaService extends ChangeNotifier {
   }
 
   /// Esegue l'update OTA con protocollo ACK
-  Future<bool> _performOtaUpdate(Uint8List bytes, String? expectedMd5) async {
+  Future<bool> _performOtaUpdate(Uint8List bytes, String? expectedMd5, String? targetVersion) async {
     final size = bytes.length;
+
+    // Trasporto con cui stiamo aggiornando (cambia dopo il riavvio solo
+    // nella migrazione WiFi → Bluetooth)
+    final viaBle = _device.connectionType == ConnectionType.ble;
+    final viaWebSocket = _device.connectionType == ConnectionType.websocket;
 
     _updateState(status: 'Calcolo MD5...');
     final md5Hash = md5.convert(bytes).toString();
@@ -195,7 +200,8 @@ class OtaService extends ChangeNotifier {
 
     // 2. Invia dati in chunk
     _updateState(status: 'Invio firmware...');
-    const chunkSize = 3072; // 3KB chunks (~4KB base64) - ottimizzato con gestione frammentazione
+    // WebSocket: 3KB (~4KB base64). BLE: 2KB, righe più corte da riassemblare
+    final chunkSize = viaBle ? 2048 : 3072;
     int offset = 0;
     int chunkNumber = 0;
     int retryCount = 0;
@@ -271,12 +277,24 @@ class OtaService extends ChangeNotifier {
       _updateState(status: 'Update completato! Riavvio ESP...', progress: 100);
       print('[OTA] Update successful! ESP will reboot...');
 
+      // Migrazione: il nuovo firmware parla solo Bluetooth, il WebSocket
+      // non tornerà più. Niente attesa di riconnessione: l'utente si
+      // ricollega via Bluetooth dalla schermata di ricerca.
+      if (viaWebSocket && _isBleFirmware(targetVersion)) {
+        const notice = 'Firmware Bluetooth installato. Il display ora si '
+            'collega solo via Bluetooth: cercalo da questa schermata e '
+            'inserisci il PIN che comparirà sul display.';
+        _device.notice.value = notice;
+        _updateState(status: notice);
+        return true;
+      }
+
       // Attiva la modalità OTA nel DeviceService per gestire la riconnessione
       _device.startOtaUpdate();
 
       // Attendi il riavvio e la riconnessione
       _updateState(status: 'Attendo riavvio...');
-      final reconnected = await _waitForReconnection();
+      final reconnected = await _waitForReconnection(viaBle: viaBle);
 
       if (!reconnected) {
         // A questo punto il firmware è già stato scritto e verificato
@@ -286,9 +304,15 @@ class OtaService extends ChangeNotifier {
         print('[OTA] Reconnection timeout (firmware flashed successfully)');
         _device.endOtaUpdate();
         _updateState(
-            status: 'Firmware installato, ma non riesco a riconnettermi. '
-                'Se il display era in modalità AP, riconnetti il telefono '
-                'alla sua WiFi e ricollegati per verificare la versione.');
+            status: viaBle
+                ? 'Firmware installato, ma non riesco a riconnettermi. '
+                    'Ricollegati al display via Bluetooth per verificare '
+                    'la versione.'
+                : 'Firmware installato, ma non riesco a riconnettermi. '
+                    'Se il display era in modalità AP, riconnetti il telefono '
+                    'alla sua WiFi e ricollegati per verificare la versione. '
+                    'Se hai installato il firmware 3.x, ora il display si '
+                    'collega solo via Bluetooth.');
         return true;
       }
 
@@ -316,11 +340,18 @@ class OtaService extends ChangeNotifier {
     }
   }
 
+  /// Dal firmware 3.0.0 il display parla solo Bluetooth.
+  bool _isBleFirmware(String? version) {
+    if (version == null) return false;
+    final major = int.tryParse(version.split('.').first.replaceAll(RegExp(r'[^0-9]'), ''));
+    return major != null && major >= 3;
+  }
+
   /// Aspetta che il dispositivo si riconnetta dopo il riavvio OTA.
   /// La finestra è larga (90s) perché in modalità AP l'access point
   /// sparisce durante il riavvio e Android può metterci parecchio a
   /// ritrovare la rete (o richiedere una riconnessione manuale).
-  Future<bool> _waitForReconnection() async {
+  Future<bool> _waitForReconnection({required bool viaBle}) async {
     const maxAttempts = 45;
     const delayBetweenAttempts = Duration(seconds: 2);
 
@@ -330,9 +361,11 @@ class OtaService extends ChangeNotifier {
       // Dopo ~20s senza riconnessione, probabilmente il telefono ha
       // perso la WiFi dell'AP: suggerisci il ricollegamento manuale
       if (i == 10) {
-        _updateState(
-            status: 'Attendo riconnessione... Se il display è in modalità '
-                'AP, controlla che il telefono sia ancora sulla sua WiFi');
+        if (!viaBle) {
+          _updateState(
+              status: 'Attendo riconnessione... Se il display è in modalità '
+                  'AP, controlla che il telefono sia ancora sulla sua WiFi');
+        }
       }
 
       // Aspetta un po'
