@@ -30,6 +30,12 @@
 	<true/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Questa app usa il Bluetooth per trovare e controllare il tuo display LED Matrix.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Questa app può usare la fotocamera per scattare immagini da mostrare sul tuo display LED Matrix.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Questa app usa la posizione per rilevare la rete WiFi e trovare i dispositivi LED Matrix vicini.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Questa app accede alle tue foto per caricare immagini da mostrare sul tuo display LED Matrix.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_http._tcp</string>
