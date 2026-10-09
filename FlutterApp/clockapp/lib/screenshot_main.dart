@@ -2,11 +2,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'main.dart';
-import 'screens/demo_home_screen.dart';
-import 'screens/device_discovery_screen.dart';
+import 'screens/game_controller_screen.dart';
+import 'screens/home_screen.dart';
 import 'services/demo_service.dart';
+import 'services/device_service.dart';
 
-const _offsets = [0.0, 700.0, 1400.0, 2100.0, 99999.0];
+const _offsets = [0.0, 650.0, 1300.0];
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,25 +21,55 @@ class _ShotsApp extends StatefulWidget {
 }
 
 class _ShotsAppState extends State<_ShotsApp> {
-  final _scroll = ScrollController();
-  int _scene = 0; // 0 = discovery, poi demo home ai vari offset
+  int _scene = 0;
 
   @override
   void initState() {
     super.initState();
-    Timer.periodic(const Duration(seconds: 6), (t) {
-      if (_scene > _offsets.length) return t.cancel();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      DeviceService().debugSimulateConnection('LED Matrix', [
+        'WELCOME,LED Matrix Controller',
+        'STATUS,21:37:12,2026/10/09,RTC,1,23.5,Mario Clock,8,60.0,1,14,200,0,'
+            'disconnected,,,,86400,182000,1',
+        'EFFECTS,${DemoService.demoEffects.join(',')}',
+        'SETTINGS,,0,200,30,22,7,10000,1,8,LED Matrix,Ciao!,1,'
+            'CET-1CEST,M3.5.0,M10.5.0/3',
+      ]);
+    });
+    Timer.periodic(const Duration(seconds: 8), (t) {
+      if (_scene >= _offsets.length) return t.cancel();
       setState(() => _scene++);
-      if (_scene == 1) DemoService().startDemo();
-      if (_scene >= 1) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!_scroll.hasClients) return;
-          final max = _scroll.position.maxScrollExtent;
-          final o = _offsets[(_scene - 1).clamp(0, _offsets.length - 1)];
-          _scroll.jumpTo(o > max ? max : o);
+      if (_scene == _offsets.length) {
+        Future.delayed(const Duration(milliseconds: 800), () {
+          DeviceService().debugSimulateConnection('LED Matrix', [
+            'PONG_STATE,playing,3,2,human,ai,40,22',
+          ]);
         });
       }
+      if (_scene >= _offsets.length) return;
+      final pos = _findScroll();
+      if (pos == null) return;
+      final o = _offsets[_scene];
+      pos.jumpTo(o > pos.maxScrollExtent ? pos.maxScrollExtent : o);
     });
+  }
+
+  /// Primo scrollable verticale della schermata (la ListView della home)
+  ScrollPosition? _findScroll() {
+    ScrollPosition? found;
+    void visit(Element e) {
+      if (found != null) return;
+      if (e is StatefulElement && e.state is ScrollableState) {
+        final st = e.state as ScrollableState;
+        if (st.axisDirection == AxisDirection.down) {
+          found = st.position;
+          return;
+        }
+      }
+      e.visitChildren(visit);
+    }
+    (context as Element).visitChildren(visit);
+    return found;
   }
 
   @override
@@ -47,12 +78,9 @@ class _ShotsAppState extends State<_ShotsApp> {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: app.theme,
-      home: _scene == 0
-          ? const DeviceDiscoveryScreen()
-          : PrimaryScrollController(
-              controller: _scroll,
-              child: const DemoHomeScreen(),
-            ),
+      home: _scene < _offsets.length
+          ? const HomeScreen()
+          : GameControllerScreen(deviceService: DeviceService()),
     );
   }
 }

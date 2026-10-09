@@ -781,6 +781,20 @@ class DeviceService implements IPongDevice {
     _setState(DeviceConnectionState.disconnected);
   }
 
+  /// Solo per gli screenshot dello store: finge un display BLE collegato e
+  /// gli passa le risposte [lines]. I comandi non partono (BLE non pronto).
+  @visibleForTesting
+  void debugSimulateConnection(String name, List<String> lines) {
+    _connectionType = ConnectionType.ble;
+    _connectedName = name;
+    _bleName = name;
+    _setState(DeviceConnectionState.connected);
+    for (final line in lines) {
+      _dataController.add(line);
+      _parseResponse(line);
+    }
+  }
+
   void _setState(DeviceConnectionState newState) {
     _state = newState;
     _connectionController.add(newState);
