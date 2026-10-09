@@ -314,6 +314,7 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen> {
       device.id,
       device.name,
       askPin: _askStaticPin,
+      askPasskey: _askDynamicPin,
     );
 
     if (mounted) {
@@ -391,6 +392,72 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen> {
               backgroundColor: const Color(0xFF8B5CF6),
             ),
             child: const Text('Continua'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return pin;
+  }
+
+  /// Chiede il PIN dinamico mostrato dal display (solo Linux: sugli altri
+  /// sistemi lo chiede la finestra di pairing del sistema operativo)
+  Future<String?> _askDynamicPin() async {
+    if (!mounted) return null;
+    final controller = TextEditingController();
+    final pin = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1a1a2e),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.bluetooth_searching, color: Color(0xFF8B5CF6)),
+            SizedBox(width: 12),
+            Text('PIN del display'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Digita il PIN che compare in alto a destra sul display. '
+              'Hai 30 secondi.',
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              decoration: const InputDecoration(
+                labelText: 'PIN (6 cifre)',
+                counterText: '',
+              ),
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              onSubmitted: (value) {
+                if (value.length == 6) Navigator.pop(context, value);
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annulla'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (controller.text.length == 6) {
+                Navigator.pop(context, controller.text);
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF8B5CF6),
+            ),
+            child: const Text('Associa'),
           ),
         ],
       ),

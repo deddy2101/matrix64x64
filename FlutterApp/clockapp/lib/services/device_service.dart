@@ -624,11 +624,13 @@ class DeviceService implements IPongDevice {
   ///
   /// Un telefono nuovo deve dare il PIN statico (chiesto con [askPin]; per i
   /// display già usati è salvato) e poi digitare il PIN dinamico mostrato dal
-  /// display: l'attesa può durare fino a 90 secondi.
+  /// display: l'attesa può durare fino a 90 secondi. Su Linux il PIN dinamico
+  /// lo chiede l'app ([askPasskey]), sugli altri sistemi la finestra di sistema.
   Future<bool> connectBle(
     String deviceId,
     String name, {
     Future<String?> Function(bool retry)? askPin,
+    Future<String?> Function()? askPasskey,
   }) async {
     disconnect();
 
@@ -645,6 +647,7 @@ class DeviceService implements IPongDevice {
     final ok = await _ble.connect(
       deviceId,
       providePin: _blePinProvider(deviceId, askPin),
+      providePasskey: askPasskey,
     );
     if (!ok) {
       disconnect();

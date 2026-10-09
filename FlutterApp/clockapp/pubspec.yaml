@@ -50,6 +50,9 @@ dependencies:
   cupertino_icons: ^1.0.8
   universal_ble: ^2.3.0
   shared_preferences: ^2.5.6
+  # Agent di pairing su Linux (universal_ble non lo registra)
+  bluez: ^0.8.3
+  dbus: ^0.7.11
 
 dev_dependencies:
   flutter_test:

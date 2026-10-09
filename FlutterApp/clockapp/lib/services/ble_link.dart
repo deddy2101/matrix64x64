@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:universal_ble/universal_ble.dart';
+import 'ble_linux_agent.dart';
 
 /// Dispositivo BLE trovato durante la scansione
 class BleScanResult {
@@ -53,6 +55,7 @@ class BleLink {
   final List<String> _unlockInbox = [];
   bool _welcomeSeen = false;
   bool _linkUp = false;
+  bool _retryable = false; // ultimo fallimento: vale la pena riprovare da soli
   StreamSubscription? _scanSub;
 
   // Riassemblaggio righe (byte, così i caratteri UTF-8 spezzati tra due
@@ -153,12 +156,40 @@ class BleLink {
   /// DINAMICO mostrato dal display: per questo l'attesa può durare fino a 90 s.
   /// Il WELCOME del firmware (inviato solo a collegamento cifrato e
   /// autenticato) segna la fine dell'accesso.
+  ///
+  /// [providePasskey] serve solo su Linux, dove il sistema non chiede da sé il
+  /// PIN dinamico (vedi [BleLinuxAgent]); ritorna null per annullare.
+  ///
+  /// Se il display chiude la connessione prima che l'utente abbia digitato
+  /// qualcosa (tipicamente un'associazione rimasta a metà, che il firmware
+  /// cancella da solo) riprova una volta in automatico.
   Future<bool> connect(
     String deviceId, {
     Future<String?> Function(bool retry)? providePin,
+    Future<String?> Function()? providePasskey,
   }) async {
+    if (Platform.isLinux) {
+      await BleLinuxAgent.instance.ensureRegistered();
+      BleLinuxAgent.instance.onPasskey = providePasskey;
+    }
+    try {
+      if (await _connectOnce(deviceId, providePin)) return true;
+      if (!_retryable) return false;
+      print('[BLE] Link dropped before access, retrying once');
+      await Future.delayed(const Duration(seconds: 1));
+      return await _connectOnce(deviceId, providePin);
+    } finally {
+      if (Platform.isLinux) BleLinuxAgent.instance.onPasskey = null;
+    }
+  }
+
+  Future<bool> _connectOnce(
+    String deviceId,
+    Future<String?> Function(bool retry)? providePin,
+  ) async {
     await disconnect();
     _lastError = null;
+    _retryable = false;
     _deviceId = deviceId;
     _rxBuffer.clear();
     _unlockInbox.clear();
@@ -204,12 +235,14 @@ class BleLink {
       );
 
       String? msg = await _waitWelcomeOrUnlock(const Duration(seconds: 15));
+      String? prev; // ultimo messaggio ricevuto, per spiegare un fallimento
 
       for (int step = 0; step < 10; step++) {
         if (msg == null) {
-          _lastError = 'Il display non risponde. Riprova avvicinandoti.';
+          _lastError = _failureReason(prev);
           break;
         }
+        prev = msg;
 
         if (msg == 'WELCOME') {
           _ready = true;
@@ -260,6 +293,28 @@ class BleLink {
     print('[BLE] connect failed: $_lastError');
     await disconnect();
     return false;
+  }
+
+  /// Spiega perché l'accesso si è fermato. [prev] = ultimo messaggio UNLOCK
+  /// ricevuto prima del timeout o della caduta del collegamento.
+  String _failureReason(String? prev) {
+    if (_linkUp) {
+      return prev == 'OK'
+          ? 'PIN del display non inserito in tempo. Riprova.'
+          : 'Il display non risponde. Riprova avvicinandoti.';
+    }
+    // Collegamento chiuso durante l'accesso
+    if (prev == 'OK') {
+      return 'PIN del display errato o inserito troppo tardi. Riprova.';
+    }
+    if (prev != null && prev != 'KNOWN') {
+      return 'Il display ha chiuso la connessione. Riprova.';
+    }
+    // Prima che l'utente digitasse qualcosa: quasi sempre un'associazione
+    // vecchia o rimasta a metà (il firmware la cancella da solo)
+    _retryable = true;
+    return 'Il display ha rifiutato l\'associazione. Riprova; se continua, '
+        'rimuovi "ledmatrix" dai dispositivi Bluetooth del telefono.';
   }
 
   /// Aspetta il WELCOME o il prossimo messaggio UNLOCK. null = timeout o
