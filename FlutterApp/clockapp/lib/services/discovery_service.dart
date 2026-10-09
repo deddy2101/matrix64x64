@@ -118,6 +118,8 @@ class DiscoveryService {
             if (found) devicesFound++;
           }
         }
+      }, onError: (_) {
+        // Invio fallito (es. nessuna rete): ignora
       });
 
       // Calcola broadcast address (assumiamo /24)
@@ -226,6 +228,8 @@ class DiscoveryService {
             _handleResponse(datagram);
           }
         }
+      }, onError: (_) {
+        // Invio fallito (es. nessuna rete): ignora
       });
 
       final broadcastAddr = InternetAddress('255.255.255.255');

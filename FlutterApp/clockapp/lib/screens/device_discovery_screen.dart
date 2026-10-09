@@ -336,134 +336,39 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen> {
   /// Chiede all'utente il PIN statico di accesso del display
   Future<String?> _askStaticPin(bool retry) async {
     if (!mounted) return null;
-    final controller = TextEditingController();
-    final pin = await showDialog<String>(
+    return showDialog<String>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1a1a2e),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
-          children: [
-            Icon(Icons.lock_outline, color: Color(0xFF8B5CF6)),
-            SizedBox(width: 12),
-            Text('PIN di accesso'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              retry
-                  ? 'PIN errato, riprova.'
-                  : 'Inserisci il PIN di accesso del display (quello di '
-                      'fabbrica o l\'ultimo che hai impostato). Solo dopo '
-                      'comparirà il PIN da digitare sul telefono.',
-              style: TextStyle(color: retry ? Colors.red[300] : null),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              keyboardType: TextInputType.number,
-              maxLength: 6,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'PIN (6 cifre)',
-                counterText: '',
-              ),
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Annulla'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (controller.text.length == 6) {
-                Navigator.pop(context, controller.text);
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF8B5CF6),
-            ),
-            child: const Text('Continua'),
-          ),
-        ],
+      builder: (context) => _PinDialog(
+        icon: Icons.lock_outline,
+        title: 'PIN di accesso',
+        message: retry
+            ? 'PIN errato, riprova.'
+            : 'Inserisci il PIN di accesso del display (quello di '
+                'fabbrica o l\'ultimo che hai impostato). Solo dopo '
+                'comparirà il PIN da digitare sul telefono.',
+        messageColor: retry ? Colors.red[300] : null,
+        obscureText: true,
+        confirmLabel: 'Continua',
       ),
     );
-    controller.dispose();
-    return pin;
   }
 
   /// Chiede il PIN dinamico mostrato dal display (solo Linux: sugli altri
   /// sistemi lo chiede la finestra di pairing del sistema operativo)
   Future<String?> _askDynamicPin() async {
     if (!mounted) return null;
-    final controller = TextEditingController();
-    final pin = await showDialog<String>(
+    return showDialog<String>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1a1a2e),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
-          children: [
-            Icon(Icons.bluetooth_searching, color: Color(0xFF8B5CF6)),
-            SizedBox(width: 12),
-            Text('PIN del display'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Digita il PIN che compare in alto a destra sul display. '
-              'Hai 30 secondi.',
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              keyboardType: TextInputType.number,
-              maxLength: 6,
-              decoration: const InputDecoration(
-                labelText: 'PIN (6 cifre)',
-                counterText: '',
-              ),
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              onSubmitted: (value) {
-                if (value.length == 6) Navigator.pop(context, value);
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Annulla'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (controller.text.length == 6) {
-                Navigator.pop(context, controller.text);
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF8B5CF6),
-            ),
-            child: const Text('Associa'),
-          ),
-        ],
+      builder: (context) => const _PinDialog(
+        icon: Icons.bluetooth_searching,
+        title: 'PIN del display',
+        message: 'Digita il PIN che compare in alto a destra sul display. '
+            'Hai 30 secondi.',
+        confirmLabel: 'Associa',
       ),
     );
-    controller.dispose();
-    return pin;
   }
 
   Future<void> _connectToSerial(SerialDevice device) async {
@@ -979,6 +884,94 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Dialog per l'inserimento di un PIN a 6 cifre. Possiede il proprio
+/// controller, così viene liberato solo dopo l'animazione di chiusura.
+class _PinDialog extends StatefulWidget {
+  final IconData icon;
+  final String title;
+  final String message;
+  final Color? messageColor;
+  final bool obscureText;
+  final String confirmLabel;
+
+  const _PinDialog({
+    required this.icon,
+    required this.title,
+    required this.message,
+    this.messageColor,
+    this.obscureText = false,
+    required this.confirmLabel,
+  });
+
+  @override
+  State<_PinDialog> createState() => _PinDialogState();
+}
+
+class _PinDialogState extends State<_PinDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (_controller.text.length == 6) {
+      Navigator.pop(context, _controller.text);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: const Color(0xFF1a1a2e),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: Row(
+        children: [
+          Icon(widget.icon, color: const Color(0xFF8B5CF6)),
+          const SizedBox(width: 12),
+          Text(widget.title),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(widget.message, style: TextStyle(color: widget.messageColor)),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            keyboardType: TextInputType.number,
+            maxLength: 6,
+            obscureText: widget.obscureText,
+            decoration: const InputDecoration(
+              labelText: 'PIN (6 cifre)',
+              counterText: '',
+            ),
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            onSubmitted: (_) => _submit(),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Annulla'),
+        ),
+        ElevatedButton(
+          onPressed: _submit,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF8B5CF6),
+          ),
+          child: Text(widget.confirmLabel),
+        ),
+      ],
     );
   }
 }
