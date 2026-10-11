@@ -5,6 +5,7 @@
 #include "../SpriteRenderer.h"
 #include "../TimeManager.h"
 #include "assets.h"  // Contiene GROUND, HILL, BUSH, CLOUD1, CLOUD2, BLOCK, _MASK, ecc.
+#include "amore_assets.h"  // Scena compleanno (6 maggio, solo Peach)
 #include "Super_Mario_Bros__24pt7b.h"
 
 
@@ -60,6 +61,21 @@ private:
     const uint16_t* jumpSprite;
     int idleWidth, idleHeight;
     int jumpWidth, jumpHeight;
+
+    // Scena compleanno: il 6 maggio Peach Clock mostra Mario e Peach che si baciano
+    // e alterna la scritta "BUON COMPLEANNO AMORE" ai blocchi dell'ora
+    bool birthdayMode;
+    bool showBanner;
+    unsigned long lastBannerToggle;
+    static const int BIRTHDAY_MONTH = 5;
+    static const int BIRTHDAY_DAY = 6;
+    static const unsigned long BANNER_TOGGLE_MS = 5000;
+
+    bool isBirthday() const;
+    void checkBirthday();
+    void updateBirthday();
+    void drawCharacters();
+    void drawTopArea();
 
     // Theme support
     bool isDayTheme;

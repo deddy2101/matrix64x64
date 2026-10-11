@@ -12,6 +12,9 @@ MarioClockEffect::MarioClockEffect(DisplayManager* dm, TimeManager* tm, MarioCha
       minuteBlock(new MarioBlock()),
       marioSprite(new MarioSprite()),
       character(character),
+      birthdayMode(false),
+      showBanner(true),
+      lastBannerToggle(0),
       isDayTheme(true),
       transitionState(TRANSITION_NONE),
       transitionProgress(0.0f),
@@ -81,6 +84,10 @@ void MarioClockEffect::init() {
     lastHour = timeManager->getHour();
     lastMinute = timeManager->getMinute();
 
+    birthdayMode = isBirthday();
+    showBanner = true;
+    lastBannerToggle = millis();
+
     hourBlock->text = String(lastHour);
     char minStr[3];
     sprintf(minStr, "%02d", lastMinute);
@@ -94,6 +101,17 @@ void MarioClockEffect::init() {
         
         lastHour = h;
         lastMinute = m;
+
+        checkBirthday();
+        if (birthdayMode) {
+            // Niente salti: la coppia resta ferma, si aggiornano solo i numeri
+            hourBlock->text = String(h);
+            char minStr[3];
+            sprintf(minStr, "%02d", m);
+            minuteBlock->text = String(minStr);
+            needsRedraw = true;
+            return;
+        }
         
 #if ENABLE_PIPE_ANIMATION
         // Triggera il tubo ad ogni cambio minuto!
@@ -340,6 +358,59 @@ void MarioClockEffect::reset() {
     lastMinute = -1;
 }
 
+bool MarioClockEffect::isBirthday() const {
+    return character == CHARACTER_PEACH &&
+           timeManager->getMonth() == BIRTHDAY_MONTH &&
+           timeManager->getDay() == BIRTHDAY_DAY;
+}
+
+// Entra/esce dalla scena compleanno al cambio di data
+void MarioClockEffect::checkBirthday() {
+    bool birthday = isBirthday();
+    if (birthday == birthdayMode) return;
+
+    DEBUG_PRINTF("[MarioClockEffect] Birthday mode: %s\n", birthday ? "ON" : "OFF");
+    birthdayMode = birthday;
+    showBanner = true;
+    lastBannerToggle = millis();
+    walkingToJump = false;
+    initMario();
+    initBlocks();
+    needsRedraw = true;
+}
+
+// Alterna scritta e ora
+void MarioClockEffect::updateBirthday() {
+    if (!birthdayMode) return;
+    if (millis() - lastBannerToggle >= BANNER_TOGGLE_MS) {
+        showBanner = !showBanner;
+        lastBannerToggle = millis();
+        needsRedraw = true;
+    }
+}
+
+void MarioClockEffect::drawCharacters() {
+    if (birthdayMode) {
+        spriteRenderer->drawSprite(HEART, 28, 28, HEART_SIZE[0], HEART_SIZE[1]);
+        spriteRenderer->drawSprite(MARIO_PEACH_KISS, 20, 36,
+                                   MARIO_PEACH_KISS_SIZE[0], MARIO_PEACH_KISS_SIZE[1]);
+        return;
+    }
+    spriteRenderer->drawSpriteFlipped(idleSprite, marioSprite->x, marioSprite->y,
+                                     idleWidth, idleHeight,
+                                     !marioFacingRight);
+}
+
+void MarioClockEffect::drawTopArea() {
+    if (birthdayMode && showBanner) {
+        spriteRenderer->drawSprite(BIRTHDAY_BANNER, 0, 8,
+                                   BIRTHDAY_BANNER_SIZE[0], BIRTHDAY_BANNER_SIZE[1]);
+        return;
+    }
+    drawBlock(*hourBlock);
+    drawBlock(*minuteBlock);
+}
+
 void MarioClockEffect::updateTheme() {
     // Use TimeManager which uses Settings for dynamic night hours
     bool shouldBeDayTheme = timeManager->isDayTheme();
@@ -407,6 +478,7 @@ void MarioClockEffect::update() {
     // Update transition animation
     updateTransition();
 
+    updateBirthday();
     updateMario();
 
 #if ENABLE_PIPE_ANIMATION
@@ -453,7 +525,10 @@ void MarioClockEffect::drawScene() {
     spriteRenderer->drawSprite(HILL, 0, 34, 20, 22);
     spriteRenderer->drawSprite(BUSH, 43, 47, 21, 9);
 
-    if (isDayTheme) {
+    // Nel giorno del compleanno il cielo resta libero per la scritta
+    if (birthdayMode) {
+        // niente nuvole, luna e stelle
+    } else if (isDayTheme) {
         spriteRenderer->drawSprite(CLOUD1, 0, 21, 13, 12);
         spriteRenderer->drawSprite(CLOUD2, 51, 7, 13, 12);
     } else {
@@ -463,8 +538,7 @@ void MarioClockEffect::drawScene() {
 
     drawGround();
 
-    drawBlock(*hourBlock);
-    drawBlock(*minuteBlock);
+    drawTopArea();
 
 #if ENABLE_PIPE_ANIMATION
     if (pipe->state != PIPE_HIDDEN) {
@@ -472,9 +546,7 @@ void MarioClockEffect::drawScene() {
     }
 #endif
 
-    spriteRenderer->drawSpriteFlipped(idleSprite, marioSprite->x, marioSprite->y,
-                                     idleWidth, idleHeight,
-                                     !marioFacingRight);
+    drawCharacters();
 
     displayManager->endFrame();
 }
@@ -708,7 +780,9 @@ void MarioClockEffect::drawTransition() {
     spriteRenderer->drawSprite(HILL, 0, 34, 20, 22);
     spriteRenderer->drawSprite(BUSH, 43, 47, 21, 9);
 
-    if (transitionState == TRANSITION_DAY_TO_NIGHT) {
+    if (birthdayMode) {
+        // niente nuvole, luna e stelle (vedi drawScene)
+    } else if (transitionState == TRANSITION_DAY_TO_NIGHT) {
         int cloudOffset = (int)(p * 70);
         int cloud1X = 0 - cloudOffset;
         int cloud2X = 51 - cloudOffset;
@@ -754,12 +828,9 @@ void MarioClockEffect::drawTransition() {
 
     drawGround();
 
-    drawBlock(*hourBlock);
-    drawBlock(*minuteBlock);
+    drawTopArea();
 
-    spriteRenderer->drawSpriteFlipped(idleSprite, marioSprite->x, marioSprite->y,
-                                     idleWidth, idleHeight,
-                                     !marioFacingRight);
+    drawCharacters();
 
     displayManager->endFrame();
 }
