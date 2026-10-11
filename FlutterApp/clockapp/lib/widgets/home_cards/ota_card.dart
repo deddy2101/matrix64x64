@@ -255,8 +255,14 @@ class _OTACardState extends State<OTACard> {
 
   Future<void> _selectAndUpload(BuildContext context) async {
     try {
-      final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['bin']);
+      // FileType.any: il filtro per estensione 'bin' rende i file non selezionabili su macOS
+      final result = await FilePicker.platform.pickFiles(type: FileType.any);
       if (result == null || result.files.isEmpty) return;
+
+      if (!result.files.first.name.toLowerCase().endsWith('.bin')) {
+        widget.onLog('⚠ Seleziona un file .bin');
+        return;
+      }
 
       final filePath = result.files.first.path;
       if (filePath == null) {
