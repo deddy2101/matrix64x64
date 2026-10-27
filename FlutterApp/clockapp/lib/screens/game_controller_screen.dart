@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
+import 'dart:io' show Platform;
 import '../services/device_service.dart';
 import '../widgets/common/common_widgets.dart';
 
@@ -36,6 +37,11 @@ class _GameControllerScreenState extends State<GameControllerScreen>
   SnakeState? _snakeState;
   bool _snakeJoined = false;
 
+  // Tastiera (frecce): su desktop si gioca senza toccare lo schermo
+  bool _upHeld = false;
+  bool _downHeld = false;
+  String _pongMoveSent = 'stop';
+
   @override
   void initState() {
     super.initState();
@@ -48,6 +54,7 @@ class _GameControllerScreenState extends State<GameControllerScreen>
 
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) {
+        _releasePongKeys();
         setState(() {
           _currentGame = _tabController.index == 0 ? GameType.pong : GameType.snake;
         });
@@ -67,8 +74,88 @@ class _GameControllerScreenState extends State<GameControllerScreen>
       }),
     ];
 
+    HardwareKeyboard.instance.addHandler(_onKey);
+
     // Richiedi stato iniziale
     _requestGameState();
+  }
+
+  bool get _isDesktop =>
+      Platform.isLinux || Platform.isMacOS || Platform.isWindows;
+
+  /// Frecce: ↑/↓ muovono la racchetta di Pong (finché restano premute),
+  /// ↑↓←→ cambiano direzione a Snake. Registrato globalmente, così funziona
+  /// anche se il focus è su un pulsante o sul cursore.
+  bool _onKey(KeyEvent event) {
+    if (!mounted) return false;
+    if (ModalRoute.of(context)?.isCurrent != true) return false;
+
+    final key = event.logicalKey;
+    final isArrow = key == LogicalKeyboardKey.arrowUp ||
+        key == LogicalKeyboardKey.arrowDown ||
+        key == LogicalKeyboardKey.arrowLeft ||
+        key == LogicalKeyboardKey.arrowRight;
+    if (!isArrow) return false;
+
+    if (_currentGame == GameType.pong) {
+      if (_myPongPlayer == null) return false;
+      final isUp = key == LogicalKeyboardKey.arrowUp;
+      final isDown = key == LogicalKeyboardKey.arrowDown;
+      if (!isUp && !isDown) return false;
+
+      if (event is KeyDownEvent) {
+        if (isUp) _upHeld = true;
+        if (isDown) _downHeld = true;
+      } else if (event is KeyUpEvent) {
+        if (isUp) _upHeld = false;
+        if (isDown) _downHeld = false;
+      }
+      _sendPongMove();
+      return true;
+    }
+
+    if (!_snakeJoined) return false;
+    if (event is! KeyDownEvent) return true; // niente ripetizioni
+    final direction = key == LogicalKeyboardKey.arrowUp
+        ? 'up'
+        : key == LogicalKeyboardKey.arrowDown
+            ? 'down'
+            : key == LogicalKeyboardKey.arrowLeft
+                ? 'left'
+                : 'right';
+    widget.deviceService.snakeSetDirection(direction);
+    return true;
+  }
+
+  /// Manda il movimento solo quando cambia (nessun traffico a tasto tenuto)
+  void _sendPongMove() {
+    final player = _myPongPlayer;
+    if (player == null) return;
+    final dir = (_upHeld == _downHeld) ? 'stop' : (_upHeld ? 'up' : 'down');
+    if (dir == _pongMoveSent) return;
+    _pongMoveSent = dir;
+    widget.deviceService.pongMove(player, dir);
+  }
+
+  void _releasePongKeys() {
+    _upHeld = false;
+    _downHeld = false;
+    _sendPongMove();
+  }
+
+  Widget _keyboardHint(String text) {
+    if (!_isDesktop) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.keyboard, size: 18, color: Colors.grey[500]),
+          const SizedBox(width: 8),
+          Text(text, style: TextStyle(color: Colors.grey[500], fontSize: 13)),
+        ],
+      ),
+    );
   }
 
   void _requestGameState() {
@@ -81,6 +168,8 @@ class _GameControllerScreenState extends State<GameControllerScreen>
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_onKey);
+    _releasePongKeys(); // ferma la racchetta se un tasto era premuto
     // Lascia i giochi se siamo uniti
     if (_myPongPlayer != null) {
       widget.deviceService.pongLeave(_myPongPlayer!);
@@ -157,6 +246,7 @@ class _GameControllerScreenState extends State<GameControllerScreen>
             if (_myPongPlayer == null) ...[
               _buildPongJoinCard(),
             ] else ...[
+              _keyboardHint('Frecce ↑ ↓ per muovere la racchetta'),
               _buildPongControllerCard(),
             ],
             const SizedBox(height: 16),
@@ -603,6 +693,7 @@ class _GameControllerScreenState extends State<GameControllerScreen>
 
   void _pongLeavePlayer() {
     if (_myPongPlayer != null) {
+      _releasePongKeys();
       widget.deviceService.pongLeave(_myPongPlayer!);
       setState(() {
         _myPongPlayer = null;
@@ -634,6 +725,7 @@ class _GameControllerScreenState extends State<GameControllerScreen>
             if (!_snakeJoined) ...[
               _buildSnakeJoinCard(),
             ] else ...[
+              _keyboardHint('Frecce ↑ ↓ ← → per cambiare direzione'),
               _buildSnakeControllerCard(),
             ],
             const SizedBox(height: 16),
