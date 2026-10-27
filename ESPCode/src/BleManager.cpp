@@ -114,6 +114,9 @@ BleManager::Client* BleManager::allocClient(uint16_t handle) {
             c.wantSecurity = false;
             c.closeAfterMsg = false;
             c.pendingMsg = MSG_NONE;
+            c.unlockStatus = MSG_NONE;
+            c.unlockNextAt = 0;
+            c.unlockSends = 0;
             c.pendingArg = 0;
             c.rx = "";
             c.rxOverflow = false;
@@ -215,6 +218,7 @@ void BleManager::onAuthenticationComplete(ble_gap_conn_desc* desc) {
     if (desc->sec_state.encrypted && desc->sec_state.authenticated) {
         DEBUG_PRINTF("[BLE] Handle %u authenticated\n", desc->conn_handle);
         c->authed = true;
+        c->unlockStatus = MSG_NONE;
         c->unlocked = true;
         if (wasPairingHandle || _pairingActive) endPairing();
         return;
@@ -229,7 +233,7 @@ void BleManager::onAuthenticationComplete(ble_gap_conn_desc* desc) {
         NimBLEDevice::deleteBond(NimBLEAddress(c->peerAddr));
         c->known = false;
         c->pendingArg = 0;
-        c->pendingMsg = MSG_LOCKED;
+        armUnlockStatus(c, MSG_LOCKED, 0);
     } else {
         _server->disconnect(desc->conn_handle);
     }
@@ -244,17 +248,18 @@ void BleManager::onSubscribe(NimBLECharacteristic* chr, ble_gap_conn_desc* desc,
     } else if (chr == _unlockChar && (subValue & 1) && !c->authed) {
         // Telefono già associato: cifratura con le chiavi salvate, nessun PIN.
         // Altrimenti serve il PIN statico.
+        // La risposta parte dal loop() dopo una breve attesa e viene ripetuta.
         if (NimBLEDevice::isBonded(NimBLEAddress(c->peerAddr))) {
             c->known = true;
-            c->wantSecurity = true;
-            c->pendingMsg = MSG_KNOWN;
+            armUnlockStatus(c, MSG_KNOWN, UNLOCK_FIRST_DELAY_MS);
         } else {
-            c->pendingMsg = MSG_LOCKED;
+            armUnlockStatus(c, MSG_LOCKED, UNLOCK_FIRST_DELAY_MS);
         }
     }
 }
 
 void BleManager::handleUnlockWrite(Client* c, const std::string& value) {
+    c->unlockStatus = MSG_NONE;  // il telefono ha reagito: basta ripetere lo stato
     if (c->authed || c->unlocked) return;
 
     unsigned long now = millis();
@@ -360,6 +365,12 @@ void BleManager::sendWelcome(Client* c) {
     c->welcomeSent = true;
 }
 
+void BleManager::armUnlockStatus(Client* c, uint8_t status, unsigned long delayMs) {
+    c->unlockSends = 0;
+    c->unlockNextAt = millis() + delayMs;
+    c->unlockStatus = status;
+}
+
 void BleManager::sendUnlockMessage(Client* c) {
     // exchange atomico: il task host può scrivere un nuovo messaggio nel frattempo
     uint8_t msg = __atomic_exchange_n(&c->pendingMsg, (uint8_t)MSG_NONE, __ATOMIC_SEQ_CST);
@@ -380,7 +391,9 @@ void BleManager::sendUnlockMessage(Client* c) {
         c->pendingMsg = msg;  // riprova al prossimo giro
         return;
     }
-    if (ble_gattc_notify_custom(c->handle, _unlockChar->getHandle(), om) != 0) {
+    int rc = ble_gattc_notify_custom(c->handle, _unlockChar->getHandle(), om);
+    DEBUG_PRINTF("[BLE] #%u UNLOCK <- %s (rc=%d)\n", c->handle, text, rc);
+    if (rc != 0) {
         c->pendingMsg = msg;
     }
 }
@@ -456,6 +469,18 @@ void BleManager::update() {
     // Sblocco, cifratura, benvenuto + invio
     for (auto& c : _clients) {
         if (!c.active) continue;
+
+        // (Ri)comunica KNOWN/LOCKED finché il telefono non reagisce
+        if (c.unlockStatus != MSG_NONE && c.pendingMsg == MSG_NONE &&
+            (long)(now - c.unlockNextAt) >= 0) {
+            uint8_t st = c.unlockStatus;
+            c.pendingMsg = st;
+            c.unlockSends++;
+            c.unlockNextAt = now + UNLOCK_RESEND_MS;
+            // Telefono già associato: la cifratura parte dopo il primo KNOWN
+            if (st == MSG_KNOWN && c.unlockSends == 1) c.wantSecurity = true;
+            if (c.unlockSends >= UNLOCK_MAX_SENDS) c.unlockStatus = MSG_NONE;
+        }
 
         sendUnlockMessage(&c);
 

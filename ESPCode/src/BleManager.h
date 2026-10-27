@@ -84,6 +84,12 @@ private:
         volatile bool wantSecurity = false; // da avviare la cifratura (loop)
         volatile bool closeAfterMsg = false;
         volatile uint8_t pendingMsg = MSG_NONE;
+        // Stato di accesso (KNOWN/LOCKED) da comunicare e RIPETERE finché il
+        // telefono non reagisce: la prima notifica può perdersi se il telefono
+        // non ha ancora messo l'ascolto (succede su Linux/BlueZ)
+        volatile uint8_t unlockStatus = MSG_NONE;
+        volatile unsigned long unlockNextAt = 0;
+        uint8_t unlockSends = 0;
         volatile uint16_t pendingArg = 0;
         uint16_t handle = 0;
         ble_addr_t peerAddr = {};
@@ -127,6 +133,9 @@ private:
     static constexpr unsigned long PAIRING_TIMEOUT_MS = 60000;
     static constexpr uint8_t MAX_PIN_ATTEMPTS = 3;
     static constexpr unsigned long LOCKOUT_MS = 300000;  // 5 minuti
+    static constexpr unsigned long UNLOCK_FIRST_DELAY_MS = 300;  // dopo l'iscrizione
+    static constexpr unsigned long UNLOCK_RESEND_MS = 1200;
+    static constexpr uint8_t UNLOCK_MAX_SENDS = 6;
 
     Client* findClient(uint16_t handle);
     Client* allocClient(uint16_t handle);
@@ -135,6 +144,7 @@ private:
     void flushTx(Client* c);
     void sendWelcome(Client* c);
     void sendUnlockMessage(Client* c);
+    void armUnlockStatus(Client* c, uint8_t status, unsigned long delayMs);
     void handleUnlockWrite(Client* c, const std::string& value);
     void endPairing();
     void startAdvertisingIfFree();
