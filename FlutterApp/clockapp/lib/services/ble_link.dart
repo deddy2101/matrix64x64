@@ -56,6 +56,8 @@ class BleLink {
   bool _welcomeSeen = false;
   bool _linkUp = false;
   bool _retryable = false; // ultimo fallimento: vale la pena riprovare da soli
+  DateTime? _okAt; // quando il display ha accettato il PIN statico
+  String? _lastUnlockMsg; // ultimo messaggio UNLOCK ricevuto (per le ripetizioni)
   StreamSubscription? _scanSub;
 
   // Riassemblaggio righe (byte, così i caratteri UTF-8 spezzati tra due
@@ -161,8 +163,11 @@ class BleLink {
   /// PIN dinamico (vedi [BleLinuxAgent]); ritorna null per annullare.
   ///
   /// Se il display chiude la connessione prima che l'utente abbia digitato
-  /// qualcosa (tipicamente un'associazione rimasta a metà, che il firmware
-  /// cancella da solo) riprova una volta in automatico.
+  /// qualcosa (tipicamente un'associazione che il telefono ricorda e il display
+  /// no) cancella l'associazione dal Bluetooth di sistema e ricomincia da capo,
+  /// una volta sola: così il pairing riparte con i due PIN. Su iOS e macOS il
+  /// sistema non lo permette: si riprova comunque e, se serve, l'errore spiega
+  /// come dimenticare il display a mano.
   Future<bool> connect(
     String deviceId, {
     Future<String?> Function(bool retry)? providePin,
@@ -175,11 +180,58 @@ class BleLink {
     try {
       if (await _connectOnce(deviceId, providePin)) return true;
       if (!_retryable) return false;
-      print('[BLE] Link dropped before access, retrying once');
+      print('[BLE] Link dropped before access: stale bond suspected');
+      final forgotten = await _forgetSystemBond(deviceId);
       await Future.delayed(const Duration(seconds: 1));
-      return await _connectOnce(deviceId, providePin);
+      final ok = await _connectOnce(deviceId, providePin);
+      if (!ok && !forgotten && _retryable) {
+        _lastError = 'Il telefono ricorda un\'associazione che il display non '
+            'riconosce. Nelle impostazioni Bluetooth del telefono scegli '
+            '"Dimentica questo dispositivo" per il display e riprova.';
+      }
+      return ok;
     } finally {
       if (Platform.isLinux) BleLinuxAgent.instance.onPasskey = null;
+    }
+  }
+
+  /// Cancella l'associazione di sistema col display, così il prossimo
+  /// collegamento rifà il pairing da zero. true se è stata cancellata; false
+  /// se la piattaforma non lo permette (iOS/macOS) o non c'era nulla da togliere.
+  Future<bool> _forgetSystemBond(String deviceId) async {
+    if (!BleCapabilities.hasSystemPairingApi) return false;
+    try {
+      await UniversalBle.unpair(deviceId);
+      print('[BLE] System bond removed');
+    } catch (e) {
+      print('[BLE] unpair failed (continuing): $e');
+      return false;
+    }
+    // La rimozione del bond è asincrona nel sistema
+    await Future.delayed(const Duration(seconds: 2));
+    // Su Linux BlueZ toglie il display dall'elenco: va ritrovato con una scansione
+    if (Platform.isLinux) await _rediscover(deviceId);
+    return true;
+  }
+
+  /// Scansione breve finché il display riappare (max 10 s)
+  Future<void> _rediscover(String deviceId) async {
+    final found = Completer<void>();
+    final sub = UniversalBle.scanStream.listen((d) {
+      if (d.deviceId == deviceId && !found.isCompleted) found.complete();
+    });
+    try {
+      await UniversalBle.startScan(
+        scanFilter: ScanFilter(withServices: [serviceUuid]),
+      );
+      await found.future.timeout(const Duration(seconds: 10));
+    } catch (e) {
+      print('[BLE] rediscover: $e');
+    } finally {
+      await sub.cancel();
+      try {
+        await UniversalBle.stopScan();
+      } catch (_) {}
     }
   }
 
@@ -190,6 +242,8 @@ class BleLink {
     await disconnect();
     _lastError = null;
     _retryable = false;
+    _okAt = null;
+    _lastUnlockMsg = null;
     _deviceId = deviceId;
     _rxBuffer.clear();
     _unlockInbox.clear();
@@ -209,8 +263,14 @@ class BleLink {
       _valueSub = UniversalBle.characteristicValueStream(deviceId, txUuid)
           .listen(_onBytes);
       _unlockSub = UniversalBle.characteristicValueStream(deviceId, unlockUuid)
-          .listen((bytes) => _unlockInbox
-              .add(utf8.decode(bytes, allowMalformed: true).trim()));
+          .listen((bytes) {
+        final m = utf8.decode(bytes, allowMalformed: true).trim();
+        // Il display ripete KNOWN/LOCKED finché il telefono non reagisce: le
+        // ripetizioni non vanno trattate come nuovi messaggi
+        if ((m == 'KNOWN' || m == 'LOCKED') && m == _lastUnlockMsg) return;
+        _lastUnlockMsg = m;
+        _unlockInbox.add(m);
+      });
 
       await UniversalBle.discoverServices(deviceId, timeout: _pairingTimeout);
 
@@ -257,6 +317,7 @@ class BleLink {
           msg = await _waitWelcomeOrUnlock(const Duration(seconds: 25));
         } else if (msg == 'OK') {
           // PIN statico accettato: ora l'utente digita il PIN dinamico
+          _okAt = DateTime.now();
           msg = await _waitWelcomeOrUnlock(_pairingTimeout);
         } else if (msg == 'LOCKED' || msg.startsWith('ERR,wrong')) {
           final pin = providePin == null
@@ -305,6 +366,15 @@ class BleLink {
     }
     // Collegamento chiuso durante l'accesso
     if (prev == 'OK') {
+      // Caduta subito dopo il PIN statico: nessuno fa in tempo a leggere e
+      // digitare 6 cifre. Il telefono ha provato a cifrare con chiavi che il
+      // display non ha più: associazione vecchia.
+      final quick = _okAt != null &&
+          DateTime.now().difference(_okAt!) < const Duration(seconds: 6);
+      if (quick) {
+        _retryable = true;
+        return 'Il display ha rifiutato l\'associazione. Riprova.';
+      }
       return 'PIN del display errato o inserito troppo tardi. Riprova.';
     }
     if (prev != null && prev != 'KNOWN') {
@@ -313,8 +383,7 @@ class BleLink {
     // Prima che l'utente digitasse qualcosa: quasi sempre un'associazione
     // vecchia o rimasta a metà (il firmware la cancella da solo)
     _retryable = true;
-    return 'Il display ha rifiutato l\'associazione. Riprova; se continua, '
-        'rimuovi "ledmatrix" dai dispositivi Bluetooth del telefono.';
+    return 'Il display ha rifiutato l\'associazione. Riprova.';
   }
 
   /// Aspetta il WELCOME o il prossimo messaggio UNLOCK. null = timeout o
